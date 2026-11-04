@@ -1,0 +1,186 @@
+import {fusionHistory,fusionJob,startFusion,applyFusion,rejectFusion,cancelFusion} from './fusion.ts';
+import {installResearchStyle} from './research-style.ts';
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { dirname, join, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { resolveProjectScope, linkRepository } from "./project-scope.ts";
+import { discoverProject, installedSkills, projectFolder, matchSkill } from "./skill-discovery.ts";
+import { BrainDB } from "./database.ts";
+import { seed, seedStyles, archiveSamples } from "./seed.ts";
+import { installStyleDependencies } from "./style-dependencies.ts";
+import { upgradeWorkspaceDesign, upgradeWorkspaceNavigation, upgradeWorkspacePalette } from "./design-review-style.ts";
+import { installProjectDefaults } from "./project-defaults.ts";
+import { requireDevelopmentReview } from "./development-review-style.ts";
+import { installBaQcStyles } from "./ba-qc-styles.ts";
+import { splitDesignStyle } from "./split-design-style.ts";
+import { installWritingStyle } from "./writing-style.ts";
+import { installDrawingStyles, upgradeVisualDrawing } from "./drawing-styles.ts";
+import { installNetworkDrawingStyle } from "./network-drawing-style.ts";
+import { installReviewStandard } from "./review-standard.ts";
+import { installStyleContracts, installStyleExamples } from "./style-contracts.ts";
+import { installPersonalBrainStyles, upgradeDesignComposition } from "./personal-brain-styles.ts";
+import { installArchitectureStyles } from "./architecture-styles.ts";
+import { manageHookConfig } from "./hook-install.ts";
+import { BrainError, KINDS, type Domain, type Kind } from "./models.ts";
+
+const publicDir=resolve(dirname(fileURLToPath(import.meta.url)),"../public");
+function json(res:ServerResponse,status:number,payload:unknown) { const data=JSON.stringify(payload);res.writeHead(status,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(data); }
+async function body(req:IncomingMessage):Promise<any> {
+  let data="";
+  for await (const chunk of req) {data+=chunk;if(data.length>180000)throw new BrainError("Request too large","TOO_LARGE",413);}
+  if(!data.trim())return {};
+  try {return JSON.parse(data);}catch{throw new BrainError("Invalid JSON");}
+}
+function allowOrigin(req:IncomingMessage) {
+  const origin=req.headers.origin;
+  if(!origin)return true;
+  try {const parsed=new URL(origin);return parsed.hostname==="127.0.0.1" && parsed.protocol==="http:" && parsed.host===req.headers.host;}catch{return false;}
+}
+export function createBrainHttpServer(db:BrainDB) {
+  const development=process.env.PB_DEV_RELOAD==="1";
+  const started=Date.now();
+  archiveSamples(db);
+  installArchitectureStyles(db);
+  installPersonalBrainStyles(db);
+  installStyleContracts(db);
+  installStyleExamples(db);
+  installWritingStyle(db);
+  upgradeDesignComposition(db);
+  splitDesignStyle(db);
+  installBaQcStyles(db);
+  requireDevelopmentReview(db);
+  installProjectDefaults(db);
+  upgradeWorkspaceDesign(db);
+  upgradeWorkspaceNavigation(db);
+  upgradeWorkspacePalette(db);
+  installStyleDependencies(db);
+  installDrawingStyles(db);
+  upgradeVisualDrawing(db);
+  installNetworkDrawingStyle(db);
+  installReviewStandard(db);
+  installResearchStyle(db);
+  if(db.projects().some(p=>p.id==="b3937377-32ad-43a8-9adc-c21d06a9b4a4"))db.privatizeLegacyProjectStyles("b3937377-32ad-43a8-9adc-c21d06a9b4a4");
+  return createServer(async (req,res)=>{
+    res.setHeader("X-Frame-Options","DENY");
+    res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    res.setHeader("Referrer-Policy","no-referrer");
+    const method=req.method||"GET";
+    try {
+      const url=new URL(req.url||"/","http://127.0.0.1");const path=url.pathname;
+      if(path.startsWith("/api/")) {
+        if(!allowOrigin(req))return json(res,403,{error:"INVALID_ORIGIN"});
+        if(path==="/api/dev-version"&&method==="GET"&&development)return json(res,200,{version:[started,...["index.html","app.js","style.css","live-reload.js"].map(name=>statSync(join(publicDir,name)).mtimeMs)].join(":")});
+        const removal=path.match(/^\/api\/removal\/(record|domain|project|reset)\/([a-zA-Z0-9-]+)$/);
+        if(removal&&method==="GET")return json(res,200,db.deletionPreview(removal[1],removal[2]));
+        if(removal&&method==="POST"){const x=await body(req);return json(res,200,db.deleteWithPreview(removal[1],removal[2],x.fingerprint));}
+        if(path==="/api/projects"&&method==="GET")return json(res,200,db.projects().map(p=>({...p,activity:db.projectActivity(p.id)})));
+        if(path==="/api/projects"&&method==="POST")return json(res,201,db.saveProject(await body(req)));
+        const publishMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})\/items\/([a-f0-9-]{36})\/publish$/);
+        if(publishMatch&&method==="POST"){
+          const x=await body(req);
+          return json(res,201,db.publishProjectRecord(publishMatch[1],publishMatch[2],x.expectedVersion));
+        }
+        const personalizeMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})\/items\/([a-f0-9-]{36})$/);
+        if(personalizeMatch&&method==="PUT"){
+          const x=await body(req);
+          return json(res,200,db.personalizeRecord(personalizeMatch[1],personalizeMatch[2],x.record,x.expectedVersion,x.expectedProjectVersion));
+        }
+        const discoveryMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})\/discovery$/);
+        if(discoveryMatch&&method==="GET")return json(res,200,discoverProject(db,discoveryMatch[1]));
+        if(discoveryMatch&&method==="POST")return json(res,200,discoverProject(db,discoveryMatch[1],true));
+        const repositoryMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})\/repository$/);
+        if(repositoryMatch&&method==="GET"){
+          const id=repositoryMatch[1];db.project(id);
+          const stored=db.db.prepare("SELECT value FROM meta WHERE key=?").get("repository:"+id) as {value:string}|undefined;
+          let folder=stored?.value||"";let linked=false;let error="";
+          try{const scope=resolveProjectScope(undefined,folder||process.cwd(),"");linked=scope.projectId===id;if(linked&&scope.file)folder=dirname(scope.file);}catch(e){error=e instanceof Error?e.message:String(e);}
+          return json(res,200,{folder,linked,error});
+        }
+        if(repositoryMatch&&method==="POST"){
+          db.project(repositoryMatch[1]);const x=await body(req);
+          if(typeof x.folder!=="string")throw new BrainError("Repository folder is required");
+          if(x.action==="link"){
+            const result=linkRepository(x.folder,repositoryMatch[1]);
+            db.db.prepare("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run("repository:"+repositoryMatch[1],dirname(result.file));
+            return json(res,200,result);
+          }
+          if(x.action!=="test")throw new BrainError("Invalid repository action");
+          const scope=resolveProjectScope(undefined,x.folder,"");
+          const records=scope.projectId?db.scopedRecords(scope.projectId):[];
+          return json(res,200,{...scope,matches:scope.projectId===repositoryMatch[1],records:records.map(r=>({id:r.id,title:r.title})),note:"Local configuration checked. Agent connection is confirmed only by observed calls."});
+        }
+        const activityMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})\/activity$/);
+        if(activityMatch&&method==="GET")return json(res,200,db.projectActivity(activityMatch[1]));
+        const projectMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})(\/resolved)?$/);
+        if(projectMatch&&method==="GET")return json(res,200,projectMatch[2]?db.scopedRecords(projectMatch[1]):db.project(projectMatch[1]));
+        if(projectMatch&&!projectMatch[2]&&method==="PUT"){const x=await body(req);return json(res,200,db.saveProject(x.project,projectMatch[1],x.expectedVersion));}
+        if(path==="/api/fusion"&&method==="GET")return json(res,200,fusionHistory(db));
+        if(path==="/api/fusion"&&method==="POST")return json(res,202,startFusion(db,await body(req)));
+        const fusion=path.match(/^\/api\/fusion\/([a-f0-9-]{36})(\/(?:apply|reject|cancel))?$/);
+        if(fusion&&method==="GET"&&!fusion[2])return json(res,200,fusionJob(db,fusion[1]));
+        if(fusion&&method==="POST"&&fusion[2]==="/cancel")return json(res,200,cancelFusion(db,fusion[1]));
+        if(fusion&&method==="POST"&&fusion[2])return json(res,200,(fusion[2]==="/reject"?rejectFusion:applyFusion)(db,fusion[1],(await body(req)).targetId));
+        if(path==="/api/summary"&&method==="GET")return json(res,200,db.summary());
+        if(path==="/api/styles/seed"&&method==="POST")return json(res,200,{created:seedStyles(db)});
+        if(path==="/api/examples/seed"&&method==="POST")return json(res,200,{created:seed(db),summary:db.summary()});
+        if(path==="/api/trace/stats"&&method==="GET")return json(res,200,db.traceStats(url.searchParams.get("projectId")||undefined));
+        if(path==="/api/trace"&&method==="GET")return json(res,200,db.listTrace({
+          projectId:url.searchParams.get("projectId")||undefined,
+          agent:url.searchParams.get("agent")||undefined,
+          channel:url.searchParams.get("channel")||undefined,
+          recordId:url.searchParams.get("recordId")||undefined,
+          includeDemo:url.searchParams.get("demo")==="1",
+          limit:Math.min(500,Math.max(1,Number(url.searchParams.get("limit")||150)))
+        }));
+        if(path==="/api/trace/demo"&&method==="POST")return json(res,200,{created:db.seedTraceDemo()});
+        if(path==="/api/trace/demo"&&method==="DELETE")return json(res,200,{removed:db.clearTraceDemo()});
+        if(path==="/api/chatgpt/setup"&&method==="GET"){
+          const project=db.project(url.searchParams.get("projectId")||"");
+          const quote=(value:string)=>"'"+value.replaceAll("'","'\\''")+"'";
+          const command=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"cli.ts"),"mcp","chatgpt",project.id].map(quote).join(" ");
+          const connectCommand=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"cli.ts"),"chatgpt-connect",project.id].map(quote).join(" ");
+          return json(res,200,{command,connectCommand,projectId:project.id});
+        }
+        if(path==="/api/activation"&&method==="GET")return json(res,200,{claude:manageHookConfig("status","claude"),codex:manageHookConfig("status","codex")});
+        if(path==="/api/domains"&&method==="GET")return json(res,200,db.domains());
+        if(path==="/api/domains"&&method==="POST"){const x=await body(req);return json(res,201,db.saveDomain(x.name));}
+        const domainRoute=path.match(/^\/api\/domains\/([a-z][a-z0-9-]{0,59})$/);
+        if(domainRoute&&method==="PUT"){const x=await body(req);return json(res,200,db.saveDomain(x.name,domainRoute[1],x.expectedName));}
+        if(path==="/api/items"&&method==="GET") {
+          const k=url.searchParams.get("kind");const d=url.searchParams.get("domain");
+          const projectId=url.searchParams.get("projectId")||undefined;
+          let folder:string|undefined;if(projectId)try{folder=projectFolder(db,projectId);}catch{/* Missing repository is reported by project discovery. */}
+          const inventory=installedSkills(folder);
+          return json(res,200,db.list({projectId,kind:KINDS.includes(k as Kind)?k as Kind:undefined,domain:db.hasDomain(d)?d as Domain:undefined,
+            status:url.searchParams.get("status")||undefined,query:url.searchParams.get("q")||undefined,limit:300}).map(record=>({...record,skillWarnings:(record.externalSkills||[]).map(ref=>matchSkill(ref,inventory.skills)).filter(ref=>ref.status!=="available").map(ref=>ref.reference+": "+ref.status)})));
+        }
+        if(path==="/api/items"&&method==="POST")return json(res,201,db.create(await body(req)));
+        const item=path.match(/^\/api\/items\/([a-f0-9-]{36})$/);
+        if((item||path.match(/^\/api\/items\/([a-f0-9-]{36})\/(history|restore)$/))){
+          const recordId=path.split("/")[3];const existing=db.get(recordId);
+          if(existing?.projectId!==undefined&&existing.projectId!==url.searchParams.get("projectId"))throw new BrainError("Record not found","NOT_FOUND",404);
+        }
+        if(item && method==="GET") {const found=db.get(item[1]);return found?json(res,200,found):json(res,404,{error:"NOT_FOUND"});}
+        if(item && method==="PUT") {const x=await body(req);return json(res,200,db.update(item[1],x.record,Number(x.expectedVersion)));}
+        const history=path.match(/^\/api\/items\/([a-f0-9-]{36})\/history$/);
+        if(history&&method==="GET")return json(res,200,db.history(history[1]));
+        const restore=path.match(/^\/api\/items\/([a-f0-9-]{36})\/restore$/);
+        if(restore&&method==="POST") {const x=await body(req);return json(res,200,db.restore(restore[1],Number(x.version),Number(x.expectedVersion)));}
+        if(path==="/api/bootstrap"&&method==="GET")return json(res,200,{text:db.bootstrap(3500,url.searchParams.get("projectId")||undefined)});
+        if(path==="/api/discover"&&method==="GET")return json(res,200,db.discover(url.searchParams.get("q")||"",undefined,24,url.searchParams.get("projectId")||undefined));
+        if(path==="/api/review"&&method==="POST") {const x=await body(req);return json(res,200,db.evaluate(String(x.content||""),db.hasDomain(x.domain)?x.domain:"general",typeof x.projectId==="string"?x.projectId:undefined));}
+        if(path==="/api/feedback"&&method==="GET")return json(res,200,db.listFeedback());
+        if(path==="/api/feedback"&&method==="POST")return json(res,201,db.addFeedback(await body(req)));
+        if(path==="/api/audit"&&method==="GET")return json(res,200,db.auditLog());
+        return json(res,404,{error:"NOT_FOUND"});
+      }
+      if(method!=="GET")return json(res,405,{error:"METHOD_NOT_ALLOWED"});
+      const route=path==="/"?"/index.html":path;
+      if(!["/index.html","/app.js","/style.css",...(development?["/live-reload.js"]:[])].includes(route))return json(res,404,{error:"NOT_FOUND"});
+      const file=join(publicDir,route.slice(1));if(!existsSync(file))return json(res,404,{error:"NOT_FOUND"});
+      const mime:Record<string,string>={".html":"text/html; charset=utf-8",".js":"application/javascript; charset=utf-8",".css":"text/css; charset=utf-8"};
+      res.writeHead(200,{"Content-Type":mime[extname(file)]||"application/octet-stream","Cache-Control":"no-store"});res.end(development&&route==="/index.html"?readFileSync(file,"utf8").replace("</body>",'<script src="/live-reload.js"></script></body>'):readFileSync(file));
+    }catch(error){const code=error instanceof BrainError?error.status:500;return json(res,code,{error:error instanceof BrainError?error.code:"SERVER_ERROR",message:error instanceof Error?error.message:"Unknown error"});}
+  });
+}

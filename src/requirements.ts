@@ -1,0 +1,21 @@
+import {BrainError, type BrainRecord, type Requirement} from './models.ts';
+
+export function validateRequirements(value:unknown):Requirement[]{
+  if(value===undefined)return [];
+  if(!Array.isArray(value)||value.length>30)throw new BrainError('Requirements must be an array of at most 30 entries');
+  const ids=new Set<string>();
+  return value.map(r=>{
+    if(!r||typeof r!=='object'||!['artifact','manual'].includes(r.type)||typeof r.id!=='string'||!/^req-[a-z0-9-]{1,60}$/.test(r.id)||ids.has(r.id)||typeof r.label!=='string'||!r.label.trim()||r.label.length>500)throw new BrainError('Invalid or duplicate requirement; use a unique req- ID, label and artifact/manual type');
+    if(r.type==='artifact'&&(typeof r.extension!=='string'||!/^\.[a-z0-9]{1,12}$/.test(r.extension)))throw new BrainError('Artifact requirement needs an extension such as .drawio');
+    if(r.type==='manual'&&r.extension!==undefined)throw new BrainError('Manual requirements cannot specify an extension');
+    ids.add(r.id);return {id:r.id,label:r.label.trim(),type:r.type,...(r.type==='artifact'?{extension:r.extension}:{})};
+  });
+}
+
+export function requirementChecklist(records:BrainRecord[]){
+  return records.flatMap(r=>[
+    ...(r.requirements||[]),
+    ...(r.reviewCriteria||[]).map((label,i)=>({id:`review-${i+1}`,label,type:'manual' as const})),
+    ...(r.externalSkills||[]).map((skill,i)=>({id:`skill-${i+1}`,label:`Read and apply applicable skill: ${skill}`,type:'manual' as const}))
+  ].map(requirement=>({...requirement,recordId:r.id,recordVersion:r.version,style:r.title})));
+}

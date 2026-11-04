@@ -4,10 +4,10 @@ import {mkdtempSync,mkdirSync,writeFileSync,rmSync,symlinkSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {spawnSync} from "node:child_process";
-import {BrainDB} from "../src/database.ts";
-import {installedSkills,matchSkill,discoverProject,getInstalledSkill} from "../src/skill-discovery.ts";
-import {createBrainHttpServer} from "../src/http.ts";
-import {callTool} from "../src/mcp.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installedSkills,matchSkill,discoverProject,getInstalledSkill} from "../src/projects/skill-discovery.ts";
+import {createBrainHttpServer} from "../src/server/http.ts";
+import {callTool} from "../src/agents/mcp.ts";
 const put=(file:string,text:string)=>{mkdirSync(resolve(file,".."),{recursive:true});writeFileSync(file,text);};
 const skill=(name:string,body="Skill instructions")=>`---\nname: ${name}\ndescription: Test skill\n---\n${body}`;
 

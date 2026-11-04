@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {BrainDB} from '../src/database.ts';
-import {fusionInput,validateFusion,applyFusion,startFusion,fusionJob,parseFusionOutput,rejectFusion,cancelFusion} from '../src/fusion.ts';
-import {installResearchStyle} from '../src/research-style.ts';
+import {BrainDB} from '../src/core/database.ts';
+import {fusionInput,validateFusion,applyFusion,startFusion,fusionJob,parseFusionOutput,rejectFusion,cancelFusion} from '../src/instructions/fusion.ts';
+import {installResearchStyle} from '../src/styles/research-style.ts';
 
 test('Fusion reads one complete JSON response with CLI prose or fences, but rejects ambiguous or broken output',()=>{
  const value={proposals:[{content:'Braces { } and escaped "quotes" and slash \\ remain literal',nested:{items:[1,2]}}]};

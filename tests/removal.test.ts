@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {createBrainHttpServer} from "../src/http.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {createBrainHttpServer} from "../src/server/http.ts";
 const input=(title:string,domain="writing")=>({kind:"preference",domain,title,summary:"",content:"Instructions",tags:[],priority:70,status:"active",checks:[],backend:null});
 test("capability deletion cascades owned records and history, unlinks survivors and remains deleted after reopening",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-delete-")),file=join(dir,"brain.sqlite");let db=new BrainDB(file);

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {BrainDB} from '../src/database.ts';
-import {installNetworkDrawingStyle} from '../src/network-drawing-style.ts';
+import {BrainDB} from '../src/core/database.ts';
+import {installNetworkDrawingStyle} from '../src/styles/network-drawing-style.ts';
 
 test('network drawing is selected once for all existing projects without replacing selections',()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-network-')),db=new BrainDB(join(dir,'brain.sqlite'));

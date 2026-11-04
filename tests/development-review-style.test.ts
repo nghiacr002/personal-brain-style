@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {requireDevelopmentReview} from "../src/development-review-style.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {requireDevelopmentReview} from "../src/styles/development-review-style.ts";
 test("review gate extends relevant styles once without changing scope",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-review-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{

@@ -1,13 +1,13 @@
-import {prepareInstructions} from "./instruction-set.ts";
-import {reviewArtifacts} from "./artifact-review.ts";
-import {requirementChecklist} from "./requirements.ts";
-import { complianceInstructions } from "./compliance.ts";
-import {readRepositoryEvidence} from "./repository-evidence.ts";
+import {prepareInstructions} from "../instructions/instruction-set.ts";
+import {reviewArtifacts} from "../instructions/artifact-review.ts";
+import {requirementChecklist} from "../core/requirements.ts";
+import { complianceInstructions } from "../instructions/compliance.ts";
+import {readRepositoryEvidence} from "../projects/repository-evidence.ts";
 import { createInterface } from "node:readline";
-import { resolveProjectScope } from "./project-scope.ts";
-import { discoverProject, getInstalledSkill, installedSkills, projectFolder, skillReferences } from "./skill-discovery.ts";
-import { BrainDB } from "./database.ts";
-import { BrainError, KINDS, type Kind, type Domain } from "./models.ts";
+import { resolveProjectScope } from "../projects/project-scope.ts";
+import { discoverProject, getInstalledSkill, installedSkills, projectFolder, skillReferences } from "../projects/skill-discovery.ts";
+import { BrainDB } from "../core/database.ts";
+import { BrainError, KINDS, type Kind, type Domain } from "../core/models.ts";
 import { invokeBackend, inspectBackend } from "./bridge.ts";
 
 const schemaObject = (properties:Record<string,unknown>,required:string[]=[]) => ({type:"object",properties,required,additionalProperties:false});

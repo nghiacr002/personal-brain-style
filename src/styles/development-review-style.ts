@@ -1,4 +1,4 @@
-import {BrainDB} from "./database.ts";
+import {BrainDB} from "../core/database.ts";
 
 export function requireDevelopmentReview(db:BrainDB){
  const key="development_review_gate_v1";

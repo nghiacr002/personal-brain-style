@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installBaQcStyles} from "../src/ba-qc-styles.ts";
-import {installProjectDefaults} from "../src/project-defaults.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installBaQcStyles} from "../src/styles/ba-qc-styles.ts";
+import {installProjectDefaults} from "../src/projects/project-defaults.ts";
 test("new project starter set is complete and does not mutate existing selections",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-defaults-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{

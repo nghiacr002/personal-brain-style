@@ -4,10 +4,10 @@ import {mkdtempSync,rmSync,readFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {spawn,spawnSync} from "node:child_process";
-import {BrainDB} from "../src/database.ts";
+import {BrainDB} from "../src/core/database.ts";
 import {DatabaseSync} from "node:sqlite";
-import {seed} from "../src/seed.ts";
-import {createBrainHttpServer} from "../src/http.ts";
+import {seed} from "../src/styles/seed.ts";
+import {createBrainHttpServer} from "../src/server/http.ts";
 
 function fixture() { const dir=mkdtempSync(join(tmpdir(),"pb-trace-"));const db=new BrainDB(join(dir,"brain.sqlite"));return {dir,db,close(){db.close();rmSync(dir,{recursive:true,force:true});}}; }
 

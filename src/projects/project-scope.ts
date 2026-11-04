@@ -1,6 +1,6 @@
 import {readFileSync,writeFileSync,statSync} from "node:fs";
 import {dirname,join,isAbsolute,resolve} from "node:path";
-import {BrainError} from "./models.ts";
+import {BrainError} from "../core/models.ts";
 
 function checkFolder(folder:string){
   if(!isAbsolute(folder))throw new BrainError("Repository folder must be an absolute path");

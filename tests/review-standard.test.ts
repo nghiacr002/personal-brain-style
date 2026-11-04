@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {BrainDB} from '../src/database.ts';
-import {installReviewStandard} from '../src/review-standard.ts';
+import {BrainDB} from '../src/core/database.ts';
+import {installReviewStandard} from '../src/styles/review-standard.ts';
 
 test('restores Review, selects standard and required rules, and respects later deletion',()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-review-')),db=new BrainDB(join(dir,'brain.sqlite'));

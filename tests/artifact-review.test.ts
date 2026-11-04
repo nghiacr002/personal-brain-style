@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,symlinkSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {BrainDB} from '../src/database.ts';
-import {reviewArtifacts} from '../src/artifact-review.ts';
-import {linkRepository} from '../src/project-scope.ts';
-import {callTool} from '../src/mcp.ts';
+import {BrainDB} from '../src/core/database.ts';
+import {reviewArtifacts} from '../src/instructions/artifact-review.ts';
+import {linkRepository} from '../src/projects/project-scope.ts';
+import {callTool} from '../src/agents/mcp.ts';
 
 test('artifact evidence verifies presence, preserves manual uncertainty and rejects unsafe or stale evidence',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-evidence-')),outside=mkdtempSync(join(tmpdir(),'pb-outside-'));

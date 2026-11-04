@@ -1,5 +1,5 @@
-import {BrainDB} from "./database.ts";
-import type {RecordInput} from "./models.ts";
+import {BrainDB} from "../core/database.ts";
+import type {RecordInput} from "../core/models.ts";
 
 export const visualDrawingPrompt = `VISUAL ARCHITECTURE COMPOSITION — v1
 Communicate architecture through structure, not paragraph-filled boxes. Keep necessary text: a concise service/entity name, a short responsibility where useful, and meaningful edge labels. Longer explanatory prose belongs in notes or linked documentation. The legend explains notation only; it is not a deployment guide.

@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {BrainDB} from './database.ts';
-import {BrainError,type BrainRecord} from './models.ts';
-import {requirementChecklist} from './requirements.ts';
+import {BrainDB} from '../core/database.ts';
+import {BrainError,type BrainRecord} from '../core/models.ts';
+import {requirementChecklist} from '../core/requirements.ts';
 
 const digest=(records:BrainRecord[])=>createHash('sha256').update(JSON.stringify(records)).digest('hex');
 function resolveRecords(db:BrainDB,projectId:string,ids:unknown){

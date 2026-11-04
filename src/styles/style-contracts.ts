@@ -1,4 +1,4 @@
-import {BrainDB} from "./database.ts";
+import {BrainDB} from "../core/database.ts";
 
 // Add the requested contracts once, preserving instructions, selections and later edits.
 export function installStyleContracts(db:BrainDB){

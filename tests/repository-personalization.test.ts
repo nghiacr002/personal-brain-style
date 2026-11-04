@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {callTool} from "../src/mcp.ts";
-import {repositoryEvidence,readRepositoryEvidence} from "../src/repository-evidence.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {callTool} from "../src/agents/mcp.ts";
+import {repositoryEvidence,readRepositoryEvidence} from "../src/projects/repository-evidence.ts";
 
 test("source-backed amendments enforce freshness/conflicts, private scope and repeat-safe updates",async()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-amend-")),repo=join(dir,"repo"),db=new BrainDB(join(dir,"brain.sqlite"));mkdirSync(repo);

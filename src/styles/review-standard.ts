@@ -1,5 +1,5 @@
-import {BrainDB} from './database.ts';
-import type {RecordInput} from './models.ts';
+import {BrainDB} from '../core/database.ts';
+import type {RecordInput} from '../core/models.ts';
 
 export function installReviewStandard(db:BrainDB){
  const marker='shared_review_standard_v2';

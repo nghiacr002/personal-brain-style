@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installPersonalBrainStyles} from "../src/personal-brain-styles.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installPersonalBrainStyles} from "../src/styles/personal-brain-styles.ts";
 
 test("Personal Brain receives three assigned styles once without changing other projects or later edits",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-personal-styles-"));const db=new BrainDB(join(dir,"brain.sqlite"));

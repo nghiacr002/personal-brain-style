@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
-import {BrainDB} from "../src/database.ts";
-import {createBrainHttpServer} from "../src/http.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {createBrainHttpServer} from "../src/server/http.ts";
 
 test("live reload is exposed only by the development server",async()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-dev-"));const db=new BrainDB(join(dir,"brain.sqlite"));const previous=process.env.PB_DEV_RELOAD;

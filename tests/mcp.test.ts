@@ -4,8 +4,8 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { BrainDB } from "../src/database.ts";
-import { seed } from "../src/seed.ts";
+import { BrainDB } from "../src/core/database.ts";
+import { seed } from "../src/styles/seed.ts";
 
 const app=resolve("src/cli.ts");const runner=resolve("scripts/run.mjs");
 test("MCP stdio initialization, discovery, resources and prompts",{timeout:12000},async()=>{

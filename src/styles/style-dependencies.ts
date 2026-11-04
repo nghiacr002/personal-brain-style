@@ -1,4 +1,4 @@
-import {BrainDB} from "./database.ts";
+import {BrainDB} from "../core/database.ts";
 
 // One-time audited links; later user edits remain authoritative.
 export function installStyleDependencies(db:BrainDB){

@@ -1,4 +1,4 @@
-import {BrainDB} from "./database.ts";
+import {BrainDB} from "../core/database.ts";
 
 // User-requested shared writing style, assigned only to these two existing projects.
 export function installWritingStyle(db:BrainDB){

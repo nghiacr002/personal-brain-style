@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installDrawingStyles,upgradeVisualDrawing} from "../src/drawing-styles.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installDrawingStyles,upgradeVisualDrawing} from "../src/styles/drawing-styles.ts";
 
 test("drawing formats share standards, remain discoverable, and preserve edits and project selections",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-drawing-"));const db=new BrainDB(join(dir,"brain.sqlite"));

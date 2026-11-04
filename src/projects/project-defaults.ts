@@ -1,5 +1,5 @@
-import {BrainDB} from "./database.ts";
-import type {RecordInput} from "./models.ts";
+import {BrainDB} from "../core/database.ts";
+import type {RecordInput} from "../core/models.ts";
 
 // Starter selections apply only to the new-project form, never to existing projects.
 export function installProjectDefaults(db:BrainDB){

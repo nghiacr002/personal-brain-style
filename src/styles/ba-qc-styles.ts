@@ -1,4 +1,4 @@
-import {BrainDB} from "./database.ts";
+import {BrainDB} from "../core/database.ts";
 export function installBaQcStyles(db:BrainDB){
  const key="ba_qc_styles_v1";if(db.db.prepare("SELECT value FROM meta WHERE key=?").get(key))return 0;
  for(const [id,name] of [["business-analysis","Business Analysis (BA)"],["quality-control","Quality Control (QC)"]])if(!db.hasDomain(id)&&!db.domains().some(d=>d.name===name)){const created=db.saveDomain(id.replace(/-/g," "));db.saveDomain(name,created.id,created.name);}

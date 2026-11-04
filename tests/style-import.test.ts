@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {seed} from "../src/seed.ts";
-import {createBrainHttpServer} from "../src/http.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {seed} from "../src/styles/seed.ts";
+import {createBrainHttpServer} from "../src/server/http.ts";
 
 test("server installs requested architecture styles without generic samples; explicit imports remain available",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"pb-style-api-"));

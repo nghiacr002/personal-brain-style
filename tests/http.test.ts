@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {join} from "node:path";
-import { BrainDB } from "../src/database.ts";
-import { createBrainHttpServer } from "../src/http.ts";
+import { BrainDB } from "../src/core/database.ts";
+import { createBrainHttpServer } from "../src/server/http.ts";
 
 test("local HTTP UI is served and API opens without a token",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"pb-http-")),db=new BrainDB(join(dir,"brain.sqlite"));const server=createBrainHttpServer(db);

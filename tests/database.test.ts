@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BrainDB } from "../src/database.ts";
-import { seed, seedStyles, archiveSamples } from "../src/seed.ts";
-import type { RecordInput } from "../src/models.ts";
+import { BrainDB } from "../src/core/database.ts";
+import { seed, seedStyles, archiveSamples } from "../src/styles/seed.ts";
+import type { RecordInput } from "../src/core/models.ts";
 
 const fixture = ():RecordInput=>({kind:"preference",domain:"diagrams",title:"Personal diagram convention",summary:"Short description",content:"Prefer orthogonal routing",tags:["diagram","drawio"],priority:90,status:"active",checks:[],backend:null});
 function withDb<T>(cb:(db:BrainDB)=>T):T{const dir=mkdtempSync(join(tmpdir(),"pb-test-"));const db=new BrainDB(join(dir,"brain.sqlite"));try{return cb(db);}finally{db.close();rmSync(dir,{recursive:true,force:true});}}

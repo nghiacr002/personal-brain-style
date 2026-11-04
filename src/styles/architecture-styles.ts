@@ -1,5 +1,5 @@
-import { BrainDB } from "./database.ts";
-import type { RecordInput } from "./models.ts";
+import { BrainDB } from "../core/database.ts";
+import type { RecordInput } from "../core/models.ts";
 
 // User-requested personal records, separate from the removed sample library.
 function installBaseArchitectureStyles(db:BrainDB) {

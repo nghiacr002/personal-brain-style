@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installBaQcStyles} from "../src/ba-qc-styles.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installBaQcStyles} from "../src/styles/ba-qc-styles.ts";
 test("capability counts include contracts and distinct projects without private content",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-count-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{

@@ -4,9 +4,9 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {spawnSync} from "node:child_process";
-import {resolveProjectScope,linkRepository} from "../src/project-scope.ts";
-import {BrainDB} from "../src/database.ts";
-import {callTool} from "../src/mcp.ts";
+import {resolveProjectScope,linkRepository} from "../src/projects/project-scope.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {callTool} from "../src/agents/mcp.ts";
 
 test("repository scope honors precedence, nearest file and invalid-file errors without overwriting links",()=>{
  const root=mkdtempSync(join(tmpdir(),"pb-repository-"));const child=join(root,"nested");mkdirSync(child);
@@ -38,7 +38,7 @@ test("MCP and real hooks detect repository project and omit unrelated defaults",
 });
 
 test("repository HTTP actions link safely and verify the selected project",async()=>{
- const {createBrainHttpServer}=await import("../src/http.ts");
+ const {createBrainHttpServer}=await import("../src/server/http.ts");
  const root=mkdtempSync(join(tmpdir(),"pb-repository-api-"));const db=new BrainDB(join(root,"brain.sqlite"));const server=createBrainHttpServer(db);
  const request=(id:string,payload:unknown,method="POST")=>new Promise<{status:number;data:any}>(resolve=>{let status=0;server.emit("request",{url:`/api/projects/${id}/repository`,method,headers:{},async *[Symbol.asyncIterator](){yield JSON.stringify(payload);}},{setHeader(){},writeHead(n:number){status=n;},end(text:string){resolve({status,data:JSON.parse(text)});}});});
  try{

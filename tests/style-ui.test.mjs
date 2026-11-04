@@ -92,7 +92,7 @@ test("My Styles renders recipes safely and filters through the existing library"
 test("served UI uses stylesheet classes allowed by the existing security policy",()=>{
   const code=readFileSync(new URL("../public/app.js",import.meta.url),"utf8");
   const css=readFileSync(new URL("../public/style.css",import.meta.url),"utf8");
-  const server=readFileSync(new URL("../src/http.ts",import.meta.url),"utf8");
+  const server=readFileSync(new URL("../src/server/http.ts",import.meta.url),"utf8");
   assert.doesNotMatch(code,/style="/);
   assert.doesNotMatch(code,/<[^>]*class="[^"]*"[^>]*class="/);
   assert.match(code,/Startup index/);

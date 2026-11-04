@@ -9,8 +9,8 @@ const HOOK_ID="personal-brain-style";
 
 function shellQuote(value:string) { return `'${value.replace(/'/g,`'\\''`)}'`; }
 export function hookCommand(agent:Agent,phase:"session"|"prompt",opts:InstallOptions={}) {
-  const entry=opts.entry||resolve(dirname(fileURLToPath(import.meta.url)),"cli.ts");
-  const runner=resolve(dirname(fileURLToPath(import.meta.url)),"../scripts/run.mjs");
+  const entry=opts.entry||resolve(dirname(fileURLToPath(import.meta.url)),"../cli.ts");
+  const runner=resolve(dirname(fileURLToPath(import.meta.url)),"../../scripts/run.mjs");
   return `${shellQuote(opts.node||process.execPath)} ${shellQuote(runner)} ${shellQuote(entry)} hook ${agent} ${phase}`;
 }
 function load(file:string):Record<string,any> {

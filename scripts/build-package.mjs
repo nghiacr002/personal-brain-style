@@ -7,10 +7,11 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const out=resolve(root,"dist");
 rmSync(out,{recursive:true,force:true});
 for(const folder of ["src","scripts","public"])mkdirSync(resolve(out,folder),{recursive:true});
-for(const file of readdirSync(resolve(root,"src")).filter(f=>f.endsWith(".ts"))){
+for(const file of readdirSync(resolve(root,"src"),{recursive:true}).filter(f=>f.endsWith(".ts"))){
   // Runtime entry paths must follow the compiled extension too.
-  const source=readFileSync(resolve(root,"src",file),"utf8").replaceAll('"cli.ts"','"cli.js"');
+  const source=readFileSync(resolve(root,"src",file),"utf8").replace(/(["'])(\.\.\/)?cli\.ts\1/g,'$1$2cli.js$1');
   const result=ts.transpileModule(source,{fileName:file,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022,rewriteRelativeImportExtensions:true}});
+  mkdirSync(dirname(resolve(out,"src",file)),{recursive:true});
   writeFileSync(resolve(out,"src",file.replace(/\.ts$/,".js")),result.outputText);
 }
 for(const file of ["run.mjs","runtime-compat.mjs","connect-chatgpt.sh"])copyFileSync(resolve(root,"scripts",file),resolve(out,"scripts",file));

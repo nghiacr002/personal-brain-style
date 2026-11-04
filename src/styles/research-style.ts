@@ -1,4 +1,4 @@
-import {BrainDB} from './database.ts';
+import {BrainDB} from '../core/database.ts';
 
 export function installResearchStyle(db:BrainDB){
  const marker='research_standard_v1';if(db.db.prepare('SELECT 1 FROM meta WHERE key=?').get(marker))return;

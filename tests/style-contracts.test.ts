@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installArchitectureStyles} from "../src/architecture-styles.ts";
-import {installStyleContracts,installStyleExamples} from "../src/style-contracts.ts";
-import {callTool} from "../src/mcp.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installArchitectureStyles} from "../src/styles/architecture-styles.ts";
+import {installStyleContracts,installStyleExamples} from "../src/styles/style-contracts.ts";
+import {callTool} from "../src/agents/mcp.ts";
 test("style contracts migrate once, stay project scoped and reach agent review",async()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-contract-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{

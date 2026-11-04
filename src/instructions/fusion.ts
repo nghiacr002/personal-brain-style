@@ -3,8 +3,8 @@ import {mkdtempSync,readFileSync,rmSync,statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {BrainDB} from './database.ts';
-import {BrainError,type BrainRecord} from './models.ts';
+import {BrainDB} from '../core/database.ts';
+import {BrainError,type BrainRecord} from '../core/models.ts';
 
 type FusionSource=BrainRecord & {recordId:string;contextProjectId:string;projectVersion:number};
 type Proposal={targetId:string;title:string;summary:string;content:string;principles:string[];examples:string[];externalSkills:string[];reviewCriteria:string[];useWhen:string;tags:string[];rationale:string;conflicts:string[];sourceIds:string[]};

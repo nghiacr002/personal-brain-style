@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installArchitectureStyles} from "../src/architecture-styles.ts";
-import {callTool} from "../src/mcp.ts";
-import {taskContext} from "../src/hooks.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installArchitectureStyles} from "../src/styles/architecture-styles.ts";
+import {callTool} from "../src/agents/mcp.ts";
+import {taskContext} from "../src/agents/hooks.ts";
 
 test("three personal architecture styles resolve required links across retrieval, hooks and project overrides",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"pb-required-"));const db=new BrainDB(join(dir,"brain.sqlite"));

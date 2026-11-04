@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { BrainError, type ToolBackend } from "./models.ts";
+import { BrainError, type ToolBackend } from "../core/models.ts";
 
 /**
  * A single-use stdio MCP client. This does not interpret or execute shell scripts.

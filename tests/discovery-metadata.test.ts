@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB,rankRecord} from "../src/database.ts";
-import {taskContext} from "../src/hooks.ts";
-import {callTool} from "../src/mcp.ts";
+import {BrainDB,rankRecord} from "../src/core/database.ts";
+import {taskContext} from "../src/agents/hooks.ts";
+import {callTool} from "../src/agents/mcp.ts";
 
 const input={kind:"preference",domain:"general",title:"Conventions",summary:"Team conventions",content:"FULL_INSTRUCTIONS",tags:[],priority:80,status:"active",checks:[],backend:null};
 

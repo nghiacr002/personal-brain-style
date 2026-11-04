@@ -1,7 +1,7 @@
 import {existsSync,lstatSync,readdirSync,readFileSync,realpathSync} from "node:fs";
 import {extname,isAbsolute,join,relative,resolve,sep} from "node:path";
 import {createHash} from "node:crypto";
-import {BrainError} from "./models.ts";
+import {BrainError} from "../core/models.ts";
 
 const ignored=new Set(["node_modules","vendor","bin","obj","dist","build","coverage","target",".git",".run",".aws",".ssh",".device-secrets"]);
 const extensions=new Set([".md",".ts",".tsx",".js",".jsx",".mjs",".cjs",".cs",".csproj",".slnx",".props",".targets",".py",".go",".rs",".java",".kt",".sql",".graphql",".proto",".yaml",".yml",".json",".toml",".xml",".tf",".sh",".css",".scss",".html"]);

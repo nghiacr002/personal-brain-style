@@ -1,30 +1,31 @@
-import {fusionHistory,fusionJob,startFusion,applyFusion,rejectFusion,cancelFusion} from './fusion.ts';
-import {installResearchStyle} from './research-style.ts';
+import {installDevelopmentStructureStyle} from '../styles/development-structure-style.ts';
+import {fusionHistory,fusionJob,startFusion,applyFusion,rejectFusion,cancelFusion} from '../instructions/fusion.ts';
+import {installResearchStyle} from '../styles/research-style.ts';
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveProjectScope, linkRepository } from "./project-scope.ts";
-import { discoverProject, installedSkills, projectFolder, matchSkill } from "./skill-discovery.ts";
-import { BrainDB } from "./database.ts";
-import { seed, seedStyles, archiveSamples } from "./seed.ts";
-import { installStyleDependencies } from "./style-dependencies.ts";
-import { upgradeWorkspaceDesign, upgradeWorkspaceNavigation, upgradeWorkspacePalette } from "./design-review-style.ts";
-import { installProjectDefaults } from "./project-defaults.ts";
-import { requireDevelopmentReview } from "./development-review-style.ts";
-import { installBaQcStyles } from "./ba-qc-styles.ts";
-import { splitDesignStyle } from "./split-design-style.ts";
-import { installWritingStyle } from "./writing-style.ts";
-import { installDrawingStyles, upgradeVisualDrawing } from "./drawing-styles.ts";
-import { installNetworkDrawingStyle } from "./network-drawing-style.ts";
-import { installReviewStandard } from "./review-standard.ts";
-import { installStyleContracts, installStyleExamples } from "./style-contracts.ts";
-import { installPersonalBrainStyles, upgradeDesignComposition } from "./personal-brain-styles.ts";
-import { installArchitectureStyles } from "./architecture-styles.ts";
-import { manageHookConfig } from "./hook-install.ts";
-import { BrainError, KINDS, type Domain, type Kind } from "./models.ts";
+import { resolveProjectScope, linkRepository } from "../projects/project-scope.ts";
+import { discoverProject, installedSkills, projectFolder, matchSkill } from "../projects/skill-discovery.ts";
+import { BrainDB } from "../core/database.ts";
+import { seed, seedStyles, archiveSamples } from "../styles/seed.ts";
+import { installStyleDependencies } from "../styles/style-dependencies.ts";
+import { upgradeWorkspaceDesign, upgradeWorkspaceNavigation, upgradeWorkspacePalette } from "../styles/design-review-style.ts";
+import { installProjectDefaults } from "../projects/project-defaults.ts";
+import { requireDevelopmentReview } from "../styles/development-review-style.ts";
+import { installBaQcStyles } from "../styles/ba-qc-styles.ts";
+import { splitDesignStyle } from "../styles/split-design-style.ts";
+import { installWritingStyle } from "../styles/writing-style.ts";
+import { installDrawingStyles, upgradeVisualDrawing } from "../styles/drawing-styles.ts";
+import { installNetworkDrawingStyle } from "../styles/network-drawing-style.ts";
+import { installReviewStandard } from "../styles/review-standard.ts";
+import { installStyleContracts, installStyleExamples } from "../styles/style-contracts.ts";
+import { installPersonalBrainStyles, upgradeDesignComposition } from "../styles/personal-brain-styles.ts";
+import { installArchitectureStyles } from "../styles/architecture-styles.ts";
+import { manageHookConfig } from "../agents/hook-install.ts";
+import { BrainError, KINDS, type Domain, type Kind } from "../core/models.ts";
 
-const publicDir=resolve(dirname(fileURLToPath(import.meta.url)),"../public");
+const publicDir=resolve(dirname(fileURLToPath(import.meta.url)),"../../public");
 function json(res:ServerResponse,status:number,payload:unknown) { const data=JSON.stringify(payload);res.writeHead(status,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(data); }
 async function body(req:IncomingMessage):Promise<any> {
   let data="";
@@ -60,6 +61,7 @@ export function createBrainHttpServer(db:BrainDB) {
   installNetworkDrawingStyle(db);
   installReviewStandard(db);
   installResearchStyle(db);
+  installDevelopmentStructureStyle(db);
   if(db.projects().some(p=>p.id==="b3937377-32ad-43a8-9adc-c21d06a9b4a4"))db.privatizeLegacyProjectStyles("b3937377-32ad-43a8-9adc-c21d06a9b4a4");
   return createServer(async (req,res)=>{
     res.setHeader("X-Frame-Options","DENY");
@@ -138,8 +140,8 @@ export function createBrainHttpServer(db:BrainDB) {
         if(path==="/api/chatgpt/setup"&&method==="GET"){
           const project=db.project(url.searchParams.get("projectId")||"");
           const quote=(value:string)=>"'"+value.replaceAll("'","'\\''")+"'";
-          const command=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"cli.ts"),"mcp","chatgpt",project.id].map(quote).join(" ");
-          const connectCommand=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"cli.ts"),"chatgpt-connect",project.id].map(quote).join(" ");
+          const command=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"../cli.ts"),"mcp","chatgpt",project.id].map(quote).join(" ");
+          const connectCommand=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"../cli.ts"),"chatgpt-connect",project.id].map(quote).join(" ");
           return json(res,200,{command,connectCommand,projectId:project.id});
         }
         if(path==="/api/activation"&&method==="GET")return json(res,200,{claude:manageHookConfig("status","claude"),codex:manageHookConfig("status","codex")});

@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {callTool} from "../src/mcp.ts";
-import {taskContext} from "../src/hooks.ts";
-import {createBrainHttpServer} from "../src/http.ts";
-import type {RecordInput} from "../src/models.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {callTool} from "../src/agents/mcp.ts";
+import {taskContext} from "../src/agents/hooks.ts";
+import {createBrainHttpServer} from "../src/server/http.ts";
+import type {RecordInput} from "../src/core/models.ts";
 const style=(title:string,domain:RecordInput["domain"]="design"):RecordInput=>({kind:"preference",domain,title,summary:title,content:title,tags:["design"],priority:70,status:"active",checks:[],backend:null});
 test("project overrides, explicit scope, isolation, persistence and conflicts",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-project-"));const file=join(dir,"brain.sqlite");let db=new BrainDB(file);

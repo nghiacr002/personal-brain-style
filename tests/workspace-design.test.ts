@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {BrainDB} from '../src/database.ts';
-import {upgradeWorkspaceDesign,upgradeWorkspacePalette} from '../src/design-review-style.ts';
-import {createBrainHttpServer} from '../src/http.ts';
+import {BrainDB} from '../src/core/database.ts';
+import {upgradeWorkspaceDesign,upgradeWorkspacePalette} from '../src/styles/design-review-style.ts';
+import {createBrainHttpServer} from '../src/server/http.ts';
 
 test('design amendment preserves private styles, selections and later edits',()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-design-audit-')),db=new BrainDB(join(dir,'brain.sqlite'));

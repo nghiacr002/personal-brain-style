@@ -1,5 +1,5 @@
-import { BrainDB } from "./database.ts";
-import type { RecordInput } from "./models.ts";
+import { BrainDB } from "../core/database.ts";
+import type { RecordInput } from "../core/models.ts";
 
 const seedRecords:RecordInput[] = [
   {kind:"preference",domain:"general",title:"Work in concise technical English",summary:"Clear terminology, short sentences, explicit assumptions.",content:"Use clear and consistent technical English. Prefer simple sentences and direct instructions. Mark assumptions, risks, and decisions. Apply ASD-STE100 principles when applicable.",tags:["writing","english","clarity"],status:"active",priority:95,checks:[],backend:null},

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installWritingStyle} from "../src/writing-style.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installWritingStyle} from "../src/styles/writing-style.ts";
 test("shared writing style applies once to both intended projects",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-writing-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{

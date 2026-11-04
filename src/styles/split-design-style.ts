@@ -1,4 +1,4 @@
-import {BrainDB} from "./database.ts";
+import {BrainDB} from "../core/database.ts";
 
 export function splitDesignStyle(db:BrainDB){
   const key="split_design_style_v1";

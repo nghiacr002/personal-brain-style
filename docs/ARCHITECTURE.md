@@ -127,10 +127,10 @@ For security, hook commands run as the local user. Review code and backups befor
 
 The trace writer is independent of the agent runtime. It records observable facts from each supported entry point:
 
-- `src/hooks.ts` records startup and prompt hook output, exactly matched records and their versions, and a keyed digest of the submitted prompt. A hook trace records context **emitted**, not confirmed model consumption.
-- `src/mcp.ts` records handshake, tool listing, and tool invocations. It records skill IDs and versions returned by `brain_discover`, `brain_get`, `brain_style` and `brain_bootstrap` and status for `brain_review`.
-- `src/database.ts` owns a shared append-only trace table and a separate demonstration flag. Real usage statistics exclude demo records.
-- `src/http.ts` exposes authenticated trace query and synthetic-example endpoints to the UI.
+- `src/agents/hooks.ts` records startup and prompt hook output, exactly matched records and their versions, and a keyed digest of the submitted prompt. A hook trace records context **emitted**, not confirmed model consumption.
+- `src/agents/mcp.ts` records handshake, tool listing, and tool invocations. It records skill IDs and versions returned by `brain_discover`, `brain_get`, `brain_style` and `brain_bootstrap` and status for `brain_review`.
+- `src/core/database.ts` owns a shared append-only trace table and a separate demonstration flag. Real usage statistics exclude demo records.
+- `src/server/http.ts` exposes authenticated trace query and synthetic-example endpoints to the UI.
 - `web/app.ts` provides a reverse-trace lookup by preference/skill record, agent and channel, including recorded versions and evidence limitations.
 
 Hooks and MCP connections are often separate processes. Their run IDs must not be treated as one shared distributed trace unless the host provides a common correlation identifier; Personal Brain does not invent one. There is no prompt/response capture, no monitoring of model reasoning, and no automatic conclusion about instruction effectiveness.

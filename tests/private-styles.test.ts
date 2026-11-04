@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {callTool} from "../src/mcp.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {callTool} from "../src/agents/mcp.ts";
 test("private styles cannot leak into global or another project's selection and dependencies",async()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-private-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{

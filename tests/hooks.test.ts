@@ -4,10 +4,10 @@ import {mkdtempSync,readFileSync,writeFileSync,mkdirSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {spawnSync} from "node:child_process";
-import {BrainDB} from "../src/database.ts";
-import {seed} from "../src/seed.ts";
-import {formatHookOutput,simulateHook,taskContext} from "../src/hooks.ts";
-import {manageHookConfig} from "../src/hook-install.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {seed} from "../src/styles/seed.ts";
+import {formatHookOutput,simulateHook,taskContext} from "../src/agents/hooks.ts";
+import {manageHookConfig} from "../src/agents/hook-install.ts";
 
 test("SessionStart automatically injects personal baseline for Claude and Codex",()=>{
   const dir=mkdtempSync(join(tmpdir(),"pb-auto-"));const db=new BrainDB(join(dir,"brain.sqlite"));
@@ -111,8 +111,8 @@ test("lazy hook indexes stay bounded and leave dependency bodies for retrieval",
 
 
 test("both agents receive compliance instructions and MCP preserves review scope",async()=>{
-  const {callTool}=await import("../src/mcp.ts");
-  const {complianceInstructions,complianceReminder}=await import("../src/compliance.ts");
+  const {callTool}=await import("../src/agents/mcp.ts");
+  const {complianceInstructions,complianceReminder}=await import("../src/instructions/compliance.ts");
   const dir=mkdtempSync(join(tmpdir(),"pb-compliance-"));const db=new BrainDB(join(dir,"brain.sqlite"));
   try{
     seed(db);

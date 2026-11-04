@@ -2,8 +2,8 @@ import {readFileSync, readdirSync, realpathSync, statSync} from "node:fs";
 import {join, dirname, basename} from "node:path";
 import {homedir} from "node:os";
 import {createHash} from "node:crypto";
-import {BrainDB} from "./database.ts";
-import {BrainError, type BrainRecord} from "./models.ts";
+import {BrainDB} from "../core/database.ts";
+import {BrainError, type BrainRecord} from "../core/models.ts";
 import {repositoryEvidence} from "./repository-evidence.ts";
 import {resolveProjectScope} from "./project-scope.ts";
 

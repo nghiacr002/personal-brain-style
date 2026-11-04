@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {BrainDB} from '../src/database.ts';
-import {callTool} from '../src/mcp.ts';
+import {BrainDB} from '../src/core/database.ts';
+import {callTool} from '../src/agents/mcp.ts';
 
 test('prepared instructions bind review to task, project, effective overrides and dependency versions',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-instructions-')),db=new BrainDB(join(dir,'db'));

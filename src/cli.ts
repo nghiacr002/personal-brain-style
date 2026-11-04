@@ -2,12 +2,12 @@ import { spawnSync } from "node:child_process";
 import { chmodSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BrainDB, defaultHome, dbPath } from "./database.ts";
-import { seed } from "./seed.ts";
-import { createBrainHttpServer } from "./http.ts";
-import { mcpMain } from "./mcp.ts";
-import { executeHook, simulateHook } from "./hooks.ts";
-import { manageHookConfig } from "./hook-install.ts";
+import { BrainDB, defaultHome, dbPath } from "./core/database.ts";
+import { seed } from "./styles/seed.ts";
+import { createBrainHttpServer } from "./server/http.ts";
+import { mcpMain } from "./agents/mcp.ts";
+import { executeHook, simulateHook } from "./agents/hooks.ts";
+import { manageHookConfig } from "./agents/hook-install.ts";
 
 const scriptPath=resolve(fileURLToPath(import.meta.url));
 const runnerPath=resolve(dirname(scriptPath),"../scripts/run.mjs");

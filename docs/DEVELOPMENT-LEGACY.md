@@ -123,7 +123,7 @@ npm run cli -- backup /absolute/path/brain-backup.sqlite
 npm test                           # Automated integration tests
 ```
 
-**Example catalog:** [`examples/style-catalog.json`](examples/style-catalog.json) contains 65 readable sample style records. The source of truth for seeding is [`src/seed.ts`](src/seed.ts). Sample data is global and contains no project knowledge.
+**Example catalog:** [`examples/style-catalog.json`](examples/style-catalog.json) contains 65 readable sample style records. The source of truth for seeding is [`src/styles/seed.ts`](src/styles/seed.ts). Sample data is global and contains no project knowledge.
 
 ## Runtime, storage and security
 

@@ -1,5 +1,5 @@
-import { BrainDB } from "./database.ts";
-import type { RecordInput } from "./models.ts";
+import { BrainDB } from "../core/database.ts";
+import type { RecordInput } from "../core/models.ts";
 
 // Apply the requested setup only to the user's existing Personal Brain project.
 export function installPersonalBrainStyles(db:BrainDB) {

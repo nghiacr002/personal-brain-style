@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {installStyleDependencies} from "../src/style-dependencies.ts";
-import {createBrainHttpServer} from "../src/http.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {installStyleDependencies} from "../src/styles/style-dependencies.ts";
+import {createBrainHttpServer} from "../src/server/http.ts";
 
 test("audited links are idempotent, preserve alternatives and resolve starter project",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-links-"));const db=new BrainDB(join(dir,"brain.sqlite"));

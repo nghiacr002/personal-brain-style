@@ -1,9 +1,9 @@
-import { complianceReminder } from "./compliance.ts";
+import { complianceReminder } from "../instructions/compliance.ts";
 import { dirname } from "node:path";
-import { resolveProjectScope } from "./project-scope.ts";
+import { resolveProjectScope } from "../projects/project-scope.ts";
 import { readFileSync } from "node:fs";
-import { BrainDB, rankRecord } from "./database.ts";
-import type { BrainRecord, Domain } from "./models.ts";
+import { BrainDB, rankRecord } from "../core/database.ts";
+import type { BrainRecord, Domain } from "../core/models.ts";
 
 /** Personal Brain supplies context; it never starts a second LLM turn. */
 export type AgentKind = "claude" | "codex";

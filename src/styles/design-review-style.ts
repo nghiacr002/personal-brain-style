@@ -1,4 +1,4 @@
-import {BrainDB} from './database.ts';
+import {BrainDB} from '../core/database.ts';
 
 export const designReviewPrompt = `RESTRAINED WORKSPACE DESIGN — v1
 Before choosing components, state the user's primary task, frequent actions and expected data volume. Sketch the complete screen hierarchy: navigation, title/action, contextual toolbar, working content and feedback. Delete a control only after checking its callers, routes and recovery workflow.

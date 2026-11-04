@@ -1,10 +1,10 @@
 import {checkInstructionSet} from "./instruction-set.ts";
 import {realpathSync,statSync} from 'node:fs';
 import {isAbsolute,relative,resolve,extname,sep} from 'node:path';
-import {BrainDB} from './database.ts';
-import {BrainError} from './models.ts';
-import {projectFolder} from './skill-discovery.ts';
-import {requirementChecklist} from './requirements.ts';
+import {BrainDB} from '../core/database.ts';
+import {BrainError} from '../core/models.ts';
+import {projectFolder} from '../projects/skill-discovery.ts';
+import {requirementChecklist} from '../core/requirements.ts';
 
 export function reviewArtifacts(db:BrainDB,projectId:string,args:Record<string,unknown>){
   db.project(projectId);

@@ -1,4 +1,4 @@
-import {BrainDB} from './database.ts';
+import {BrainDB} from '../core/database.ts';
 import {visualDrawingPrompt} from './drawing-styles.ts';
 
 // One-time user-requested selection for existing projects; later deselection is respected.

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {BrainDB} from "../src/database.ts";
-import {splitDesignStyle} from "../src/split-design-style.ts";
+import {BrainDB} from "../src/core/database.ts";
+import {splitDesignStyle} from "../src/styles/split-design-style.ts";
 test("split keeps UX identity and assigns independent visual style to the same project",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-split-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{

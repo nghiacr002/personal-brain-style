@@ -79,11 +79,35 @@ To uninstall, run `personal-brain hooks remove both`, remove the personal-brain 
 
 ## Development
 
+Source is grouped by responsibility, with one stable CLI entry point:
+
+```text
+src/
+  cli.ts          CLI entry point for local and packaged execution
+  core/           Models, validation, ranking metadata and SQLite storage
+  projects/       Project scope, repository evidence and skill discovery
+  instructions/   Task preparation, compliance, review and Fusion
+  agents/         MCP transport, agent hooks and external tool bridge
+  server/         Local HTTP API and static file serving
+  styles/         Built-in style catalog, seeds and versioned upgrades
+web/              Browser TypeScript source
+public/           HTML, CSS and generated browser JavaScript
+scripts/          Development, packaging and agent setup commands
+tests/            Behavior and regression tests
+examples/         Sample style catalog
+docs/             Architecture, workflows and operating guides
+dist/             Generated npm package contents (do not edit)
+```
+
+Keep agent and HTTP adapters thin; place shared behavior in the relevant source module. Update importing tests when moving a module. Keep the `src/cli.ts` entry point stable for existing agent registrations. The package build recursively compiles source modules and preserves their directory layout.
+
+
 ```sh
 npm install
 npm run build:package
 npm test
 npm pack
+node scripts/test-package.mjs
 ```
 
 The npm artifact includes compiled JavaScript and the prebuilt browser UI. No runtime npm dependencies are required. The CLI and UI run locally on loopback; retrieved content is shared with the agent provider when requested. Trace events show observed activity, not proof of model compliance.

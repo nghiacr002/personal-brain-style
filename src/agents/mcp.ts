@@ -9,6 +9,10 @@ import { discoverProject, getInstalledSkill, installedSkills, projectFolder, ski
 import { BrainDB } from "../core/database.ts";
 import { BrainError, KINDS, type Kind, type Domain } from "../core/models.ts";
 import { invokeBackend, inspectBackend } from "./bridge.ts";
+import { packageVersion } from "./launcher.ts";
+
+// Only advertise the lifecycle implemented by this server.
+export const MCP_PROTOCOL_VERSION = "2025-11-25";
 
 const schemaObject = (properties:Record<string,unknown>,required:string[]=[]) => ({type:"object",properties,required,additionalProperties:false});
 const text = (value:unknown) => ({content:[{type:"text",text:typeof value==="string"?value:JSON.stringify(value,null,2)}]});
@@ -147,15 +151,19 @@ export async function mcpMain(db:BrainDB, chatProjectId?:string) {
     if(!line.trim())continue;
     let request:Record<string,any>;
     try { request=JSON.parse(line); } catch {process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}})+"\n");continue;}
+    if(!request||typeof request!=="object"||Array.isArray(request)||request.jsonrpc!=="2.0"||typeof request.method!=="string"){
+      process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:null,error:{code:-32600,message:"Invalid Request"}})+"\n");continue;
+    }
     if(request.id===undefined||request.id===null) continue; // notifications
     let response:Record<string,unknown>;
     try {
       let result:unknown;
       switch(request.method) {
         case "initialize": {
+          if(typeof request.params?.protocolVersion!=="string"||!request.params.protocolVersion.trim())throw new BrainError("initialize requires a protocolVersion string");
           clientName=String(request.params?.clientInfo?.name||"unknown").slice(0,80);
           if(agent==="unknown") {const n=clientName.toLowerCase();agent=n.includes("claude")?"claude":n.includes("codex")?"codex":n.includes("opencode")?"opencode":"unknown";}
-          result={protocolVersion:request.params?.protocolVersion || "2025-11-25",capabilities:{tools:{listChanged:false},resources:{listChanged:false},prompts:{listChanged:false}},serverInfo:{name:"personal-brain-style",version:"1.2.0"},instructions:(chatProjectId?`Read-only ChatGPT connection pinned to project ${chatProjectId}. Call brain_bootstrap, then brain_discover and brain_get for relevant styles. Local CLI skills cannot execute in ChatGPT; report unavailable skills honestly. `:"")+"This server stores personal working style, not project data.\n\n"+complianceInstructions};
+          result={protocolVersion:MCP_PROTOCOL_VERSION,capabilities:{tools:{listChanged:false},resources:{listChanged:false},prompts:{listChanged:false}},serverInfo:{name:"personal-brain-style",version:packageVersion()||"unknown"},instructions:(chatProjectId?`Read-only ChatGPT connection pinned to project ${chatProjectId}. Call brain_bootstrap, then brain_discover and brain_get for relevant styles. Local CLI skills cannot execute in ChatGPT; report unavailable skills honestly. `:"")+"This server stores personal working style, not project data.\n\n"+complianceInstructions};
           db.trace({agent,channel:"mcp",runId:mcpRunId(),eventType:"mcp.initialize",outcome:"success",metadata:{client:clientName,projectId:chatProjectId||null}});
           break;
         }

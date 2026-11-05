@@ -11,6 +11,20 @@ import {createBrainHttpServer} from "../src/server/http.ts";
 
 function fixture() { const dir=mkdtempSync(join(tmpdir(),"pb-trace-"));const db=new BrainDB(join(dir,"brain.sqlite"));return {dir,db,close(){db.close();rmSync(dir,{recursive:true,force:true});}}; }
 
+test("TC-REL-003 doctor delivery observations exclude errors and demo activity",()=>{
+ const f=fixture();try{
+  const stages=()=>f.db.deliveryHealth().agents.find(a=>a.agent==='codex')!.stages;
+  assert.equal(stages().handshake.status,'unknown');
+  f.db.trace({agent:'codex',channel:'mcp',eventType:'mcp.initialize',outcome:'success',demo:true});
+  f.db.trace({agent:'codex',channel:'mcp',eventType:'mcp.brain_get',outcome:'error'});
+  assert.equal(stages().handshake.status,'unknown');assert.equal(stages().retrieval.count,0);
+  f.db.trace({agent:'codex',channel:'mcp',eventType:'mcp.initialize',outcome:'success'});
+  f.db.trace({agent:'codex',channel:'mcp',eventType:'mcp.brain_get',outcome:'success'});
+  assert.equal(stages().handshake.status,'observed');assert.equal(stages().retrieval.count,1);
+  assert.ok(stages().retrieval.lastSeen);assert.equal(stages().sessionHook.status,'unknown');
+ }finally{f.close();}
+});
+
 test("complete sample library has 50+ global records and remains idempotent",()=>{
   const f=fixture();try{assert.ok(seed(f.db)>=50);const all=f.db.list({limit:300});assert.ok(all.length>=50);assert.ok(["preference","skill","example","review","tool"].every(k=>all.some(r=>r.kind===k)));
     assert.equal(seed(f.db),0);assert.equal(Object.keys(f.db.summary()).includes("projects"),false);

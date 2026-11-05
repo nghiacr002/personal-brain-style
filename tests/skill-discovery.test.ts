@@ -11,6 +11,27 @@ import {callTool} from "../src/agents/mcp.ts";
 const put=(file:string,text:string)=>{mkdirSync(resolve(file,".."),{recursive:true});writeFileSync(file,text);};
 const skill=(name:string,body="Skill instructions")=>`---\nname: ${name}\ndescription: Test skill\n---\n${body}`;
 
+test("TC-REL-002 skill YAML preserves multiline descriptions and rejects malformed metadata",()=>{
+ const dir=mkdtempSync(join(tmpdir(),"pb-yaml-"));
+ try{
+  const putSkill=(name:string,header:string)=>put(join(dir,".agents/skills",name,"SKILL.md"),`---\n${header}\n---\nBody`);
+  putSkill("literal","name: 'literal' # comment\ndescription: |-\n  First line\n  Second line");
+  putSkill("folded","name: folded\ndescription: >-\n  First line\n  second line");
+  putSkill("long",`name: long\ndescription: "${"x".repeat(1024)}"`);
+  putSkill("invalid","name: [broken");
+  putSkill("wrong-type","name: 42\ndescription: text");
+  putSkill("duplicate","name: duplicate\nname: other");
+  putSkill("alias","name: alias\ndescription: &a text\nmetadata: *a");
+  put(join(dir,".agents/skills/crlf/SKILL.md"),"---\r\nname: crlf\r\ndescription: \"Hash # and colon: kept\"\r\n---\r\nBody");
+  const result=installedSkills(undefined,dir);
+  assert.equal(result.skills.find(s=>s.name==="literal")?.description,"First line\nSecond line");
+  assert.equal(result.skills.find(s=>s.name==="folded")?.description,"First line second line");
+  assert.equal(result.skills.find(s=>s.name==="long")?.description.length,1024);
+  assert.equal(result.skills.find(s=>s.name==="crlf")?.description,"Hash # and colon: kept");
+  assert.equal(result.skills.length,4);assert.equal(result.issues.length,4);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
 test("inventory covers global, agent, plugin and project skills; reports missing/ambiguous refs and bounds reads",()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-skills-")),home=join(dir,"home"),repo=join(dir,"repo");
  try{

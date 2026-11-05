@@ -18,7 +18,8 @@
     "check:node": "node scripts/run.mjs --check",
     "start:stable": "node scripts/run.mjs src/cli.ts serve",
     "build:package": "npm run build:ui && node scripts/build-package.mjs",
-    "prepack": "npm run build:package"
+    "prepack": "npm run build:package",
+    "test:quality": "node scripts/run.mjs --test tests/instruction-quality.test.ts"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
@@ -58,5 +59,11 @@
   "homepage": "https://github.com/nghiacr002/personal-brain-style#readme",
   "bugs": {
     "url": "https://github.com/nghiacr002/personal-brain-style/issues"
-  }
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "bundledDependencies": [
+    "yaml"
+  ]
 }

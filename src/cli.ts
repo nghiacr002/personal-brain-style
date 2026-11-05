@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { BrainDB, defaultHome, dbPath } from "./core/database.ts";
 import {seedGlobalStyles} from "./styles/global-style-seed.ts";
 import { createBrainHttpServer } from "./server/http.ts";
-import { mcpMain } from "./agents/mcp.ts";
+import { mcpMain, MCP_PROTOCOL_VERSION } from "./agents/mcp.ts";
 import { executeHook, simulateHook } from "./agents/hooks.ts";
 import { manageHookConfig } from "./agents/hook-install.ts";
 import { connectAgent, mcpAddArgs, shellJoin } from "./agents/launcher.ts";
@@ -78,7 +78,7 @@ if(arg==="desktop") {
   else {console.error("Usage: trace stats|demo|clear-demo|export [--demo]");process.exitCode=2;}
   db.close();
 }else if(arg==="doctor"){
-  console.log(JSON.stringify({node:process.version,nodeSupported:Number(process.versions.node.split(".")[0])>=22,db:dbPath(),dataDir:defaultHome(),summary:db.summary(),toolProxyEnabled:process.env.PB_ENABLE_TOOL_PROXY==="1",mcpRegistration:{claude:shellJoin(["claude",...mcpAddArgs("claude")]),codex:shellJoin(["codex",...mcpAddArgs("codex")]),opencode:"personal-brain connect opencode (the plugin registers the MCP server)"},connect:"personal-brain connect claude|codex|opencode|all"},null,2));db.close();
+  console.log(JSON.stringify({node:process.version,nodeSupported:Number(process.versions.node.split(".")[0])>=22,db:dbPath(),dataDir:defaultHome(),summary:db.summary(),supportedMcpVersions:[MCP_PROTOCOL_VERSION],delivery:db.deliveryHealth(),toolProxyEnabled:process.env.PB_ENABLE_TOOL_PROXY==="1",mcpRegistration:{claude:shellJoin(["claude",...mcpAddArgs("claude")]),codex:shellJoin(["codex",...mcpAddArgs("codex")]),opencode:"personal-brain connect opencode (the plugin registers the MCP server)"},connect:"personal-brain connect claude|codex|opencode|all"},null,2));db.close();
 }else if(arg==="bootstrap"){
   console.log(db.bootstrap());db.close();
 }else if(arg==="export"){

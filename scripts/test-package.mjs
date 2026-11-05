@@ -28,9 +28,11 @@ try{
   const doctor=JSON.parse(run(process.execPath,[bin,'doctor']));
   assert.equal(doctor.dataDir,env.PB_HOME);
   assert.match(doctor.mcpRegistration.codex,/cli\.js/);
-  const mcp=spawnSync(process.execPath,[bin,'mcp'],{cwd:dir,env,encoding:'utf8',timeout:10000,input:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{}})+'\n'});
+  const mcp=spawnSync(process.execPath,[bin,'mcp'],{cwd:dir,env,encoding:'utf8',timeout:10000,input:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25'}})+'\n'});
   assert.equal(mcp.status,0,mcp.stderr);
   assert.equal(JSON.parse(mcp.stdout).result.serverInfo.name,'personal-brain-style');
+  assert.equal(JSON.parse(mcp.stdout).result.serverInfo.version,pkg.version);
+  assert.equal(doctor.delivery.agents[0].stages.retrieval.status,'unknown');
   run(process.execPath,['--input-type=module','-e',`import {BrainDB} from ${JSON.stringify(join(installed,'dist/src/core/database.js'))};import {createBrainHttpServer} from ${JSON.stringify(join(installed,'dist/src/server/http.js'))};const db=new BrainDB();const server=createBrainHttpServer(db);if(db.projects().length)throw Error('Unexpected bundled projects');
 const response=await new Promise(resolve=>server.emit('request',{url:'/',method:'GET',headers:{}},{setHeader(){},writeHead(status){if(status!==200)throw Error('Static asset response '+status);},end(body){resolve(String(body));}}));
 if(!response.includes('app.js'))throw Error('Missing packaged browser UI');

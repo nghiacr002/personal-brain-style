@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BrainDB } from "../src/core/database.ts";
 import { seed } from "../src/styles/seed.ts";
 
 const app=resolve("src/cli.ts");const runner=resolve("scripts/run.mjs");
-test("MCP stdio initialization, discovery, resources and prompts",{timeout:12000},async()=>{
+test("TC-REL-001 MCP stdio initialization, discovery, resources and prompts",{timeout:12000},async()=>{
   const dir=mkdtempSync(join(tmpdir(),"pb-mcp-"));const db=new BrainDB(join(dir,"brain.sqlite"));seed(db);db.close();
   const child=spawn(process.execPath,[runner,app,"mcp"],{cwd:dir,env:{...process.env,PB_HOME:dir},stdio:["pipe","pipe","pipe"]});
   let buffer="";let waiter=new Map<number,(x:any)=>void>();let stderr="";
@@ -21,8 +21,11 @@ test("MCP stdio initialization, discovery, resources and prompts",{timeout:12000
     child.stdin.write(JSON.stringify({jsonrpc:"2.0",id:reqId,method,params})+"\n");
   });}
   try{
-    const init=await call("initialize",{protocolVersion:"2025-11-25",capabilities:{},clientInfo:{name:"test",version:"0"}});
+    const init=await call("initialize",{protocolVersion:"2099-01-01",capabilities:{},clientInfo:{name:"test",version:"0"}});
     assert.equal(init.result.serverInfo.name,"personal-brain-style");
+    assert.equal(init.result.serverInfo.version,JSON.parse(readFileSync(resolve("package.json"),"utf8")).version);
+    assert.equal(init.result.protocolVersion,"2025-11-25");
+    assert.equal((await call("initialize",{protocolVersion:42})).error.code,-32602);
     child.stdin.write(JSON.stringify({jsonrpc:"2.0",method:"notifications/initialized"})+"\n");
     const list=await call("tools/list");
     assert.ok(list.result.tools.some((t:any)=>t.name==="brain_discover"));
@@ -35,6 +38,18 @@ test("MCP stdio initialization, discovery, resources and prompts",{timeout:12000
     const missing=await call("tools/call",{name:"brain_get",arguments:{id:"missing"}});
     assert.equal(missing.result.isError,true);
   }finally{child.stdin.end();child.kill();rmSync(dir,{recursive:true,force:true});}
+});
+
+test("TC-REL-005 malformed JSON-RPC envelopes do not terminate the server",()=>{
+ const dir=mkdtempSync(join(tmpdir(),"pb-mcp-invalid-"));
+ try{
+  const input=['{','null','[]','42',JSON.stringify({jsonrpc:'2.0',id:1,method:'ping'})].join('\n')+'\n';
+  const result=spawnSync(process.execPath,[runner,app,'mcp'],{cwd:dir,env:{...process.env,PB_HOME:dir,PB_PROJECT_ID:''},input,encoding:'utf8',timeout:10000});
+  assert.equal(result.status,0,result.stderr);
+  const responses=result.stdout.trim().split('\n').map(line=>JSON.parse(line));
+  assert.deepEqual(responses.slice(0,4).map(r=>r.error.code),[-32700,-32600,-32600,-32600]);
+  assert.deepEqual(responses[4],{jsonrpc:'2.0',id:1,result:{}});
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });
 
 test("ChatGPT MCP is read-only and pinned to its selected project",{timeout:12000},async()=>{

@@ -37,7 +37,7 @@ Stakeholders are the local user (style decisions), repository maintainers (imple
 
 ## 2. Constraints
 
-- The shipped application uses Node built-ins, including `node:sqlite`; TypeScript is a development dependency. The [runtime gate](../../scripts/runtime-compat.mjs) permits Node 22.13+, Node 23.6+, and Node 24 or newer; Node 18 is rejected.
+- The shipped application uses Node built-ins, including `node:sqlite`; YAML frontmatter uses the bundled `yaml` runtime dependency. TypeScript is a development dependency. The [runtime gate](../../scripts/runtime-compat.mjs) permits Node 22.13+, Node 23.6+, and Node 24 or newer; Node 18 is rejected.
 - The supported browser-server binding is `127.0.0.1`, port 4177 by default. It is a single-user local tool, not a hosted multi-tenant service.
 - Agent integrations rely on installed host CLIs/configuration and their permissions. An installed hook is not proof that a host trusted or executed it.
 - SQLite calls and much filesystem work are synchronous. Separate HTTP, MCP and hook processes may open the same database; WAL and a 5-second busy timeout coordinate access.
@@ -223,7 +223,7 @@ Current execution results and exact commands are in the verification report. A t
 | Trace read as proof of compliance | False acceptance | Preserve emitted/retrieved/manual distinctions | Reviewer |
 | Broad JSON-snapshot DB and synchronous work | Contention/maintenance cost | Preserve tests; measure before scaling | Maintainer role |
 | No tested recovery/retention policy | Data loss or accumulated sensitive content | Consistent backup and operator policy needed | Operator role |
-| MCP reports hard-coded `1.2.0` while package is beta.3 | Diagnostic version ambiguity | Track separately; do not infer deployed package from handshake alone | Maintainer role |
+| MCP lifecycle compatibility | Only legacy 2025-11-25 is implemented | Initialization now reports package version and supported protocol; newer lifecycle remains unverified | Maintainer role |
 
 ## 12. Glossary
 

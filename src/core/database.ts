@@ -416,6 +416,18 @@ export class BrainDB {
     const reviews=this.db.prepare("SELECT occurred_at AS at, metadata FROM trace_events WHERE demo=0 AND event_type='compliance.review' AND json_extract(metadata,'$.projectId')=? ORDER BY occurred_at DESC,rowid DESC LIMIT 20").all(projectId) as Array<{at:string;metadata:string}>;
     return {complianceReviews:reviews.map(r=>({at:r.at,...JSON.parse(JSON.parse(r.metadata).complianceReport)})),linked:sessions.length,active:sessions.filter(r=>r.active).length,unlinkedCalls:unlinked,sessions:sessions.slice(0,100),activityWindowMinutes:15};
   }
+  deliveryHealth() {
+    const rows=this.db.prepare(`SELECT agent,event_type AS eventType,MAX(occurred_at) AS lastSeen,COUNT(*) AS count
+      FROM trace_events WHERE demo=0 AND outcome IN ('success','emitted')
+      AND event_type IN ('mcp.initialize','mcp.brain_get','hook.session.context','hook.prompt.context')
+      GROUP BY agent,event_type`).all() as Array<{agent:string;eventType:string;lastSeen:string;count:number}>;
+    const stages={handshake:'mcp.initialize',retrieval:'mcp.brain_get',sessionHook:'hook.session.context',promptHook:'hook.prompt.context'};
+    return {note:'Historical observations, not a live connection check or proof of instruction compliance. Unknown means no successful event was recorded.',
+      agents:['claude','codex','opencode','chatgpt','unknown'].map(agent=>({agent,stages:Object.fromEntries(Object.entries(stages).map(([name,event])=>{
+        const row=rows.find(r=>r.agent===agent&&r.eventType===event);
+        return [name,{status:row?'observed':'unknown',count:row?.count||0,lastSeen:row?.lastSeen||null}];
+      }))}))};
+  }
   traceStats(projectId?:string) {
     let scope=""; const args:string[]=[];
     if(projectId&&projectId!=="all"){

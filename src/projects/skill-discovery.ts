@@ -6,6 +6,7 @@ import {BrainDB} from "../core/database.ts";
 import {BrainError, type BrainRecord} from "../core/models.ts";
 import {repositoryEvidence} from "./repository-evidence.ts";
 import {resolveProjectScope} from "./project-scope.ts";
+import {parseDocument} from "yaml";
 
 export type InstalledSkill={id:string;name:string;description:string;scope:"global"|"agent"|"project";agent:string;file:string;digest:string};
 type Issue={type:string;message:string;recordId?:string};
@@ -33,10 +34,15 @@ export function installedSkills(folder?:string,home=homedir()){
     if(entries.includes("SKILL.md")){
       try{
         const file=join(real,"SKILL.md"),content=readBounded(file);
-        const front=content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-        const field=(key:string)=>front?.[1].match(new RegExp("^"+key+":\\s*(.+)$","m"))?.[1].trim().replace(/^['"]|['"]$/g,"")||"";
-        const name=field("name")||basename(real),description=field("description");
-        skills.push({id:hash(scope+":"+file).slice(0,24),name,description:description==="|"||description===">"?"":description.slice(0,400),scope,agent,file,digest:hash(content)});
+        const front=content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+        if(content.startsWith("---")&&!front)throw new BrainError("Unclosed skill frontmatter: "+file);
+        const document=parseDocument(front?.[1]||"{}",{prettyErrors:false,strict:true});
+        if(document.errors.length||document.warnings.length)throw new BrainError("Invalid YAML skill frontmatter: "+file);
+        const metadata=document.toJS({maxAliasCount:0});
+        if(!metadata||typeof metadata!=="object"||Array.isArray(metadata))throw new BrainError("Skill frontmatter must be a mapping: "+file);
+        for(const key of ["name","description"])if(metadata[key]!==undefined&&typeof metadata[key]!=="string")throw new BrainError("Skill "+key+" must be text: "+file);
+        const name=metadata.name?.trim()||basename(real),description=metadata.description?.trim()||"";
+        skills.push({id:hash(scope+":"+file).slice(0,24),name,description,scope,agent,file,digest:hash(content)});
       }catch(e){issues.push({type:"unreadable",message:e instanceof Error?e.message:String(e)});}
       return;
     }

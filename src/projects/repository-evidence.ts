@@ -14,7 +14,8 @@ function allowed(file:string){
 export function readRepositoryEvidence(folder:string,file:string){
  if(!file||isAbsolute(file)||file.split(/[\\/]/).includes("..")||!allowed(file))throw new BrainError("Unsupported repository evidence path: "+file);
  const root=realpathSync(folder),path=resolve(root,file),real=realpathSync(path);
- if(!real.startsWith(root+sep)||real!==path)throw new BrainError("Evidence must be a regular file inside the linked repository");
+ const rel=relative(root,real);
+ if(!rel||rel==='..'||rel.startsWith('..'+sep)||isAbsolute(rel)||relative(path,real)!=='')throw new BrainError("Evidence must be a regular file inside the linked repository");
  const stat=lstatSync(real);if(!stat.isFile()||stat.size>65536)throw new BrainError("Evidence file must be regular text of at most 64 KiB: "+file);
  const content=readFileSync(real,"utf8");if(content.includes("\0"))throw new BrainError("Binary evidence is not supported");
  return {file:relative(root,real).split(sep).join("/"),digest:createHash("sha256").update(content).digest("hex"),content};

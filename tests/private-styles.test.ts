@@ -61,9 +61,9 @@ test("MCP edits require explicit project scope and publishing copies private dep
   assert.ok((await callTool(db,"brain_update_project_style",args)).isError);
   const parent=db.create({...input,projectId:project.id,domain:"coding",title:"Private parent",requiredIds:[local.id]});
   const published=db.publishProjectRecord(project.id,parent.id,parent.version);
-  assert.equal(published.published.length,2);assert.ok(published.published.every(r=>!r.projectId));
-  const child=published.published.find(r=>r.id!==published.record.id)!;
-  assert.deepEqual(published.record.requiredIds,[child.id]);assert.deepEqual(child.externalSkills,["writer"]);assert.deepEqual(child.examples,["Example"]);
+  assert.equal(published.published.length,1);assert.ok(published.published.every(r=>!r.projectId));
+  const child=db.get(original.id)!;
+  assert.deepEqual(published.record.requiredIds,[child.id]);assert.equal(child.content,"Global");
   assert.equal(db.project(project.id).version,2);assert.equal(db.project(project.id).assignments[0].recordId,local.id);assert.equal(db.get(parent.id)?.projectId,project.id);
   const other=db.saveProject({name:"Other",description:"",assignments:[]});
   assert.throws(()=>db.publishProjectRecord(other.id,parent.id,parent.version),/not found/);

@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 
-test('ChatGPT helper validates credentials and stops on failed checks',()=>{
+test('ChatGPT helper validates credentials and stops on failed checks',{skip:process.platform==='win32'?'POSIX shell fixture; run on macOS CI':false},()=>{
   const dir=mkdtempSync(join(tmpdir(),'pb-tunnel-'));
   const log=join(dir,'calls');
   writeFileSync(join(dir,'tunnel-client'), '#!/bin/bash\nprintf "%s\\n" "$@" >> "$TEST_LOG"\nif [[ "$1" == doctor && "${FAIL_DOCTOR:-}" == 1 ]]; then exit 3; fi\n', {mode:0o700});

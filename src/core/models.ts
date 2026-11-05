@@ -14,6 +14,8 @@ export type ToolBackend = {
 };
 export type BrainRecord = {
   id: string;
+  keyId?: string;
+  sourceStyleId?: string;
   kind: Kind;
   domain: Domain;
   projectId?: string;

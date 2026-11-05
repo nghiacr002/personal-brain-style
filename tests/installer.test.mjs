@@ -5,7 +5,7 @@ import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {spawnSync} from "node:child_process";
 
-test("installer rejects unsupported override before registration and repairs only its own MCP entries",()=>{
+test("installer rejects unsupported override before registration and repairs only its own MCP entries",{skip:process.platform==='win32'?'POSIX shell fixture; run on macOS CI':false},()=>{
  const dir=mkdtempSync(join(tmpdir(),"pb-installer-"));
  try{
   const mock=`#!/bin/bash

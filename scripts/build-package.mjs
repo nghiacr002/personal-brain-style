@@ -22,7 +22,7 @@ writeFileSync(bin,`#!/usr/bin/env node
 import {supported} from "./runtime-compat.mjs";
 if(!supported(process.versions.node)){console.error("Personal Brain requires Node 22.13+ (Node 24 LTS recommended).");process.exit(1);}
 if(process.argv.includes("--version")){console.log(${JSON.stringify(version)});process.exit(0);}
-if(process.argv.includes("--help")){console.log("personal-brain setup|serve|doctor|mcp [claude|codex]|hooks install|remove|status [claude|codex|both]|backup <file>|chatgpt-connect <projectId>");process.exit(0);}
+if(process.argv.includes("--help")){console.log("personal-brain setup|serve|doctor|desktop preview|install|repair|remove|status|mcp [claude|codex]|hooks install|remove|status [claude|codex|both]|backup <file>|chatgpt-connect <projectId>");process.exit(0);}
 await import("../src/cli.js");
 `);
 chmodSync(bin,0o755);

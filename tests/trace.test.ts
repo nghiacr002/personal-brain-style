@@ -24,6 +24,9 @@ test("trace persistence, version evidence, reverse lookup and separate demos",()
     const event=f.db.trace({agent:"claude",channel:"hook",eventType:"hook.prompt.context",outcome:"emitted",runId:"claude:session-a",
       recordIds:[rule.id],recordVersions:{[rule.id]:rule.version},metadata:{contextChars:123,promptHash:"hashonly",secret:"NEVER_KEEP"}});
     assert.equal(event.recordVersions[rule.id],1);
+    assert.equal(f.db.listTrace({runId:"claude:session-a"}).length,1);
+    assert.equal(f.db.listTrace({runId:"claude:other"}).length,0);
+    assert.equal(f.db.listTrace({runId:"\' OR 1=1 --"}).length,0);
     const newer=f.db.update(rule.id,{kind:rule.kind,domain:rule.domain,title:rule.title,summary:rule.summary,content:rule.content+" Updated.",tags:rule.tags,priority:rule.priority,status:rule.status,checks:rule.checks,backend:rule.backend},1);
     assert.equal(newer.version,2);
     const matches=f.db.listTrace({recordId:rule.id});assert.equal(matches.length,1);assert.equal(matches[0].recordVersions[rule.id],1);

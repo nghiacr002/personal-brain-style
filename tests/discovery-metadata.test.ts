@@ -44,7 +44,7 @@ test("metadata backfill covers every kind and private record once while preservi
  const dir=mkdtempSync(join(tmpdir(),"pb-metadata-migration-")),file=join(dir,"brain.sqlite");let db=new BrainDB(file);
  try{
   const project=db.saveProject({name:"Project",description:"",assignments:[]});
-  const records=["preference","skill","example","review","tool"].map(kind=>db.create({...input,kind,domain:"coding",tags:["keep-my-tag"],projectId:kind==="example"?project.id:undefined,status:kind==="review"?"archived":"active"}));
+  const records=["preference","skill","example","review","tool"].map(kind=>db.create({...input,keyId:"conventions-"+kind,kind,domain:"coding",tags:["keep-my-tag"],projectId:kind==="example"?project.id:undefined,status:kind==="review"?"archived":"active"}));
   // Simulate snapshots written before discovery metadata existed.
   for(const record of records){const {useWhen,...old}=record;db.db.prepare("UPDATE records SET snapshot=? WHERE id=?").run(JSON.stringify(old),record.id);}
   db.db.prepare("DELETE FROM meta WHERE key='discovery_metadata_v1'").run();db.close();db=new BrainDB(file);

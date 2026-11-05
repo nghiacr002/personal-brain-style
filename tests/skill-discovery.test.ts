@@ -20,7 +20,7 @@ test("inventory covers global, agent, plugin and project skills; reports missing
   put(join(home,".codex/plugins/cache/docs/v1/skills/docs/SKILL.md"),skill("docs"));
   put(join(repo,".agents/skills/local/SKILL.md"),skill("local"));
   put(join(repo,".codex/skills/large/SKILL.md"),"x".repeat(70000));
-  symlinkSync(join(home,".agents/skills"),join(home,".agents/skills/loop"));
+  symlinkSync(join(home,".agents/skills"),join(home,".agents/skills/loop"),process.platform==='win32'?'junction':'dir');
   const inventory=installedSkills(repo,home);
   assert.equal(inventory.skills.length,5);assert.ok(inventory.issues.some(i=>i.type==="unreadable"));
   assert.equal(matchSkill("writer (when writing)",inventory.skills).status,"available");
@@ -90,4 +90,20 @@ test("HTTP discovery remains read-only; item lists surface missing skills",async
   const items=(await request("/api/items?projectId="+p.id)).data;assert.deepEqual(items.find((r:any)=>r.id===record.id).skillWarnings,["not-installed-unique-test-skill: missing"]);
   const denied=await request("/api/projects/"+p.id+"/discovery","POST","https://example.org");assert.equal(denied.status,403);
  }finally{server.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('rescanning rereads changed skill files and explicit IDs remain loadable during conflicts',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'pb-rescan-')),home=join(dir,'home'),db=new BrainDB(join(dir,'brain.sqlite'));
+ try{
+  const project=db.saveProject({name:'Scan',description:'',assignments:[]});
+  const first=join(home,'.agents/skills/review/SKILL.md'),second=join(home,'.codex/skills/review/SKILL.md');
+  put(first,skill('review','First version'));put(second,skill('review','Other version'));
+  const result=matchSkill('review',installedSkills(undefined,home).skills);
+  assert.equal(result.status,'ambiguous');
+  assert.match(getInstalledSkill(db,project.id,result.skills[0].id,home).content,/version/);
+  put(second,skill('review','First version'));
+  assert.equal(matchSkill('review',installedSkills(undefined,home).skills).status,'available');
+  rmSync(first);rmSync(second);
+  assert.equal(matchSkill('review',installedSkills(undefined,home).skills).status,'missing');
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });

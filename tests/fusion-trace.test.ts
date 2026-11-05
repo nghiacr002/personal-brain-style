@@ -102,17 +102,24 @@ test('Fusion retains different overrides, excludes unselected styles, rejects dr
 
 test('Fusion CLI completes, cancels and does not recreate deleted project history',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-fusion-lifecycle-')),db=new BrainDB(join(dir,'db')),path=process.env.PATH;
- const wait=async(id:string)=>{for(let i=0;i<100;i++){await new Promise(resolve=>setTimeout(resolve,10));const row=db.db.prepare('SELECT value FROM meta WHERE key=?').get('fusion:'+id) as any;if(!row||JSON.parse(row.value).status!=='running')return;}};
+ const windowsAgent=(delay:number)=>{
+  writeFileSync(join(dir,'claude.cmd'),'@ECHO off\r\n"%dp0%/agent.cjs" %*');
+  writeFileSync(join(dir,'agent.cjs'),`process.stdin.resume();process.stdin.on('end',()=>setTimeout(()=>console.log('{"proposals":[]}'),${delay}));`);
+ };
+ const wait=async(id:string)=>{for(let i=0;i<500;i++){await new Promise(resolve=>setTimeout(resolve,10));const row=db.db.prepare('SELECT value FROM meta WHERE key=?').get('fusion:'+id) as any;if(!row||JSON.parse(row.value).status!=='running')return;}};
  try{
   const project=db.saveProject({name:'A',description:'',assignments:[]});
   writeFileSync(join(dir,'claude'),`#!/bin/sh\n/bin/cat >/dev/null\nprintf '{"proposals":[]}\\n'\n`,{mode:0o755});
+  if(process.platform==='win32')windowsAgent(0);
   process.env.PATH=dir;
   const ready=startFusion(db,{agent:'claude',projectIds:[project.id]});await wait(ready.id);
   assert.equal(fusionJob(db,ready.id).status,'ready');
   writeFileSync(join(dir,'claude'),'#!/bin/sh\n/bin/cat >/dev/null\nexec /bin/sleep 30\n',{mode:0o755});
+  if(process.platform==='win32')windowsAgent(30000);
   const cancelled=startFusion(db,{agent:'claude',projectIds:[project.id]});
   assert.equal(cancelFusion(db,cancelled.id).status,'cancelled');
   writeFileSync(join(dir,'claude'),`#!/bin/sh\n/bin/cat >/dev/null\n/bin/sleep 0.05\nprintf '{"proposals":[]}\\n'\n`,{mode:0o755});
+  if(process.platform==='win32')windowsAgent(50);
   const deleted=startFusion(db,{agent:'claude',projectIds:[project.id]});
   const preview=db.deletionPreview('project',project.id);db.deleteWithPreview('project',project.id,preview.fingerprint);
   assert.equal(db.db.prepare("SELECT count(*) n FROM meta WHERE key LIKE 'fusion:%'").get()!.n,0);

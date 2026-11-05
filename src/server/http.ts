@@ -1,3 +1,4 @@
+import {seedGlobalStyles,globalCatalogMarker} from "../styles/global-style-seed.ts";
 import {installDevelopmentStructureStyle} from '../styles/development-structure-style.ts';
 import {fusionHistory,fusionJob,startFusion,applyFusion,rejectFusion,cancelFusion} from '../instructions/fusion.ts';
 import {installResearchStyle} from '../styles/research-style.ts';
@@ -6,7 +7,9 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProjectScope, linkRepository } from "../projects/project-scope.ts";
-import { discoverProject, installedSkills, projectFolder, matchSkill } from "../projects/skill-discovery.ts";
+import {onboardingFolder,createLinkedProject,recommendProjectStyles} from '../projects/onboarding.ts';
+import {selectFolder} from '../projects/folder-browser.ts';
+import { discoverProject, installedSkills, projectFolder, matchSkill, skillReferences } from "../projects/skill-discovery.ts";
 import { BrainDB } from "../core/database.ts";
 import { seed, seedStyles, archiveSamples } from "../styles/seed.ts";
 import { installStyleDependencies } from "../styles/style-dependencies.ts";
@@ -41,6 +44,8 @@ function allowOrigin(req:IncomingMessage) {
 export function createBrainHttpServer(db:BrainDB) {
   const development=process.env.PB_DEV_RELOAD==="1";
   const started=Date.now();
+  seedGlobalStyles(db);
+  if(!db.db.prepare("SELECT 1 FROM meta WHERE key=?").get(globalCatalogMarker)){
   archiveSamples(db);
   installArchitectureStyles(db);
   installPersonalBrainStyles(db);
@@ -63,6 +68,7 @@ export function createBrainHttpServer(db:BrainDB) {
   installResearchStyle(db);
   installDevelopmentStructureStyle(db);
   if(db.projects().some(p=>p.id==="b3937377-32ad-43a8-9adc-c21d06a9b4a4"))db.privatizeLegacyProjectStyles("b3937377-32ad-43a8-9adc-c21d06a9b4a4");
+  }
   return createServer(async (req,res)=>{
     res.setHeader("X-Frame-Options","DENY");
     res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
@@ -78,6 +84,15 @@ export function createBrainHttpServer(db:BrainDB) {
         if(removal&&method==="POST"){const x=await body(req);return json(res,200,db.deleteWithPreview(removal[1],removal[2],x.fingerprint));}
         if(path==="/api/projects"&&method==="GET")return json(res,200,db.projects().map(p=>({...p,activity:db.projectActivity(p.id)})));
         if(path==="/api/projects"&&method==="POST")return json(res,201,db.saveProject(await body(req)));
+        if(path==="/api/onboarding/folder"&&method==="POST")return json(res,200,{folder:onboardingFolder((await body(req)).folder)});
+        if(path==="/api/folders/select"&&method==="POST")return json(res,200,await selectFolder());
+        if(path==="/api/onboarding/create"&&method==="POST"){const x=await body(req);return json(res,201,createLinkedProject(db,x.project,x.folder));}
+        if(path==="/api/onboarding/analyze"&&method==="POST"){
+          const x=await body(req),controller=new AbortController();
+          const cancel=()=>controller.abort();res.on('close',cancel);
+          try{return json(res,200,await recommendProjectStyles(db,x.folder,x.agent,controller.signal,x.projectId));}
+          finally{res.off('close',cancel);}
+        }
         const publishMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})\/items\/([a-f0-9-]{36})\/publish$/);
         if(publishMatch&&method==="POST"){
           const x=await body(req);
@@ -87,6 +102,14 @@ export function createBrainHttpServer(db:BrainDB) {
         if(personalizeMatch&&method==="PUT"){
           const x=await body(req);
           return json(res,200,db.personalizeRecord(personalizeMatch[1],personalizeMatch[2],x.record,x.expectedVersion,x.expectedProjectVersion));
+        }
+        if(path==="/api/skills"&&method==="GET"){
+          const projectId=url.searchParams.get("projectId")||undefined;
+          let folder:string|undefined;const issues:Array<{type:string;message:string}>=[];
+          if(projectId){db.project(projectId);try{folder=projectFolder(db,projectId);}catch(e){issues.push({type:"repository",message:(e as Error).message});}}
+          const inventory=installedSkills(folder);
+          const records=projectId?db.scopedRecords(projectId):db.list({limit:1000}).filter(r=>!r.projectId&&r.status==="active");
+          return json(res,200,{...inventory,issues:[...issues,...inventory.issues],references:skillReferences(records,inventory.skills)});
         }
         const discoveryMatch=path.match(/^\/api\/projects\/([a-f0-9-]{36})\/discovery$/);
         if(discoveryMatch&&method==="GET")return json(res,200,discoverProject(db,discoveryMatch[1]));
@@ -132,6 +155,7 @@ export function createBrainHttpServer(db:BrainDB) {
           agent:url.searchParams.get("agent")||undefined,
           channel:url.searchParams.get("channel")||undefined,
           recordId:url.searchParams.get("recordId")||undefined,
+          runId:url.searchParams.get("runId")||undefined,
           includeDemo:url.searchParams.get("demo")==="1",
           limit:Math.min(500,Math.max(1,Number(url.searchParams.get("limit")||150)))
         }));

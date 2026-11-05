@@ -52,7 +52,9 @@ test("hook installer preserves other settings, is idempotent, and removes only i
       const data=JSON.parse(readFileSync(file,"utf8"));
       assert.equal(data.hooks.SessionStart.filter((group:any)=>group.hooks.some((h:any)=>h.statusMessage==="personal-brain-style")).length,1);
       assert.equal(data.hooks.UserPromptSubmit.length,1);
-      assert.match(data.hooks.SessionStart.find((g:any)=>g.hooks.some((h:any)=>h.statusMessage==="personal-brain-style")).hooks[0].command,/scripts\/run\.mjs/);
+      const handler=data.hooks.SessionStart.find((g:any)=>g.hooks.some((h:any)=>h.statusMessage==="personal-brain-style")).hooks[0];
+      const invocation=agent==='claude'?handler.args[0]:process.platform==='win32'?Buffer.from(handler.command.split(' ').at(-1),'base64').toString('utf16le'):handler.command;
+      assert.match(invocation,/scripts[\\/]run\.mjs/);
       if(agent==="claude"){
         assert.deepEqual(data.permissions,original.permissions);
         assert.ok(data.hooks.SessionStart.some((g:any)=>g.hooks[0]?.command==="echo existing"));

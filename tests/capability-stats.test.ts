@@ -10,7 +10,7 @@ test("capability counts include contracts and distinct projects without private 
  try{
   assert.equal(installBaQcStyles(db),2);assert.equal(installBaQcStyles(db),0);
   const r=db.list({domain:"quality-control"})[0];const p=db.saveProject({name:"QC",description:"",assignments:[{recordId:r.id,override:null}]});
-  db.create({...r,title:"Private QC",projectId:p.id});
+  db.create({...r,keyId:"private-qc",title:"Private QC",projectId:p.id});
   const counts=db.capabilityStats().find(d=>d.id==="quality-control")!;
   assert.equal(counts.styles,1);assert.equal(counts.examples,1);assert.equal(counts.rules,5);assert.equal(counts.projects,1);
   assert.equal(db.capabilityStats().find(d=>d.id==="business-analysis")!.projects,0);

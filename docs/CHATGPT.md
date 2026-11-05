@@ -16,11 +16,21 @@ Use **Agent setup → ChatGPT chat** to select a project and obtain the absolute
 4. The helper checks configuration with tunnel-client doctor. Only a successful check proceeds to starting the foreground tunnel.
 5. Once the tunnel reports healthy, add it through [ChatGPT connector settings](https://chatgpt.com/#settings/Connectors) and enable it in your chat. Keep the terminal open; Ctrl+C stops the tunnel.
 
-The underlying command is:
+For an npm/npx installation, run (no source checkout needed):
+
+```sh
+npx --yes personal-brain-style chatgpt-connect <projectId>
+```
+
+If installed globally, use `personal-brain chatgpt-connect <projectId>`.
+
+For a source checkout, run from the repository root:
 
 ```sh
 node scripts/run.mjs src/cli.ts chatgpt-connect <projectId>
 ```
+
+The command copied from Agent setup uses the running installation’s absolute paths. The npm package includes its launcher in `dist/scripts` and compiled CLI in `dist/src`; it does not need a repository-root `scripts` folder. If an npx cache is cleared, run the npx command above again.
 
 Existing CONTROL_PLANE_TUNNEL_ID and CONTROL_PLANE_API_KEY environment variables are reused. Otherwise the helper prompts for them each launch. It does not install a background service or persist credentials.
 

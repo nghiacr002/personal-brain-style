@@ -29,7 +29,8 @@
   "files": [
     "dist/",
     "docs/CHATGPT.md",
-    "docs/FUSION-AND-INSTRUCTIONS.md"
+    "docs/FUSION-AND-INSTRUCTIONS.md",
+    "docs/PLATFORM-SUPPORT.md"
   ],
   "publishConfig": {
     "access": "public",

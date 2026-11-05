@@ -1,0 +1,21 @@
+name: Platform checks
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build:package
+      - run: node scripts/run.mjs --test --test-concurrency=1 tests/*.test.ts tests/*.test.mjs
+      - run: npm pack
+      - run: node scripts/test-package.mjs

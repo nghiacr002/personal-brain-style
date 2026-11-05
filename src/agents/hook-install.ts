@@ -4,13 +4,18 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 export type Agent = "claude" | "codex";
-export type InstallOptions={home?:string;claudeFile?:string;codexFile?:string;node?:string;entry?:string};
+export type InstallOptions={home?:string;claudeFile?:string;codexFile?:string;node?:string;entry?:string;platform?:NodeJS.Platform};
 const HOOK_ID="personal-brain-style";
 
 function shellQuote(value:string) { return `'${value.replace(/'/g,`'\\''`)}'`; }
 export function hookCommand(agent:Agent,phase:"session"|"prompt",opts:InstallOptions={}) {
   const entry=opts.entry||resolve(dirname(fileURLToPath(import.meta.url)),"../cli.ts");
   const runner=resolve(dirname(fileURLToPath(import.meta.url)),"../../scripts/run.mjs");
+  if((opts.platform||process.platform)==='win32'){
+    const quote=(value:string)=>"'"+value.replaceAll("'","''")+"'";
+    const script='& '+[opts.node||process.execPath,runner,entry,'hook',agent,phase].map(quote).join(' ')+'; exit $LASTEXITCODE';
+    return 'powershell.exe -NoProfile -NonInteractive -EncodedCommand '+Buffer.from(script,'utf16le').toString('base64');
+  }
   return `${shellQuote(opts.node||process.execPath)} ${shellQuote(runner)} ${shellQuote(entry)} hook ${agent} ${phase}`;
 }
 function load(file:string):Record<string,any> {
@@ -41,6 +46,10 @@ function add(config:Record<string,any>,agent:Agent,opts:InstallOptions) {
   ensureHooks(config);
   for(const [event,phase] of [["SessionStart","session"],["UserPromptSubmit","prompt"]] as const) {
     const handler:any={type:"command",command:hookCommand(agent,phase,opts),statusMessage:HOOK_ID,timeout:10};
+    if(agent==='claude'){
+      handler.command=opts.node||process.execPath;
+      handler.args=[resolve(dirname(fileURLToPath(import.meta.url)),"../../scripts/run.mjs"),opts.entry||resolve(dirname(fileURLToPath(import.meta.url)),"../cli.ts"),'hook',agent,phase];
+    }
     if(agent==="codex")handler.additionalContextLimit=2500;
     (config.hooks[event] ||= []).push({hooks:[handler]});
   }

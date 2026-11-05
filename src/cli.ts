@@ -1,9 +1,10 @@
+import {configureDesktop} from './agents/desktop-install.ts';
 import { spawnSync } from "node:child_process";
 import { chmodSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrainDB, defaultHome, dbPath } from "./core/database.ts";
-import { seed } from "./styles/seed.ts";
+import {seedGlobalStyles} from "./styles/global-style-seed.ts";
 import { createBrainHttpServer } from "./server/http.ts";
 import { mcpMain } from "./agents/mcp.ts";
 import { executeHook, simulateHook } from "./agents/hooks.ts";
@@ -13,7 +14,14 @@ const scriptPath=resolve(fileURLToPath(import.meta.url));
 const runnerPath=resolve(dirname(scriptPath),"../scripts/run.mjs");
 const arg=process.argv[2]||"serve";
 const db=new BrainDB();
-if(arg==="mcp") {
+const seeded=seedGlobalStyles(db);
+if(arg==="desktop") {
+  const action=process.argv[3]||'preview';const options:{file?:string;projectId?:string;dataDir:string}={dataDir:defaultHome()};
+  try{
+    for(let i=4;i<process.argv.length;i+=2){const flag=process.argv[i],value=process.argv[i+1];if(!value||value.startsWith('--')||!['--config','--project'].includes(flag))throw new Error('Use --project ID or --config PATH');if(flag==='--project'){db.project(value);options.projectId=value;}else options.file=value;}
+    console.log(JSON.stringify(configureDesktop(action,options),null,2));
+  }catch(error){console.error(error instanceof Error?error.message:String(error));process.exitCode=1;}finally{db.close();}
+}else if(arg==="mcp") {
   if(["claude","codex"].includes(process.argv[3]||""))process.env.PB_AGENT=process.argv[3];
   if(process.argv[3]==="chatgpt"&&!process.argv[4])throw new Error("ChatGPT requires an explicit project ID: mcp chatgpt <projectId>");
   await mcpMain(db,process.argv[3]==="chatgpt"?process.argv[4]:undefined);
@@ -50,7 +58,7 @@ if(arg==="mcp") {
   else console.log(simulateHook(db,agent as "claude"|"codex",phase as "session"|"prompt",{prompt:task}));
   db.close();
 }else if(arg==="seed"){
-  console.log(`Added ${seed(db)} example records. Existing changes preserved.`);db.close();
+  console.log(`Added ${seeded} global library records. Existing changes preserved.`);db.close();
 }else if(arg==="trace") {
   const action=process.argv[3]||"stats";
   if(action==="stats")console.log(JSON.stringify(db.traceStats(),null,2));

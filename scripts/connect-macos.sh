@@ -5,6 +5,7 @@ BOOTSTRAP_NODE="$(command -v node || true)"
 if [[ -z "$BOOTSTRAP_NODE" ]]; then echo "Node.js is required; install Node 24 first."; exit 1; fi
 NODE="$("$BOOTSTRAP_NODE" "$ROOT/scripts/select-node.mjs")"
 export PB_NODE="$NODE"
+if command -v cygpath >/dev/null 2>&1; then NODE="$(cygpath -u "$NODE")"; fi
 echo "Using Node: $NODE ($("$NODE" --version))"
 RUNNER="$ROOT/scripts/run.mjs"
 ENTRY="$ROOT/src/cli.ts"

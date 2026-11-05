@@ -39,7 +39,7 @@ test('text checks are scoped to reviewed styles, and absent text is not marked p
  try{
   const base={kind:'preference',domain:'coding',title:'Code',summary:'',content:'Code',tags:[],priority:90,status:'active',backend:null};
   const r=db.create({...base,checks:[{type:'contains',value:'yes'}]});
-  const unrelated=db.create({...base,kind:'review',checks:[{type:'contains',value:'other'}]});
+  const unrelated=db.create({...base,keyId:'code-review',kind:'review',checks:[{type:'contains',value:'other'}]});
   const p=db.saveProject({name:'Checks',description:'',assignments:[{recordId:r.id,override:null},{recordId:unrelated.id,override:null}]});
   const args={task:'Check code',recordIds:[r.id]};
   assert.equal(reviewArtifacts(db,p.id,args).status,'not_verified');

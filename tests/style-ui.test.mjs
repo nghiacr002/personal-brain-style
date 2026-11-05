@@ -6,11 +6,11 @@ import vm from "node:vm";
 test('trace filters encode project scope in API requests and navigation URLs',()=>{
  const context=vm.createContext({URLSearchParams,document:{addEventListener(){},getElementById(){return {addEventListener(){}};},querySelectorAll(){return [];}},setTimeout,clearTimeout,console});
  vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
- vm.runInContext('active="trace";traceProject="project-a";traceAgent="codex";traceChannel="mcp";traceRecord="style-a";traceDemo=true',context);
+ vm.runInContext('active="trace";traceProject="project-a";traceAgent="codex";traceChannel="mcp";traceRecord="style-a";traceRun="codex:session/a";traceDemo=true',context);
  const query=new URLSearchParams(vm.runInContext('traceQuery()',context));
- assert.equal(query.get('projectId'),'project-a');assert.equal(query.get('agent'),'codex');assert.equal(query.get('recordId'),'style-a');
+ assert.equal(query.get('runId'),'codex:session/a');assert.equal(query.get('projectId'),'project-a');assert.equal(query.get('agent'),'codex');assert.equal(query.get('recordId'),'style-a');
  const route=vm.runInContext('currentRoute()',context);
- assert.match(route,/projectId=project-a/);assert.match(route,/channel=mcp/);assert.match(route,/demo=1/);
+ assert.match(route,/runId=codex%3Asession%2Fa/);assert.match(route,/projectId=project-a/);assert.match(route,/channel=mcp/);assert.match(route,/demo=1/);
 });
 
 test("capability search filters immediately, keeps focus and escapes compliance evidence",()=>{
@@ -22,8 +22,7 @@ test("capability search filters immediately, keeps focus and escapes compliance 
  element('capabilitySearch').value='Cod';element('capabilitySearch').listeners.input();
  assert.match(element('main').innerHTML,/<strong>Coding<\/strong>/);assert.doesNotMatch(element('main').innerHTML,/<strong>Writing<\/strong>/);assert.equal(element('capabilitySearch').focused,true);
  assert.doesNotMatch(element('main').innerHTML,/>Search<\/button>/);
- const html=vm.runInContext('complianceReviewPanel([{task:"<script>bad</script>",at:"2026-11-03",status:"not_verified",note:"File presence only",scope:"Selected styles",results:[],pendingTextChecks:2}])',context);
- assert.match(html,/&lt;script&gt;/);assert.match(html,/2 text checks not verified/);assert.doesNotMatch(html,/<script>/);
+ assert.equal(vm.runInContext('typeof complianceReviewPanel',context),'undefined');
 });
 
 test("graph details open on selection and close with Escape without reserving an empty panel",()=>{
@@ -59,7 +58,7 @@ test("My Styles renders recipes safely and filters through the existing library"
   assert.doesNotMatch(html,/Import samples/);
   assert.doesNotMatch(html,/style-intro|Your sample style library/);
   assert.match(html,/New Style/);
-  assert.match(html,/Read instructions/);
+  assert.match(html,/View style guidelines/);
   assert.match(html,/&lt;script&gt;unsafe&lt;\/script&gt;/);
   assert.doesNotMatch(html,/<script>unsafe/);
   assert.match(html,/draft/);
@@ -67,7 +66,7 @@ test("My Styles renders recipes safely and filters through the existing library"
   element("searchBox").listeners.input();
   assert.match(element(".record-list").innerHTML,/Clear writing/);
   assert.doesNotMatch(element(".record-list").innerHTML,/Sky drawing/);
-  assert.match(element(".results-count").textContent,/1 records/);
+  assert.match(element(".results-count").textContent,/1 style/);
   vm.runInContext('domain="diagrams";search="";records("preference");',context);
   assert.match(element("main").innerHTML,/Sky drawing/);
   assert.doesNotMatch(element("main").innerHTML,/Clear writing/);
@@ -105,7 +104,7 @@ test("served UI uses stylesheet classes allowed by the existing security policy"
 test("local app opens without credentials and reports server failures with Retry",async()=>{
   const elements=new Map(),requests=[];
   const element=id=>{
-    if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",style:{},addEventListener(){}});
+    if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",value:"",style:{},addEventListener(){}});
     return elements.get(id);
   };
   let available=true;
@@ -132,7 +131,7 @@ test("local app opens without credentials and reports server failures with Retry
 test("project configuration saves assignments and displays effective source",async()=>{
   const elements=new Map();
   const element=id=>{
-    if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",value:"",style:{},addEventListener(){}});
+    if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",value:"",style:{},addEventListener(){},querySelector(){return {disabled:false,insertAdjacentHTML(){}};}});
     return elements.get(id);
   };
   const record={id:"r1",kind:"preference",domain:"design",title:"Sky UI",summary:"Design",content:"Blue",tags:[],status:"active",version:1};
@@ -141,11 +140,12 @@ test("project configuration saves assignments and displays effective source",asy
     document:{getElementById:element,addEventListener(){},querySelectorAll(selector){return selector==='input[name="assignment"]:checked'?[{value:"r1"}]:[];}},
     setTimeout,clearTimeout,console,Error,
     fetch:async(url,options)=>{
-      if(url==="/api/projects"&&options.method==="POST"){const body=JSON.parse(options.body);saved={...body,id:"p1",version:1};return {ok:true,json:async()=>saved};}
+      if(url==="/api/onboarding/create"&&options.method==="POST"){const body=JSON.parse(options.body).project;saved={...body,id:"p1",version:1};return {ok:true,json:async()=>saved};}
       return {ok:true,json:async()=>url==="/api/projects/p1"?saved:url.endsWith("/resolved")?[{...record,content:"Navy",source:"Project override"}]:url.startsWith("/api/items")?[record]:url==="/api/projects"?[]:{counts:{preference:1},revisions:1}};
     }
   });
   vm.runInContext(readFileSync(new URL("../public/app.js",import.meta.url),"utf8"),context);
+  vm.runInContext("setupProjectWizard=()=>{}",context);
   await vm.runInContext("refresh()",context);
   vm.runInContext("projectEditing=true;projectForm()",context);
   assert.match(element("main").innerHTML,/Sky UI/);
@@ -157,7 +157,7 @@ test("project configuration saves assignments and displays effective source",asy
   element("projectName").value="Portal";
   element("projectDescription").value="Customer portal";
   element("override-r1").value="Navy";
-  await vm.runInContext("saveProject({preventDefault(){}})",context);
+  await vm.runInContext("onboardingStep=3;saveProject({preventDefault(){}})",context);
   assert.deepEqual(saved.assignments,[{recordId:"r1",override:"Navy"}]);
   assert.match(element("main").innerHTML,/Project override/);
   assert.match(element("main").innerHTML,/Project styles/);
@@ -191,7 +191,7 @@ test("dependency map includes transitive context, labels arrows, escapes titles 
   assert.match(html,/Drawing &lt;unsafe&gt;/);assert.doesNotMatch(html,/<unsafe>/);
   assert.match(html,/dependency-context/);
   await vm.runInContext('delegated({target:{closest(){return {dataset:{dependencies:"drawing"}}}}})',context);
-  assert.equal(element("editor").open,true);assert.equal(element("editRequired").focused,true);
+  assert.equal(element("editor").open,true);assert.equal(element("editRequiredSearch").focused,true);assert.equal(element("editPanel2").hidden,false);
   assert.match(element("editRequired").innerHTML,/value="tech" checked/);
   vm.runInContext('items[0].requiredIds=["gone"];openEditor(items[0]);',context);
   assert.match(element("editRequired").innerHTML,/value="gone" checked/);
@@ -200,7 +200,7 @@ test("dependency map includes transitive context, labels arrows, escapes titles 
   assert.ok(vm.runInContext('dependencyMap([items[0]])',context).includes("2 styles shown"));
 });
 
-test("project selection separates chosen records, keeps override drafts, and prevents slot conflicts",()=>{
+test("project selection keeps card positions and override drafts, and prevents slot conflicts",()=>{
   const elements=new Map();
   const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",hidden:false,style:{},addEventListener(){},appendChild(row){row.parentElement=this;}});return elements.get(id);};
   const makeRow=(slot,checked,value="")=>{
@@ -211,8 +211,8 @@ test("project selection separates chosen records, keeps override drafts, and pre
   const rows=[chosen,alternative,global];
   const context=vm.createContext({document:{getElementById:element,addEventListener(){},querySelectorAll(q){return q==="[data-assignment-row]"?rows:[];}},setTimeout,clearTimeout,console});
   vm.runInContext(readFileSync(new URL("../public/app.js",import.meta.url),"utf8"),context);
-  vm.runInContext('syncProjectSelection()',context);
-  assert.equal(chosen.parentElement,element("selectedAssignments"));
+  vm.runInContext('filterProjectStyles=()=>{};syncProjectSelection()',context);
+  assert.equal(chosen.parentElement,null);
   assert.equal(chosen.badge.textContent,"Project override");
   assert.equal(alternative.checkbox.disabled,true);
   assert.equal(alternative.badge.textContent,"Another record selected");
@@ -221,7 +221,7 @@ test("project selection separates chosen records, keeps override drafts, and pre
   assert.match(element("projectSelectionSummary").textContent,/1 selected · 1 overrides/);
   chosen.checkbox.checked=false;vm.runInContext('syncProjectSelection()',context);
   assert.equal(alternative.checkbox.disabled,false);assert.equal(chosen.textarea.value,"Azure only");
-  assert.equal(element("noAssignments").hidden,false);
+
   chosen.checkbox.checked=true;vm.runInContext('syncProjectSelection()',context);
   assert.equal(chosen.textarea.disabled,false);assert.equal(chosen.details.hidden,false);
 });
@@ -258,17 +258,17 @@ test("map renders directed links and project guide supplies explicit agent scope
   assert.match(html,/graph-orb/);
   assert.match(html,/not execution order/);
   const guide=vm.runInContext('projectAgentGuide("project-123")',context);
-  for(const text of ["Link repository","Test connection","personal-brain hooks install both","codex mcp get personal-brain","claude mcp get personal-brain","brain_bootstrap","requiredLinked","Trace Explorer","does not switch agent sessions"]){assert.ok(guide.includes(text),text);}
+  for(const text of ["Save folder","Check connection","Repository connection","Manage agent setup"]){assert.ok(guide.includes(text),text);}
   assert.match(guide,/project-123/);
-  assert.match(guide,/<details><summary>Preview prompt/);
+  assert.doesNotMatch(guide,/Copy personalization prompt/);
   assert.doesNotMatch(guide,/<details open>/);
-  for(const text of ["Copy onboarding prompt","brain_discover_project","brain_update_project_style","sourceFiles","expectedProjectVersion","conflicts: []","Linking alone does not analyze","global versions stay unchanged"]){assert.ok(guide.includes(text),text);}
+  for(const text of ["Discover & personalize with AI","global styles stay unchanged"]){assert.ok(guide.includes(text),text);}
 
 });
 
 test("URL navigation restores views, library filters and project configuration",async()=>{
   const elements=new Map(),history=[],events={};
-  const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",style:{},addEventListener(){},classList:{add(){},remove(){},toggle(){}}});return elements.get(id);};
+  const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",value:"",style:{},addEventListener(){},querySelector(){return {insertAdjacentHTML(){}};},classList:{add(){},remove(){},toggle(){}}});return elements.get(id);};
   const project={id:"696366e9-d012-4288-8a46-376b49873137",name:"IoT Platform",description:"",assignments:[],version:1};
   const window={location:{hash:"#/overview"},history:{pushState(_s,_t,url){history.push(url);window.location.hash=url;},replaceState(_s,_t,url){window.location.hash=url;}},addEventListener(name,fn){events[name]=fn;}};
   const context=vm.createContext({window,URLSearchParams,document:{getElementById:element,addEventListener(){},querySelectorAll(){return [];}},setTimeout,clearTimeout,console,fetch:async url=>({ok:true,json:async()=>url.startsWith("/api/items")?[]:url==="/api/projects"?[]:url.endsWith("/resolved")?[]:url.startsWith("/api/projects/")?project:{counts:{preference:0,skill:0,review:0},revisions:0}})});
@@ -373,8 +373,8 @@ test("project dashboard searches and paginates collections without mixing detail
   assert.match(element("projectList").innerHTML,/No matching projects/);
   assert.equal(element("projectPagination").innerHTML,"");
   context.activity={active:1,linked:19,unlinkedCalls:0,sessions:projects.map(p=>({agent:"codex",threadId:p.id,active:false,calls:1,lastSeen:p.updatedAt}))};
-  const activityHtml=vm.runInContext('page=2;projectActivityPanel(activity,"")',context);
-  assert.match(activityHtml,/Page 2 of 3/);
+  const activityHtml=vm.runInContext('selectedProject={id:"project-a"};page=2;projectActivityPanel(activity,"")',context);
+  assert.match(activityHtml,/Page 2 of 3/);assert.match(activityHtml,/projectId=project-a&amp;agent=codex&amp;runId=p8/);
   assert.doesNotMatch(activityHtml,/<p>p0<\/p>/);
   assert.match(activityHtml,/<p>p8<\/p>/);
   assert.match(vm.runInContext('projectActivityPanel(null,"Offline")',context),/Activity unavailable/);
@@ -450,7 +450,7 @@ test("editing a selected shared style uses the project copy endpoint",async()=>{
  await new Promise(resolve=>setImmediate(resolve));
  context.capture=(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return Promise.resolve({});};
  vm.runInContext('api=capture;refresh=async()=>{};active="projects";projectTab="styles";selectedProject={id:"p",version:3,assignments:[{recordId:"s",override:"Project instructions"}]};items=[{id:"s",version:2,kind:"preference",domain:"writing",title:"Writing",summary:"Summary",content:"Global",tags:[],checks:[],status:"active"}];openEditor(items[0])',context);
- assert.match(element("editorTitle").textContent,/global style stays unchanged/);
+ assert.match(element("editorTitle").textContent,/Customize project style/);
  assert.equal(element("editContent").value,"Project instructions");
  await vm.runInContext('saveEditor({preventDefault(){}})',context);
  assert.equal(calls[0].path,"/api/projects/p/items/s");assert.equal(calls[0].body.expectedProjectVersion,3);assert.equal(calls[0].body.expectedVersion,2);
@@ -488,10 +488,10 @@ test("graph viewport zoom, fit and pan change only the viewBox",()=>{
 });
 
 
-test("navigation keeps setup and traces visible and shows only discovery and startup preview under diagnostics",()=>{
+test("navigation keeps setup and traces visible and shows skill discovery, style discovery and startup preview under diagnostics",()=>{
  const html=readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
  const advanced=html.match(/<details id="advancedNav"[\s\S]*?<\/details>/)?.[0];assert.ok(advanced);
- for(const view of ["discover","baseline"])assert.ok(advanced.includes(`data-view="${view}"`));
+ for(const view of ["skills","discover","baseline"])assert.ok(advanced.includes(`data-view="${view}"`));
  for(const view of ["review_simulator","tool","feedback","history"])assert.ok(!html.includes(`class="nav-item" data-view="${view}"`),`${view} is hidden from navigation`);
  assert.ok(!advanced.includes('data-view="activation"'));assert.ok(!advanced.includes('data-view="trace"'));
  assert.match(html,/Agent setup/);
@@ -514,28 +514,9 @@ test("3D orbit and dragging update layout without mutating saved records",()=>{
 });
 
 
-test("project discovery paginates and filters inventory immediately and escapes missing skill warnings",async()=>{
- const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",value:"",open:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;},showModal(){this.open=true;}});return elements.get(id);};
- const report={references:[{recordId:"style",title:"Development",reference:"review-skill",status:"ambiguous",skills:[{name:"review-skill",scope:"global",agent:"codex",file:"/skills/review"}]}],folder:"/repo",skills:Array.from({length:25},(_,i)=>({id:String(i),name:"Skill "+i,scope:i===24?"project":"global",agent:"shared",file:"/skills/"+i})),issues:[{message:"Missing <unsafe>"}],selectedStyles:[],files:["<script>unsafe</script>"],totalFiles:1,truncated:false,projectVersion:1,workflow:"",limitations:"Review conflicts"};
- const context=vm.createContext({document:{getElementById:element,addEventListener(){},querySelectorAll(){return [];}},setTimeout,clearTimeout,console,fetch:async()=>({ok:true,json:async()=>report})});
- vm.runInContext(readFileSync(new URL("../public/app.js",import.meta.url),"utf8"),context);
- await vm.runInContext('selectedProject={id:"project"};showProjectDiscovery()',context);
- assert.match(element("projectDiscoveryContent").innerHTML,/Style → required skill/);
- assert.match(element("projectDiscoveryContent").innerHTML,/Multiple different copies/);
- assert.match(element("projectDiscoveryContent").innerHTML,/not automatically linked/);
- assert.doesNotMatch(element("projectDiscoveryContent").innerHTML,/<details open>/);
- assert.equal(element("discoveryDialog").open,true);assert.match(element("projectDiscoveryContent").innerHTML,/Missing &lt;unsafe&gt;/);assert.doesNotMatch(element("projectDiscoveryContent").innerHTML,/<script>/);
- assert.equal((element("installedSkillRows").innerHTML.match(/<tr>/g)||[]).length,20);assert.match(element("installedSkillCount").textContent,/Page 1 of 2/);
- element("installedSkillNext").listeners.click();assert.equal((element("installedSkillRows").innerHTML.match(/<tr>/g)||[]).length,5);
- element("installedSkillSearch").value="project";element("installedSkillSearch").listeners.input();assert.match(element("installedSkillRows").innerHTML,/Skill 24/);assert.equal((element("installedSkillRows").innerHTML.match(/<tr>/g)||[]).length,1);assert.equal(element("installedSkillNext").disabled,true);
- element("installedSkillSearch").value="absent";element("installedSkillSearch").listeners.input();assert.equal(element("installedSkillEmpty").hidden,false);
- const html=vm.runInContext('recordTable([{id:"s",title:"Style",summary:"",content:"",domain:"coding",status:"active",version:1,skillWarnings:["<missing>: missing"]}])',context);assert.match(html,/1 missing skill/);assert.match(html,/&lt;missing&gt;/);
-});
-
-
 test("onboarding prompt copies the project scope and handles unavailable clipboard",async()=>{
   const elements=new Map();
-  const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",style:{},addEventListener(){},classList:{add(){},remove(){}}});return elements.get(id);};
+  const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",value:"",style:{},addEventListener(){},querySelector(){return {insertAdjacentHTML(){}};},classList:{add(){},remove(){}}});return elements.get(id);};
   let copied="";
   const navigator={clipboard:{async writeText(text){copied=text;}}};
   const context=vm.createContext({navigator,document:{getElementById:element,addEventListener(){},querySelectorAll(){return [];}},setTimeout(){},clearTimeout,console});
@@ -551,7 +532,7 @@ test("onboarding prompt copies the project scope and handles unavailable clipboa
 
 
 test("project style icon actions retain labels and private scope actions",()=>{
-  const context=vm.createContext({document:{getElementById(){return {addEventListener(){}};},addEventListener(){}},console});
+  const context=vm.createContext({document:{getElementById(){return {addEventListener(){}};},querySelectorAll(){return [];},addEventListener(){}},console});
   vm.runInContext(readFileSync(new URL("../public/app.js",import.meta.url),"utf8"),context);
   const shared=vm.runInContext('projectStyleActions({id:"shared"})',context);
   assert.match(shared,/aria-label="Edit for project"/);
@@ -601,18 +582,6 @@ test('Fusion polling preserves the form while running and stops after leaving th
  await timers.shift()();assert.equal(requests,before);
 });
 
-test('skill issue details contain only unresolved requirements for the clicked style',async()=>{
- const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',open:false,showModal(){this.open=true;},addEventListener(){}});return elements.get(id);};
- const data={references:[{recordId:'a',title:'Style A',reference:'missing-tool',status:'missing',skills:[]},{recordId:'a',title:'Style A',reference:'ambiguous-tool',status:'ambiguous',skills:[]},{recordId:'a',title:'Style A',reference:'working-tool',status:'available',skills:[]},{recordId:'b',title:'Style B',reference:'other-tool',status:'missing',skills:[]}],selectedStyles:[{id:'a'}],issues:[]};
- const context=vm.createContext({document:{getElementById:element,addEventListener(){},querySelectorAll(){return [];}},setTimeout,clearTimeout,console,fetch:async()=>({ok:true,json:async()=>data})});
- vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
- vm.runInContext('selectedProject={id:"p"}',context);await vm.runInContext('showProjectDiscovery("a")',context);
- const html=element('projectDiscoveryContent').innerHTML;
- assert.match(html,/Missing/);assert.match(html,/missing-tool/);assert.match(html,/ambiguous-tool/);assert.doesNotMatch(html,/working-tool|other-tool|All detected installations/);
- assert.equal(element('projectDiscoveryTitle').textContent,'Resolve required skills');
- assert.equal(vm.runInContext('skillIssueLabel(["a: missing","b: ambiguous"])',context),'1 missing skill · 1 skill has conflicting copies');
-});
-
 test('Fusion renders history as rows and shows one proposal with grouped decision actions',async()=>{
  const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',addEventListener(){},querySelectorAll(){return [];}});return elements.get(id);};
  const proposal=id=>({targetId:id,title:'Proposal '+id,rationale:'Reusable method',content:'New',conflicts:[],sourceIds:[],principles:[],examples:[],externalSkills:[],reviewCriteria:[]});
@@ -635,7 +604,45 @@ test('Library skill warnings explain the cause and a supported resolution',()=>{
  const context=vm.createContext({document:{addEventListener(){},getElementById(){return {addEventListener(){}};},querySelectorAll(){return [];}},setTimeout,clearTimeout,console});
  vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
  const html=vm.runInContext('skillWarningExplanation("review: ambiguous")',context);
- assert.match(html,/different instructions/);assert.match(html,/\.agents\/skills/);assert.match(html,/refresh this page/);
+ assert.match(html,/Conflicting copies/);assert.doesNotMatch(html,/<p>/);
+ const help=vm.runInContext("skillResolutionHelp()",context);assert.match(help,/Rescan skills/);assert.match(help,/does not choose a version automatically/);
  const missing=vm.runInContext('skillWarningExplanation("review: missing")',context);
- assert.match(missing,/No matching installed skill/);assert.match(missing,/Install the required skill/);
+ assert.match(missing,/Missing/);assert.doesNotMatch(missing,/<p>/);
+});
+
+test('editor tabs preserve drafts and linked-style search preserves checked selections',()=>{
+ const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{id,value:'',hidden:false,textContent:'',listeners:{},addEventListener(name,fn){this.listeners[name]=fn;}});return elements.get(id);};
+ const tabs=Array.from({length:4},(_,i)=>({dataset:{editorTab:String(i)},attrs:{},listeners:{},setAttribute(k,v){this.attrs[k]=v;},addEventListener(k,v){this.listeners[k]=v;},focus(){this.focused=true;}}));
+ const rows=[{textContent:'Mermaid Diagrams',checked:false},{textContent:'Review Quality',checked:true}].map(r=>({...r,hidden:false,querySelector(){return {checked:this.checked};}}));
+ const context=vm.createContext({document:{getElementById:element,addEventListener(){},querySelectorAll(q){return q.includes('data-editor-tab')?tabs:q.includes('dependency-choice')?rows:[];}},console});
+ vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
+ element('editContent').value='Unsaved draft';tabs[2].listeners.click();
+ assert.equal(element('editPanel2').hidden,false);assert.equal(element('editPanel0').hidden,true);assert.equal(element('editContent').value,'Unsaved draft');
+ tabs[2].listeners.keydown({key:'ArrowRight',preventDefault(){}});assert.equal(tabs[3].focused,true);assert.equal(tabs[3].attrs['aria-selected'],'true');
+ element('editRequiredSearch').value='mermaid';element('editRequiredSearch').listeners.input();
+ assert.equal(rows[0].hidden,false);assert.equal(rows[1].hidden,true);assert.equal(rows[1].checked,true);
+ assert.match(element('editRequiredCount').textContent,/1 matching styles · 1 selected/);
+ element('editRequiredSearch').value='no match';element('editRequiredSearch').listeners.input();assert.ok(rows.every(r=>r.hidden));
+ element('editRequiredSearch').value='';element('editRequiredSearch').listeners.input();assert.ok(rows.every(r=>!r.hidden));
+});
+
+
+test('skill diagnostics groups shared requirements, filters locally and rescans without repository evidence',async()=>{
+ const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',value:'',listeners:{},addEventListener(k,fn){this.listeners[k]=fn;}});return elements.get(id);};
+ const context=vm.createContext({document:{getElementById:element,addEventListener(){},querySelectorAll(){return [];}},console});
+ vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
+ const copy={name:'review',scope:'global',agent:'shared',file:'/skills/review'};
+ let report={skills:[copy],issues:[],references:[{recordId:'a',title:'Style <A>',reference:'review (code)',status:'ambiguous',skills:[copy]},{recordId:'b',title:'Style B',reference:'review (UI)',status:'ambiguous',skills:[copy]}]};let calls=0;
+ context.request=async url=>{if(url==='/api/projects')return [{id:'p',name:'Project'}];assert.equal(url,'/api/skills?projectId=p');calls++;return report;};
+ vm.runInContext('api=request;updateUrl=()=>{};active="skills";skillProject="p"',context);
+ await vm.runInContext('skillDiscovery()',context);
+ assert.match(element('main').innerHTML,/Search skills/);assert.doesNotMatch(element('main').innerHTML,/Repository evidence|showModal/);
+ let html=element('skillResults').innerHTML;assert.equal((html.match(/<strong>review<\/strong>/g)||[]).length,1);assert.match(html,/Style &lt;A&gt;/);assert.match(html,/Style B/);
+ element('skillQuery').value='absent';element('skillQuery').listeners.input();assert.match(element('skillResults').innerHTML,/No skills match/);assert.equal(calls,1);
+ element('skillQuery').value='';element('skillQuery').listeners.input();
+ report={skills:[copy],issues:[],references:report.references.map(r=>({...r,status:'available'}))};
+ await vm.runInContext('skillDiscovery()',context);assert.equal(calls,2);assert.match(element('skillResults').innerHTML,/Ready/);
+ element('skillStatus').value='issues';element('skillStatus').listeners.change();assert.match(element('skillResults').innerHTML,/No skills match/);
+ vm.runInContext('skillStatus="all";skillRecord="a";renderSkillResults()',context);assert.doesNotMatch(element('skillResults').innerHTML,/Style B/);
+ const markup=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');assert.match(markup,/data-view="skills"/);assert.doesNotMatch(markup,/id="discoveryDialog"/);
 });

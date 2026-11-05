@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import {dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 
@@ -13,10 +14,17 @@ function run(command,args){
   assert.equal(result.status,0,result.stderr||String(result.error));return result.stdout;
 }
 try{
-  run('npm',['install','--prefix',dir,'--cache',join(dir,'cache'),'--offline','--ignore-scripts','--no-audit','--no-fund',tarball]);
+  const npmArgs=process.platform==='win32'?[process.env.npm_execpath||join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js')]:[];
+  run(process.platform==='win32'?process.execPath:'npm',[...npmArgs,'install','--prefix',dir,'--cache',join(dir,'cache'),'--offline','--ignore-scripts','--no-audit','--no-fund',tarball]);
   const installed=join(dir,'node_modules',pkg.name);
   const bin=join(installed,pkg.bin['personal-brain']);
   assert.equal(run(process.execPath,[bin,'--version']).trim(),pkg.version);
+  const desktopFile=join(dir,'desktop-config.json');
+  run(process.execPath,[bin,'desktop','repair','--config',desktopFile]);
+  const desktop=JSON.parse(readFileSync(desktopFile,'utf8')).mcpServers['personal-brain'];
+  assert.equal(desktop.command,process.execPath);
+  assert.equal(realpathSync(desktop.args[1]),realpathSync(join(installed,'dist/src/cli.js')));
+  assert.equal(JSON.parse(run(process.execPath,[bin,'desktop','status','--config',desktopFile])).owned,true);
   const doctor=JSON.parse(run(process.execPath,[bin,'doctor']));
   assert.equal(doctor.dataDir,env.PB_HOME);
   assert.match(doctor.mcpRegistration.codex,/cli\.js/);
@@ -26,6 +34,15 @@ try{
   run(process.execPath,['--input-type=module','-e',`import {BrainDB} from ${JSON.stringify(join(installed,'dist/src/core/database.js'))};import {createBrainHttpServer} from ${JSON.stringify(join(installed,'dist/src/server/http.js'))};const db=new BrainDB();const server=createBrainHttpServer(db);if(db.projects().length)throw Error('Unexpected bundled projects');
 const response=await new Promise(resolve=>server.emit('request',{url:'/',method:'GET',headers:{}},{setHeader(){},writeHead(status){if(status!==200)throw Error('Static asset response '+status);},end(body){resolve(String(body));}}));
 if(!response.includes('app.js'))throw Error('Missing packaged browser UI');
+const project=db.saveProject({name:'Package check',description:'',assignments:[]});
+const setup=JSON.parse(await new Promise(resolve=>server.emit('request',{url:'/api/chatgpt/setup?projectId='+project.id,method:'GET',headers:{}},{setHeader(){},writeHead(status){if(status!==200)throw Error('Setup response '+status);},end(body){resolve(String(body));}})));
+const {existsSync}=await import('node:fs');
+for(const command of [setup.command,setup.connectCommand]){
+ if(command.includes('cli.ts')||!command.includes('dist/src/cli.js'))throw Error('Setup must use compiled CLI');
+ for(const match of command.matchAll(/'([^']+)'/g)){if(match[1].includes('/')&&!existsSync(match[1]))throw Error('Missing setup executable: '+match[1]);}
+}
+if(!existsSync(${JSON.stringify(join(installed,'dist/scripts/connect-chatgpt.sh'))}))throw Error('Missing packaged tunnel helper');
+
 server.close();db.close();`]);
   run(process.execPath,['--input-type=module','-e',`import {hookCommand} from ${JSON.stringify(join(installed,'dist/src/agents/hook-install.js'))};import {existsSync} from 'node:fs';const command=hookCommand('codex','session');for(const part of command.matchAll(/'([^']+)'/g)){if(!existsSync(part[1]))throw Error('Missing hook executable: '+part[1]);}if(!command.includes('cli.js'))throw Error('Hook points to TypeScript');`]);
   console.log('Packed installation, CLI, MCP, hook paths, static assets and clean workspace startup passed.');

@@ -1,3 +1,4 @@
+import {executable} from './executable.ts';
 import { spawn } from "node:child_process";
 import { BrainError, type ToolBackend } from "../core/models.ts";
 
@@ -16,9 +17,10 @@ function talkToBackend(backend: ToolBackend, method:string, params:Record<string
   if (!backend.enabled || process.env.PB_ENABLE_TOOL_PROXY !== "1") throw new BrainError("Tool proxy disabled. Enable the tool and set PB_ENABLE_TOOL_PROXY=1", "DISABLED",403);
   if (!backend.toolName.trim()) throw new BrainError("Backend tool name required");
   return new Promise((resolve,reject) => {
+    const launch=executable(backend.command,backend.args);
     let settled=false,ready=false,buffer="";
     const timeout = setTimeout(()=>done(new Error("Backend MCP timed out")), backend.timeoutMs||30000);
-    const child = spawn(backend.command,backend.args,{shell:false,stdio:["pipe","pipe","pipe"],env:process.env});
+    const child = spawn(launch.command,launch.args,{shell:false,stdio:["pipe","pipe","pipe"],env:process.env});
     let stderr="";
     child.stderr.setEncoding("utf8");
     child.stderr.on("data",chunk=>{stderr=(stderr+String(chunk)).slice(-1500);});

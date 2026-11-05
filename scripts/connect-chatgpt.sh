@@ -27,5 +27,5 @@ unset OPENAI_ADMIN_KEY MCP_SERVER_URL
 echo 'Checking tunnel configuration…'
 tunnel-client doctor --mcp.command "$1" --explain
 echo 'Starting the tunnel. Keep this terminal open; Ctrl+C stops it.'
-echo 'Once healthy, add this tunnel in ChatGPT: https://chatgpt.com/#settings/Connectors'
+echo 'Once healthy, add it in ChatGPT: https://chatgpt.com/plugins → + → Add custom MCP server → Connection: Tunnel'
 exec tunnel-client run --mcp.command "$1" --health.listen-addr 127.0.0.1:0

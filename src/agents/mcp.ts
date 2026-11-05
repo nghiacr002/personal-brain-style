@@ -141,7 +141,7 @@ export async function mcpMain(db:BrainDB, chatProjectId?:string) {
   // stdout is exclusively used for MCP JSON-RPC; never write log text here.
   const readline=createInterface({input:process.stdin,crlfDelay:Infinity});
   let clientName = "unknown";
-  let agent: "claude" | "codex" | "chatgpt" | "unknown" = chatProjectId ? "chatgpt" : process.env.PB_AGENT==="claude" ? "claude" : process.env.PB_AGENT==="codex" ? "codex" : "unknown";
+  let agent: "claude" | "codex" | "opencode" | "chatgpt" | "unknown" = chatProjectId ? "chatgpt" : process.env.PB_AGENT==="claude" ? "claude" : process.env.PB_AGENT==="codex" ? "codex" : process.env.PB_AGENT==="opencode" ? "opencode" : "unknown";
   const mcpRunId=()=>`${agent}:mcp:${process.pid}`;
   for await (const line of readline) {
     if(!line.trim())continue;
@@ -154,7 +154,7 @@ export async function mcpMain(db:BrainDB, chatProjectId?:string) {
       switch(request.method) {
         case "initialize": {
           clientName=String(request.params?.clientInfo?.name||"unknown").slice(0,80);
-          if(agent==="unknown") {const n=clientName.toLowerCase();agent=n.includes("claude")?"claude":n.includes("codex")?"codex":"unknown";}
+          if(agent==="unknown") {const n=clientName.toLowerCase();agent=n.includes("claude")?"claude":n.includes("codex")?"codex":n.includes("opencode")?"opencode":"unknown";}
           result={protocolVersion:request.params?.protocolVersion || "2025-11-25",capabilities:{tools:{listChanged:false},resources:{listChanged:false},prompts:{listChanged:false}},serverInfo:{name:"personal-brain-style",version:"1.2.0"},instructions:(chatProjectId?`Read-only ChatGPT connection pinned to project ${chatProjectId}. Call brain_bootstrap, then brain_discover and brain_get for relevant styles. Local CLI skills cannot execute in ChatGPT; report unavailable skills honestly. `:"")+"This server stores personal working style, not project data.\n\n"+complianceInstructions};
           db.trace({agent,channel:"mcp",runId:mcpRunId(),eventType:"mcp.initialize",outcome:"success",metadata:{client:clientName,projectId:chatProjectId||null}});
           break;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {mkdtempSync,readFileSync,writeFileSync,mkdirSync,rmSync} from "node:fs";
+import {mkdtempSync,readFileSync,writeFileSync,mkdirSync,rmSync,existsSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {spawnSync} from "node:child_process";
@@ -135,4 +135,21 @@ test("both agents receive compliance instructions and MCP preserves review scope
     assert.match(review.complianceInstructions,/not overall style compliance/);
     assert.match(review.complianceInstructions,/HTML or an image cannot replace it/);
   }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test("opencode plugin installs once, refuses foreign files and removes cleanly",()=>{
+ const home=mkdtempSync(join(tmpdir(),"pb-opencode-"));
+ try{
+  const file=join(home,".config","opencode","plugins","personal-brain.js");
+  assert.equal(manageHookConfig("status","opencode",{home}).installed,false);
+  assert.equal(manageHookConfig("install","opencode",{home}).changed,true);
+  const source=readFileSync(file,"utf8");
+  assert.match(source,/"hook", "opencode", phase/);assert.match(source,/config\.mcp\["personal-brain"\]/);assert.match(source,/experimental\.chat\.system\.transform/);
+  assert.equal(manageHookConfig("install","opencode",{home}).changed,false);
+  writeFileSync(file,"// someone else's plugin\n");
+  assert.throws(()=>manageHookConfig("install","opencode",{home}),/not managed/);
+  rmSync(file);manageHookConfig("install","opencode",{home});
+  assert.deepEqual(manageHookConfig("remove","opencode",{home}),{agent:"opencode",file,installed:false,changed:true});
+  assert.equal(existsSync(file),false);
+ }finally{rmSync(home,{recursive:true,force:true});}
 });

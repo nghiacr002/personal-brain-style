@@ -11,11 +11,12 @@ test("audited links are idempotent, preserve alternatives and resolve starter pr
  const dir=mkdtempSync(join(tmpdir(),"pb-links-"));const db=new BrainDB(join(dir,"brain.sqlite"));
  try{
   createBrainHttpServer(db);
-  const records=db.list({limit:300});const find=(tag:string)=>records.find(r=>r.tags.includes(tag)||r.tags.includes(tag.replace(/-(ba|qc)$/, "")))!;
+  const records=db.list({limit:300});const find=(tag:string)=>records.find(r=>r.tags.includes(tag)||r.keyId===tag)!;
   const dev=find("starter-implementation"),ux=find("starter-ux");
-  for(const root of [dev,ux])for(const tag of ["personal-business-analysis-ba","personal-quality-control-qc"])assert.ok(root.requiredIds?.includes(find(tag).id),tag);
-  const azure=find("personal-architecture-technology"),agnostic=find("personal-architecture-cloud-agnostic");
-  assert.ok(!azure.requiredIds?.includes(agnostic.id));assert.ok(!agnostic.requiredIds?.includes(azure.id));assert.equal(agnostic.status,"draft");
+  assert.ok(dev.requiredIds?.includes(find("quality-assurance").id));
+  assert.ok(ux.requiredIds?.includes(find("personal-business-analysis-ba").id));
+  const azure=find("cloud-azure"),neutral=find("cloud-architecture");
+  assert.ok(azure.requiredIds?.includes(neutral.id));assert.ok(!neutral.requiredIds?.includes(azure.id));
   const p=db.saveProject({name:"Starter",description:"",assignments:db.projectDefaultStyleIds().map(recordId=>({recordId,override:null}))});
   assert.ok(db.scopedRecords(p.id).length>=5);
   const version=db.get(dev.id)!.version;installStyleDependencies(db);assert.equal(db.get(dev.id)!.version,version);

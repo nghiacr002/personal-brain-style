@@ -3,7 +3,8 @@ import {BrainDB} from "../core/database.ts";
 // One-time audited links; later user edits remain authoritative.
 export function installStyleDependencies(db:BrainDB){
  const key="audited_style_dependencies_v1";
- if(db.db.prepare("SELECT value FROM meta WHERE key=?").get(key))return;
+ // Catalog libraries already ship their own links; this audit only upgrades pre-catalog libraries.
+ if(db.db.prepare("SELECT value FROM meta WHERE key=?").get(key)||db.db.prepare("SELECT 1 FROM meta WHERE key='global_style_catalog_v1'").get())return;
  const qc="personal-quality-control-qc",writing="personal-document-writing",ba="personal-business-analysis-ba",thinking="personal-architecture-thinking";
  const links:Record<string,string[]>={
   [thinking]:[qc],

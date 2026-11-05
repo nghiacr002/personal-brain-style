@@ -6,20 +6,23 @@ import { BrainDB, rankRecord } from "../core/database.ts";
 import type { BrainRecord, Domain } from "../core/models.ts";
 
 /** Personal Brain supplies context; it never starts a second LLM turn. */
-export type AgentKind = "claude" | "codex";
+export type AgentKind = "claude" | "codex" | "opencode";
 export type HookPhase = "session" | "prompt";
 
+// Tags both catalog capability ids and the legacy ids older libraries still use.
 function classify(task: string): Domain[] {
   const t = task.toLowerCase(); const result: Domain[]=[];
   if (/diagram|draw\b|drawing|drawio|draw\.io|mermaid|excalidraw|flowchart|visualiz|topology|sequence diagram|architecture diagram|sơ đồ|bản vẽ|thiết kế sơ đồ/.test(t)) result.push("diagrams");
   if (/architect|system design|solution design|microservice|integration|infrastructure|kiến trúc/.test(t)) result.push("architecture");
-  if (/brd|srs|document|report|requirement|proposal|memo|specification|write|writing|viết|tài liệu/.test(t)) result.push("writing");
-  if (/review|audit|verify|validate|check|critic|quality|kiểm tra|đánh giá/.test(t)) result.push("reviews");
-  if (/code|coding|implement|debug|refactor|typescript|python/.test(t)) result.push("coding");
-  if (/ux|ui|prototype|wireframe|design system|mockup/.test(t)) result.push("design");
-  if (/technology|tech selection|azure|cloud service/.test(t)) result.push("technology");
-  if (/think|plan|compare|decid|tradeoff|trade-off|strategy|phân tích/.test(t)) result.push("thinking");
-  return result;
+  if (/requirement|user story|acceptance|backlog|stakeholder|brd|srs|product owner|yêu cầu/.test(t)) result.push("product-analysis","writing");
+  if (/document|report|proposal|memo|specification|spec\b|write|writing|prd|brd|hld|lld|roadmap|adr\b|runbook|test plan|test case|openapi|api spec|database design|viết|tài liệu/.test(t)) result.push("writing-documents","writing");
+  if (/research|think|plan|compare|decid|tradeoff|trade-off|strategy|phân tích/.test(t)) result.push("foundations","thinking");
+  if (/review|audit|verify|validate|check|critic|quality|test plan|qa\b|qc\b|kiểm tra|đánh giá/.test(t)) result.push("quality-review","reviews");
+  if (/code|coding|implement|debug|refactor|typescript|python|\.net|c#|frontend|backend|mobile|api\b|logging|tracing|project structure/.test(t)) result.push("engineering-standards","coding");
+  if (/ux|ui|prototype|wireframe|design system|mockup|palette|screen/.test(t)) result.push("design");
+  if (/technology|tech selection|azure|aws|gcp|cloud|security|threat|network|data model|integration/.test(t)) result.push("architecture","technology");
+  if (/devops|sre|deploy|pipeline|ci\/cd|incident|on-call|release|lifecycle|tech lead|ai delivery/.test(t)) result.push("delivery-operations");
+  return [...new Set(result)];
 }
 
 export function startupContext(db: BrainDB,projectId?:string): string {

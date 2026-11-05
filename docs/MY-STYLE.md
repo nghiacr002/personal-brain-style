@@ -1,5 +1,7 @@
 # My Styles — eleven practical recipes
 
+> **Legacy document.** This describes the pre-catalog legacy installers and samples. Fresh installs use the release catalog instead; see [STYLE-CATALOG.md](STYLE-CATALOG.md). Where this document says required links allow eight IDs, the current limit is 12.
+
 Samples import automatically when the updated server starts. Restart an older running server, then connect to the studio. They appear first in My Styles as drafts. Expand instructions, then Edit and save as Active to use a sample with agents. Existing edits are preserved. Coding is a dedicated domain; technology selection uses Architecture.
 
 ## Sky blue architecture drawing

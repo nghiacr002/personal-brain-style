@@ -488,12 +488,12 @@ test("graph viewport zoom, fit and pan change only the viewBox",()=>{
 });
 
 
-test("navigation keeps setup and traces visible and shows skill discovery, style discovery and startup preview under diagnostics",()=>{
+test("navigation keeps setup visible and groups trace explorer, skill discovery, style discovery and startup index under diagnostics",()=>{
  const html=readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
  const advanced=html.match(/<details id="advancedNav"[\s\S]*?<\/details>/)?.[0];assert.ok(advanced);
- for(const view of ["skills","discover","baseline"])assert.ok(advanced.includes(`data-view="${view}"`));
+ for(const view of ["trace","skills","discover","baseline"])assert.ok(advanced.includes(`data-view="${view}"`));
  for(const view of ["review_simulator","tool","feedback","history"])assert.ok(!html.includes(`class="nav-item" data-view="${view}"`),`${view} is hidden from navigation`);
- assert.ok(!advanced.includes('data-view="activation"'));assert.ok(!advanced.includes('data-view="trace"'));
+ assert.ok(!advanced.includes('data-view="activation"'));
  assert.match(html,/Agent setup/);
 });
 
@@ -573,10 +573,10 @@ test('Fusion polling preserves the form while running and stops after leaving th
  vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
  vm.runInContext('updateUrl=()=>{};active="fusion";fusionCurrent="run";fusionProjects=[];fusionAgent="claude";',context);
  await vm.runInContext('fusionScreen()',context);
- assert.match(element('main').innerHTML,/value="claude" selected/);
+ assert.match(element('main').innerHTML,/Comparing styles/);assert.match(element('main').innerHTML,/aria-current="step"><span>2<\/span>/);
  const html=element('main').innerHTML;
  await timers.shift()();assert.equal(element('main').innerHTML,html);
- status='ready';await timers.shift()();assert.match(element('main').innerHTML,/No reusable changes proposed/);
+ status='ready';await timers.shift()();assert.match(element('main').innerHTML,/No changes proposed/);
  status='running';await vm.runInContext('fusionScreen()',context);
  vm.runInContext('active="projects"',context);const before=requests;
  await timers.shift()();assert.equal(requests,before);
@@ -589,7 +589,7 @@ test('Fusion renders history as rows and shows one proposal with grouped decisio
  const context=vm.createContext({document:{getElementById:element,addEventListener(){},querySelectorAll(){return [];}},setTimeout,clearTimeout,console,fetch:async url=>({ok:true,json:async()=>url==='/api/projects'?[]:url==='/api/fusion'?[{id:'run',agent:'codex',status:'ready',createdAt:'2026-11-04'}]:job})});
  vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);vm.runInContext('updateUrl=()=>{};active="fusion";fusionCurrent="run";fusionSelected="b"',context);
  await vm.runInContext('fusionScreen()',context);const html=element('main').innerHTML;
- assert.match(html,/Analysis history/);assert.match(html,/aria-label="Proposals"/);assert.match(html,/data-fusion-apply="b"/);assert.doesNotMatch(html,/data-fusion-apply="a"/);assert.match(html,/<footer class="fusion-decision">/);
+ assert.match(html,/Recent analyses/);assert.match(html,/2 proposals · 2 to review/);assert.match(html,/aria-label="Proposals"/);assert.match(html,/data-fusion-apply="b"/);assert.doesNotMatch(html,/data-fusion-apply="a"/);assert.match(html,/<footer class="fusion-decision">/);
 });
 
 test('Library drops cached private records before rendering counts, search or dependency map',()=>{
@@ -645,4 +645,16 @@ test('skill diagnostics groups shared requirements, filters locally and rescans 
  element('skillStatus').value='issues';element('skillStatus').listeners.change();assert.match(element('skillResults').innerHTML,/No skills match/);
  vm.runInContext('skillStatus="all";skillRecord="a";renderSkillResults()',context);assert.doesNotMatch(element('skillResults').innerHTML,/Style B/);
  const markup=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');assert.match(markup,/data-view="skills"/);assert.doesNotMatch(markup,/id="discoveryDialog"/);
+});
+
+test('Fusion start screen shows project cards and names how many projects the primary action analyzes',async()=>{
+ const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',addEventListener(){},querySelectorAll(){return [];}});return elements.get(id);};
+ const projects=[{id:'a',name:'Alpha',assignments:[{recordId:'x'},{recordId:'y'}]},{id:'b',name:'Beta',assignments:[{recordId:'z'}]}];
+ const context=vm.createContext({document:{getElementById:element,addEventListener(){},querySelectorAll(){return [];}},setTimeout,clearTimeout,console,fetch:async url=>({ok:true,json:async()=>url==='/api/projects'?projects:[]})});
+ vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
+ vm.runInContext('updateUrl=()=>{};active="fusion";fusionCurrent="";fusionProjects=null',context);
+ await vm.runInContext('fusionScreen()',context);let html=element('main').innerHTML;
+ assert.match(html,/Analyze 2 projects/);assert.match(html,/3 selected styles will be compared/);assert.match(html,/class="fusion-project is-chosen"/);assert.match(html,/aria-current="step"><span>1<\/span>/);
+ vm.runInContext('fusionProjects=[]',context);await vm.runInContext('fusionScreen()',context);html=element('main').innerHTML;
+ assert.match(html,/type="submit" disabled>Choose a project/);
 });

@@ -4,7 +4,7 @@ import { mkdtempSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {join} from "node:path";
 import { BrainDB } from "../src/core/database.ts";
-import { createBrainHttpServer } from "../src/server/http.ts";
+import { createBrainHttpServer, installInfo } from "../src/server/http.ts";
 
 test("local HTTP UI is served and API opens without a token",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"pb-http-")),db=new BrainDB(join(dir,"brain.sqlite"));const server=createBrainHttpServer(db);
@@ -17,4 +17,9 @@ test("local HTTP UI is served and API opens without a token",async()=>{
     const ok=await fetch(base+"/api/summary",{headers:{Authorization:"Bearer test-secret"}});assert.equal(ok.status,200);
     const crossOrigin=await fetch(base+"/api/summary",{headers:{Authorization:"Bearer test-secret",Origin:"https://bad.example"}});assert.equal(crossOrigin.status,403);
   }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test("install info reports version, build time and a command for this copy",()=>{
+ const info=installInfo();
+ assert.equal(info.mode,"source");assert.match(info.version,/^\d+\.\d+\.\d+/);assert.match(info.raw,/scripts\/run\.mjs .*src\/cli\.ts$/);
 });

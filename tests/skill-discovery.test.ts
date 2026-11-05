@@ -86,7 +86,7 @@ test("HTTP discovery remains read-only; item lists surface missing skills",async
   db.db.prepare("INSERT INTO meta(key,value) VALUES(?,?)").run("repository:"+p.id,repo);
   const preview=await request("/api/projects/"+p.id+"/discovery");assert.equal(preview.status,200);assert.equal(preview.data.selectedStyles.length,0);
   const created=await request("/api/projects/"+p.id+"/discovery","POST");assert.equal(created.status,200);assert.equal(created.data.projectId,p.id);assert.equal(db.list({projectId:p.id}).filter(r=>r.projectId===p.id).length,0);
-  const record=db.create({projectId:p.id,kind:"preference",domain:"coding",title:"Missing skill",summary:"",content:"Test",tags:[],externalSkills:["not-installed-unique-test-skill"],priority:70,status:"draft",checks:[],backend:null});
+  const record=db.create({projectId:p.id,kind:"preference",domain:"engineering-standards",title:"Missing skill",summary:"",content:"Test",tags:[],externalSkills:["not-installed-unique-test-skill"],priority:70,status:"draft",checks:[],backend:null});
   const items=(await request("/api/items?projectId="+p.id)).data;assert.deepEqual(items.find((r:any)=>r.id===record.id).skillWarnings,["not-installed-unique-test-skill: missing"]);
   const denied=await request("/api/projects/"+p.id+"/discovery","POST","https://example.org");assert.equal(denied.status,403);
  }finally{server.close();db.close();rmSync(dir,{recursive:true,force:true});}

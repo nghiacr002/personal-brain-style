@@ -9,6 +9,7 @@ import { createBrainHttpServer } from "./server/http.ts";
 import { mcpMain } from "./agents/mcp.ts";
 import { executeHook, simulateHook } from "./agents/hooks.ts";
 import { manageHookConfig } from "./agents/hook-install.ts";
+import { connectAgent, mcpAddArgs, shellJoin } from "./agents/launcher.ts";
 
 const scriptPath=resolve(fileURLToPath(import.meta.url));
 const runnerPath=resolve(dirname(scriptPath),"../scripts/run.mjs");
@@ -22,7 +23,7 @@ if(arg==="desktop") {
     console.log(JSON.stringify(configureDesktop(action,options),null,2));
   }catch(error){console.error(error instanceof Error?error.message:String(error));process.exitCode=1;}finally{db.close();}
 }else if(arg==="mcp") {
-  if(["claude","codex"].includes(process.argv[3]||""))process.env.PB_AGENT=process.argv[3];
+  if(["claude","codex","opencode"].includes(process.argv[3]||""))process.env.PB_AGENT=process.argv[3];
   if(process.argv[3]==="chatgpt"&&!process.argv[4])throw new Error("ChatGPT requires an explicit project ID: mcp chatgpt <projectId>");
   await mcpMain(db,process.argv[3]==="chatgpt"?process.argv[4]:undefined);
   db.close();
@@ -44,18 +45,27 @@ if(arg==="desktop") {
   process.once("SIGINT",()=>{server.close(()=>{db.close();process.exit(0);});});
 }else if(arg==="hook"){
   const agent=process.argv[3];const phase=process.argv[4];
-  if(!["claude","codex"].includes(agent)||!["session","prompt"].includes(phase)){console.error("Usage: hook claude|codex session|prompt");process.exitCode=2;}
-  else executeHook(db,agent as "claude"|"codex",phase as "session"|"prompt");
+  if(!["claude","codex","opencode"].includes(agent)||!["session","prompt"].includes(phase)){console.error("Usage: hook claude|codex|opencode session|prompt");process.exitCode=2;}
+  else executeHook(db,agent as "claude"|"codex"|"opencode",phase as "session"|"prompt");
+  db.close();
+}else if(arg==="connect"||arg==="disconnect"){
+  // One step per agent: hooks or plugin, plus MCP registration through the agent's own CLI.
+  const target=process.argv[3]||"";
+  if(!["claude","codex","opencode","all"].includes(target)){console.error(`Usage: ${arg} claude|codex|opencode|all`);process.exitCode=2;}
+  else for(const agent of target==="all"?["claude","codex","opencode"] as const:[target as "claude"|"codex"|"opencode"]){
+    for(const step of connectAgent(arg,agent)){console.log(`${step.ok?"✓":"✗"} ${agent} ${step.step}: ${step.detail}`);if(!step.ok)process.exitCode=1;}
+  }
+  if(arg==="connect"&&!process.exitCode)console.log("Restart "+(target==="all"?"each agent":target)+" to load Personal Brain."+(["codex","all"].includes(target)?" In Codex, open /hooks and trust the Personal Brain hooks.":""));
   db.close();
 }else if(arg==="hooks"){
   const action=process.argv[3]||"status";const agents=process.argv[4]||"both";
-  if(!["install","remove","status"].includes(action)||!["claude","codex","both"].includes(agents)){console.error("Usage: hooks install|remove|status [claude|codex|both]");process.exitCode=2;}
-  else for(const agent of agents==="both"?["claude","codex"]:[agents]){const result=manageHookConfig(action as "install"|"remove"|"status",agent as "claude"|"codex");console.log(JSON.stringify(result));}
+  if(!["install","remove","status"].includes(action)||!["claude","codex","opencode","both","all"].includes(agents)){console.error("Usage: hooks install|remove|status [claude|codex|opencode|both|all]");process.exitCode=2;}
+  else for(const agent of agents==="both"?["claude","codex"]:agents==="all"?["claude","codex","opencode"]:[agents]){const result=manageHookConfig(action as "install"|"remove"|"status",agent as "claude"|"codex"|"opencode");console.log(JSON.stringify(result));}
   db.close();
 }else if(arg==="preview"){
   const agent=process.argv[3]||"claude";const phase=process.argv[4]||"session";const task=process.argv.slice(5).join(" ");
-  if(!["claude","codex"].includes(agent)||!["session","prompt"].includes(phase)){console.error("Usage: preview claude|codex session|prompt [task]");process.exitCode=2;}
-  else console.log(simulateHook(db,agent as "claude"|"codex",phase as "session"|"prompt",{prompt:task}));
+  if(!["claude","codex","opencode"].includes(agent)||!["session","prompt"].includes(phase)){console.error("Usage: preview claude|codex|opencode session|prompt [task]");process.exitCode=2;}
+  else console.log(simulateHook(db,agent as "claude"|"codex"|"opencode",phase as "session"|"prompt",{prompt:task}));
   db.close();
 }else if(arg==="seed"){
   console.log(`Added ${seeded} global library records. Existing changes preserved.`);db.close();
@@ -68,7 +78,7 @@ if(arg==="desktop") {
   else {console.error("Usage: trace stats|demo|clear-demo|export [--demo]");process.exitCode=2;}
   db.close();
 }else if(arg==="doctor"){
-  console.log(JSON.stringify({node:process.version,nodeSupported:Number(process.versions.node.split(".")[0])>=22,db:dbPath(),dataDir:defaultHome(),summary:db.summary(),toolProxyEnabled:process.env.PB_ENABLE_TOOL_PROXY==="1",mcpRegistration:{claude:`claude mcp add --transport stdio --scope user personal-brain -- node ${runnerPath} ${scriptPath} mcp claude`,codex:`codex mcp add personal-brain -- node ${runnerPath} ${scriptPath} mcp codex`}},null,2));db.close();
+  console.log(JSON.stringify({node:process.version,nodeSupported:Number(process.versions.node.split(".")[0])>=22,db:dbPath(),dataDir:defaultHome(),summary:db.summary(),toolProxyEnabled:process.env.PB_ENABLE_TOOL_PROXY==="1",mcpRegistration:{claude:shellJoin(["claude",...mcpAddArgs("claude")]),codex:shellJoin(["codex",...mcpAddArgs("codex")]),opencode:"personal-brain connect opencode (the plugin registers the MCP server)"},connect:"personal-brain connect claude|codex|opencode|all"},null,2));db.close();
 }else if(arg==="bootstrap"){
   console.log(db.bootstrap());db.close();
 }else if(arg==="export"){

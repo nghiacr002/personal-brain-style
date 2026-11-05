@@ -4,16 +4,16 @@ Projects hold working preferences, not repository contents or business data.
 
 ## Workflow
 
-1. Open Library. Choose Style, Skill, Example or Review, and create a record in the appropriate domain.
+1. Open Library. Choose Style, Skill, Template or Review, and create a record in the appropriate capability. Templates are reusable document outlines, code scaffolds or prompt starters; their stored kind remains `example`.
 2. Save the record as Active when ready for agents.
 3. Open Projects → New Project. Enter its name and description.
-4. Select active library records. Choose at most one record per type and domain; conflicts return an error and retain the form.
+4. Select active library records. In a combinable capability (all nine release-catalog capabilities) you may select several records of the same type. In a Pick one capability choose at most one record per type; conflicts return an error and retain the form.
 5. Optionally enter project-only instructions beside an assigned record. Leave blank to inherit the shared instructions. Review checks stay in the shared record.
 6. Save. The project page displays the effective instructions and their source: Project override, Project selection or Required dependency.
 
-A project uses only explicit selections and their transitive required dependencies. An empty project has no applicable records. Global defaults apply only when no project ID is supplied. Required dependencies use their shared content unless explicitly overridden in the project; conflicting records in the same type/domain slot produce an error. Arbitrary natural-language contradictions are not automatically detected. A project-only override replaces the selected record's content, without changing the library.
+A project uses only explicit selections and their transitive required dependencies. An empty project has no applicable records. Global defaults apply only when no project ID is supplied. Required dependencies use their shared content unless explicitly overridden in the project; conflicting records in the same type slot of a Pick one capability produce an error. Arbitrary natural-language contradictions are not automatically detected. A project-only override replaces the selected record's content, without changing the library.
 
-Projects reference the latest active record version. If a selected record is archived, or edits introduce a slot conflict, scoped retrieval fails with an actionable error. Configure the project to repair it. Project updates use expectedVersion to reject stale saves.
+Projects reference the latest active record version. If a selected record is archived, or edits introduce a slot conflict in a Pick one capability, scoped retrieval fails with an actionable error. Configure the project to repair it. Project updates use expectedVersion to reject stale saves.
 
 ## Agent scope
 

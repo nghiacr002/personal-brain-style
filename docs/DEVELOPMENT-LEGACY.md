@@ -1,5 +1,7 @@
 # Personal Brain v1.2 — Style Studio + Trace Explorer
 
+> **Legacy document.** This describes the pre-catalog legacy installers and samples. Fresh installs use the release catalog instead; see [STYLE-CATALOG.md](STYLE-CATALOG.md). Where this document says required links allow eight IDs, the current limit is 12. The Trace Explorer sample-trace UI it mentions was removed; see [TRACE.md](TRACE.md).
+
 **A local, reusable personal working-style brain for Claude Code and Codex.** It is **not** a codebase memory system, project memory, or agent harness.
 
 Personal Brain supplies global thinking, architecture, diagram, writing, design, and review standards using automatic hooks and a discoverable MCP server. It also records *what the CLIs requested* without claiming to know how the model reasoned internally.

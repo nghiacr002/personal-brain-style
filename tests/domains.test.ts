@@ -28,3 +28,16 @@ test("domain registry persists names without breaking records, revisions or proj
   assert.equal(db.list({domain:domain.id})[0].id,r.id);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test("combinable capabilities let a project stack styles; switching back is refused while styles stack",()=>{
+ const dir=mkdtempSync(join(tmpdir(),"pb-combinable-"));const db=new BrainDB(join(dir,"brain.sqlite"));
+ try{
+  db.saveDomain("Engineering standards",undefined,undefined,true);
+  const input={kind:"preference" as const,domain:"engineering-standards",summary:"s",content:"c",tags:[],priority:70,status:"active" as const,checks:[],backend:null};
+  const base=db.create({...input,title:"Frontend"}),ts=db.create({...input,title:"Frontend TS",requiredIds:[base.id]}),be=db.create({...input,title:"Backend TS"});
+  const p=db.saveProject({name:"P",description:"",assignments:[ts,be].map(r=>({recordId:r.id,override:null}))});
+  assert.deepEqual(db.scopedRecords(p.id).map(r=>r.title).sort(),["Backend TS","Frontend","Frontend TS"]);
+  assert.throws(()=>db.saveDomain("Engineering standards","engineering-standards","Engineering standards",false),/conflict/i);
+  assert.equal(db.domains().find(d=>d.id==="engineering-standards")!.combinable,true);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});

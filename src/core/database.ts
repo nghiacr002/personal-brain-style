@@ -27,7 +27,7 @@ function checkInput(raw: unknown): RecordInput {
   if (typeof x.priority !== "number" || !Number.isInteger(x.priority) || x.priority < 0 || x.priority > 100) throw new BrainError("Priority must be 0-100");
   if (!["active", "draft", "archived"].includes(String(x.status))) throw new BrainError("Invalid status");
   if (!Array.isArray(x.checks) || x.checks.length > 30) throw new BrainError("Invalid review checks");
-  if(x.requiredIds!==undefined&&(!Array.isArray(x.requiredIds)||x.requiredIds.length>8||!x.requiredIds.every(id=>typeof id==="string")))throw new BrainError("Required links must contain at most 8 record IDs");
+  if(x.requiredIds!==undefined&&(!Array.isArray(x.requiredIds)||x.requiredIds.length>12||!x.requiredIds.every(id=>typeof id==="string")))throw new BrainError("Required links must contain at most 12 record IDs");
   for(const field of ["principles","externalSkills","reviewCriteria","examples"]){
     if(x[field]!==undefined&&(!Array.isArray(x[field])||(x[field] as unknown[]).length>30||!(x[field] as unknown[]).every(v=>typeof v==="string"&&v.trim().length>0&&v.length<=2000)))throw new BrainError("Invalid "+field);
   }
@@ -71,7 +71,7 @@ export class BrainDB {
       CREATE TABLE IF NOT EXISTS revisions (id TEXT PRIMARY KEY, record_id TEXT NOT NULL, version INTEGER NOT NULL, action TEXT NOT NULL, snapshot TEXT NOT NULL, at TEXT NOT NULL, UNIQUE(record_id,version));
       CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, record_id TEXT, rating TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, snapshot TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS domains (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE);
+      CREATE TABLE IF NOT EXISTS domains (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, combinable INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, action TEXT NOT NULL, target TEXT NOT NULL, created_at TEXT NOT NULL, detail TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS trace_events (
@@ -82,6 +82,7 @@ export class BrainDB {
       CREATE INDEX IF NOT EXISTS trace_by_time ON trace_events(occurred_at DESC);
       CREATE INDEX IF NOT EXISTS trace_by_run ON trace_events(run_id, occurred_at);
     `);
+    if(!(this.db.prepare("SELECT name FROM pragma_table_info('domains')").all() as {name:string}[]).some(c=>c.name==="combinable"))this.db.exec("ALTER TABLE domains ADD COLUMN combinable INTEGER NOT NULL DEFAULT 0");
     for(const id of DOMAINS)if(!this.db.prepare("SELECT 1 FROM meta WHERE key=?").get("deleted-domain:"+id))this.db.prepare("INSERT OR IGNORE INTO domains(id,name) VALUES(?,?)").run(id,id);
     if(!this.db.prepare("SELECT value FROM meta WHERE key='capability_names_v1'").get())this.transaction(()=>{
       const names:Record<string,string>={general:"General",thinking:"Thinking",architecture:"Architecture",diagrams:"Diagrams",writing:"Writing",coding:"Coding",technology:"Technology selection",reviews:"Review",communication:"Communication",design:"UI/UX Design",tools:"MCP tools"};
@@ -112,9 +113,12 @@ export class BrainDB {
       this.db.prepare("INSERT INTO meta(key,value) VALUES('discovery_metadata_v1','1')").run();
     });
   }
-  domains():Array<{id:string;name:string}> {return this.db.prepare("SELECT id,name FROM domains ORDER BY name COLLATE NOCASE").all() as Array<{id:string;name:string}>;}
+  domains():Array<{id:string;name:string;combinable:boolean}> {return (this.db.prepare("SELECT id,name,combinable FROM domains ORDER BY name COLLATE NOCASE").all() as Array<{id:string;name:string;combinable:number}>).map(d=>({id:d.id,name:d.name,combinable:!!d.combinable}));}
+  // Projects pick one style per kind and capability, except in combinable capabilities where styles stack.
+  selectionSlot(record:Pick<BrainRecord,"id"|"kind"|"domain">):string {const row=this.db.prepare("SELECT combinable FROM domains WHERE id=?").get(record.domain) as {combinable:number}|undefined;return record.kind+":"+record.domain+(row?.combinable?":"+record.id:"");}
   hasDomain(id:unknown):id is Domain {return validDomain(id)&&!!this.db.prepare("SELECT 1 FROM domains WHERE id=?").get(id);}
-  saveDomain(name:unknown,id?:string,expectedName?:unknown) {
+  saveDomain(name:unknown,id?:string,expectedName?:unknown,combinable?:unknown) {
+    if(combinable!==undefined&&typeof combinable!=="boolean")throw new BrainError("Combinable must be true or false");
     if(typeof name!=="string"||!name.trim()||name.trim().length>60)throw new BrainError("Domain name must have 1-60 characters");
     const label=name.trim();const key=id||slug(label);
     if(!validDomain(key)||key==="all")throw new BrainError("Use a domain name starting with a letter");
@@ -124,8 +128,13 @@ export class BrainDB {
       if(id&&existing?.name!==expectedName)throw new BrainError("Domain changed. Refresh and try again.","CONFLICT",409);
       if((!id&&existing)||this.domains().some(d=>d.id!==id&&d.name.toLowerCase()===label.toLowerCase()))throw new BrainError("Domain already exists","CONFLICT",409);
       this.db.prepare("INSERT INTO domains(id,name) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name").run(key,label);
+      if(combinable!==undefined){
+        this.db.prepare("UPDATE domains SET combinable=? WHERE id=?").run(combinable?1:0,key);
+        // Turning combining off must not leave a project with two styles in one capability.
+        if(!combinable)for(const p of this.projects())this.scopedRecords(p.id);
+      }
       this.audit(id?"rename-domain":"create-domain",key,label);
-      return {id:key,name:label};
+      return this.domains().find(d=>d.id===key)!;
     });
   }
   close() { this.db.close(); }
@@ -185,7 +194,7 @@ export class BrainDB {
   projectDefaultStyleIds():string[]{
     const row=this.db.prepare("SELECT value FROM meta WHERE key='new_project_style_defaults_v1'").get() as {value:string}|undefined;
     const ids:string[]=row?JSON.parse(row.value):[];const slots=new Set<string>();
-    return ids.filter(id=>{const r=this.get(id);if(!r||r.projectId||r.status!=="active")return false;const slot=r.kind+":"+r.domain;if(slots.has(slot))return false;slots.add(slot);return true;});
+    return ids.filter(id=>{const r=this.get(id);if(!r||r.projectId||r.status!=="active")return false;const slot=this.selectionSlot(r);if(slots.has(slot))return false;slots.add(slot);return true;});
   }
   summary() {
     const all = this.list({limit:300});
@@ -355,7 +364,7 @@ export class BrainDB {
     runId?: string | null; recordIds?: string[]; recordVersions?: Record<string,number>; metadata?: Record<string, unknown>; demo?: boolean;
   }) {
     const safe = (value:unknown, limit=160) => String(value ?? "").slice(0, limit);
-    const allowed = ["claude", "codex", "chatgpt", "unknown", "web", "test"];
+    const allowed = ["claude", "codex", "opencode", "chatgpt", "unknown", "web", "test"];
     const agent = allowed.includes(event.agent) ? event.agent : "unknown";
     const runId = safe(event.runId || `${agent}:${event.channel}:unlinked`, 180);
     // Whitelist telemetry keys; explicit compliance submissions also contain bounded review evidence.
@@ -506,7 +515,7 @@ export class BrainDB {
         const record=this.get(a.recordId);
         if(!record||record.status!=="active"||record.kind==="tool")throw new BrainError("Select an active library record");
         if(record.projectId&&record.projectId!==id)throw new BrainError("Style belongs to another project");
-        const slot=record.kind+":"+record.domain;
+        const slot=this.selectionSlot(record);
         if(slots.has(slot))throw new BrainError("Conflicting selections: choose one "+record.kind+" for "+record.domain);
         slots.add(slot);
         if(a.override!==null&&(typeof a.override!=="string"||!a.override.trim()||a.override.length>100000))throw new BrainError("Override must be non-empty text or null");
@@ -629,7 +638,7 @@ export class BrainDB {
     });
     const slots=new Set<string>();
     for(const record of selected){
-      const slot=record.kind+":"+record.domain;
+      const slot=this.selectionSlot(record);
       if(slots.has(slot))throw new BrainError("Project selections now conflict in "+slot+". Update the project configuration.");
       slots.add(slot);
     }
@@ -644,7 +653,7 @@ export class BrainDB {
         if(!linked){
           const shared=all.find(r=>r.id===id&&(!r.projectId||r.projectId===projectId));
           if(!shared)throw new BrainError("Required linked style is inactive or unavailable: "+id);
-          const slot=shared.kind+":"+shared.domain;
+          const slot=this.selectionSlot(shared);
           if(slots.has(slot))throw new BrainError("Required linked style conflicts with project selection: "+id);
           linked={...shared,source:"Required dependency"};effective.set(id,linked);slots.add(slot);
         }

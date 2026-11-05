@@ -19,7 +19,7 @@ export function fusionJob(db:BrainDB,id:string):FusionJob{
  if(job.status==='running'&&!running.has(id)){job.status='failed';job.error='Server restarted during this run. Start a new analysis.';save(db,job);}
  return job;
 }
-export function fusionHistory(db:BrainDB){return (db.db.prepare("SELECT value FROM meta WHERE key LIKE 'fusion:%' ORDER BY rowid DESC LIMIT 20").all() as {value:string}[]).map(r=>{const j=fusionJob(db,JSON.parse(r.value).id);return {id:j.id,agent:j.agent,status:j.status,createdAt:j.createdAt};});}
+export function fusionHistory(db:BrainDB){return (db.db.prepare("SELECT value FROM meta WHERE key LIKE 'fusion:%' ORDER BY rowid DESC LIMIT 20").all() as {value:string}[]).map(r=>{const j=fusionJob(db,JSON.parse(r.value).id);return {id:j.id,agent:j.agent,status:j.status,createdAt:j.createdAt,projectIds:j.projectIds,proposals:j.proposals.length,decided:j.applied.length+(j.rejected||[]).length};});}
 export function fusionInput(db:BrainDB,projectIds:unknown){
  if(!Array.isArray(projectIds)||!projectIds.length||projectIds.length>30||!projectIds.every(id=>typeof id==='string'))throw new BrainError('Select 1–30 projects');
  const sources:FusionSource[]=[];

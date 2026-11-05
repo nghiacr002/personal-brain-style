@@ -1,40 +1,33 @@
 # Connect ChatGPT to a project
 
-Personal Brain provides a read-only, project-pinned MCP mode:
+Personal Brain provides a read-only, project-pinned MCP mode: `personal-brain mcp chatgpt <projectId>`. You normally do not run it yourself; the connect command below starts it through the tunnel.
 
-```sh
-node scripts/run.mjs src/cli.ts mcp chatgpt <projectId>
-```
-
-Use **Agent setup → ChatGPT chat** to select a project and obtain the absolute command for this installation. Keep the command and runtime key private. The server shares the selected styles and their required dependencies, including their stored text and examples. Review those contents before sharing with ChatGPT.
+Use **Agent setup → ChatGPT** to select a project. Keep the runtime key private. The server shares the selected styles and their required dependencies, including their stored text and templates. Review those contents before sharing with ChatGPT.
 
 ## Guided connection
 
-1. Open **Agent setup → ChatGPT chat**, select your project, and click **Copy connection command**.
-2. Paste it into Terminal. The command validates the project and starts the setup helper. If tunnel-client is missing, it provides the official download page.
-3. Enter the tunnel ID and runtime key when prompted. Key input is hidden. Personal Brain does not save the key or put it in command arguments; it is passed to the tunnel client through its process environment.
-4. The helper checks configuration with tunnel-client doctor. Only a successful check proceeds to starting the foreground tunnel.
-5. Once the tunnel reports healthy, add it through [ChatGPT connector settings](https://chatgpt.com/#settings/Connectors) and enable it in your chat. Keep the terminal open; Ctrl+C stops the tunnel.
+Agent setup shows four steps with progress. Ticks are remembered per browser and per project.
 
-For an npm/npx installation, run (no source checkout needed):
+1. **Check prerequisites.** Agent setup detects tunnel-client on the server's PATH; if it is missing, install it from [OpenAI Platform → Tunnels](https://platform.openai.com/settings/organization/tunnels). An admin of your ChatGPT workspace must allow custom MCP servers. On OpenAI Platform you need Tunnels Read + Manage to create a tunnel and Tunnels Read + Use to run it; role changes can take up to 30 minutes.
+2. **Create a tunnel and a key.** Open [Tunnels](https://platform.openai.com/settings/organization/tunnels), create a tunnel, link it to your ChatGPT workspace and copy its `tunnel_…` ID. Create a key with Tunnels Read + Use under [API keys](https://platform.openai.com/settings/organization/api-keys).
+3. **Start the tunnel.** Copy the connect command shown and paste it into Terminal. It prompts for the tunnel ID and the key (input hidden), runs `tunnel-client doctor`, and starts `tunnel-client run` only when the check succeeds. Keep Terminal open while you use ChatGPT; Ctrl+C stops it. Personal Brain does not save the key or put it in command arguments; it reaches tunnel-client through its process environment.
+4. **Add it in ChatGPT.** Open [ChatGPT Plugins](https://chatgpt.com/plugins), select **+** → **Add custom MCP server**, choose **Connection: Tunnel**, pick your tunnel, then **I understand and want to continue** → **Create as a plugin**. Turn the plugin on in a chat and test it, for example: "Use Personal Brain to find my styles for writing a BRD." If the tunnel is not listed, check that it is linked to your ChatGPT workspace and that you have Tunnels Read + Use.
 
-```sh
-npx --yes personal-brain-style chatgpt-connect <projectId>
-```
+The status badge changes to **Connected · last request …** by itself (the page polls every 5 seconds) only after ChatGPT makes a real tool call. Handshake and tool-list requests, such as those from `tunnel-client doctor`, do not count.
 
-If installed globally, use `personal-brain chatgpt-connect <projectId>`.
+### Connect command
 
-For a source checkout, run from the repository root:
+The guide always shows the installed command:
 
 ```sh
-node scripts/run.mjs src/cli.ts chatgpt-connect <projectId>
+personal-brain chatgpt-connect <projectId>
 ```
 
-The command copied from Agent setup uses the running installation’s absolute paths. The npm package includes its launcher in `dist/scripts` and compiled CLI in `dist/src`; it does not need a repository-root `scripts` folder. If an npx cache is cleared, run the npx command above again.
+If `personal-brain` is not installed, the guide says so and offers, under **Other ways to run it**: installing it once (`npm install -g personal-brain-style@beta`), running without installing (`npx --yes personal-brain-style@<version> chatgpt-connect <projectId>`, pinned to the running version), or, from a source checkout, the absolute command for that checkout.
 
 Existing CONTROL_PLANE_TUNNEL_ID and CONTROL_PLANE_API_KEY environment variables are reused. Otherwise the helper prompts for them each launch. It does not install a background service or persist credentials.
 
-Create the tunnel and download the supported client from [OpenAI Platform](https://platform.openai.com/settings/organization/tunnels). Create a runtime key with Tunnels Read + Use permissions from [API keys](https://platform.openai.com/settings/organization/api-keys). Workspace permission to add custom MCP plugins is required. Personal Brain cannot grant that permission or enable a plugin on your behalf.
+Personal Brain cannot grant workspace or Platform permissions, or enable a plugin on your behalf.
 
 See the [OpenAI guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) and [official tunnel-client instructions](https://github.com/openai/tunnel-client/blob/master/docs/onboarding.md).
 

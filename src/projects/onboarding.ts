@@ -29,15 +29,16 @@ export function createLinkedProject(db:BrainDB,project:unknown,folder:unknown){
   throw error;
  }
 }
-export function validateRecommendations(value:unknown,styles:BrainRecord[],projectId?:string){
+export function validateRecommendations(value:unknown,styles:BrainRecord[],projectId?:string,combinable:ReadonlySet<string>=new Set()){
  const rows=(value as {recommendations?:unknown})?.recommendations;
  if(!Array.isArray(rows)||rows.length>30)throw new BrainError('AI must return at most 30 style recommendations.');
  const slots=new Set<string>();
  return rows.map(row=>{
   const style=styles.find(r=>r.id===row?.id);
   if(!style||(style.projectId&&style.projectId!==projectId)||style.status!=='active'||style.kind!=='preference')throw new BrainError('AI returned an unavailable style. Try again or select styles manually.');
-  if(slots.has(style.domain))throw new BrainError('AI recommended conflicting styles. Try again or select styles manually.');
-  slots.add(style.domain);
+  const slot=combinable.has(style.domain)?style.domain+':'+style.id:style.domain;
+  if(slots.has(slot))throw new BrainError('AI recommended conflicting styles. Try again or select styles manually.');
+  slots.add(slot);
   if(typeof row.reason!=='string'||!row.reason.trim()||row.reason.length>2000)throw new BrainError('AI returned an invalid recommendation reason.');
   if(row.customizationNote!==undefined&&(typeof row.customizationNote!=='string'||!row.customizationNote.trim()||row.customizationNote.length>2000))throw new BrainError('AI returned an invalid customization note.');
   if(row.projectGuidelines!==undefined&&(typeof row.projectGuidelines!=='string'||row.projectGuidelines.length>12000))throw new BrainError('AI returned invalid project guidelines.');
@@ -80,6 +81,6 @@ export async function recommendProjectStyles(db:BrainDB,folder:unknown,agent:unk
    });
    child.stdin.end(prompt);
   });
-  return {recommendations:validateRecommendations(parseFusionOutput(text),styles,projectId),files:source.evidence.map(e=>e.file),issues:source.issues,limited:source.truncated||source.nextOffset!==null};
+  return {recommendations:validateRecommendations(parseFusionOutput(text),styles,projectId,new Set(db.domains().filter(d=>d.combinable).map(d=>d.id))),files:source.evidence.map(e=>e.file),issues:source.issues,limited:source.truncated||source.nextOffset!==null};
  }finally{analyzing=false;rmSync(work,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }

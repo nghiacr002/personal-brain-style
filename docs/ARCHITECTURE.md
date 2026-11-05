@@ -6,16 +6,16 @@ This is a **personal working style product**. It is not a codebase index, projec
 
 - **Persistent:** global preferences, skills, examples, tool catalog, review criteria and feedback.
 - **Versioned:** every edit is stored as a snapshot revision. Restores create new revisions.
-- **Portable:** Claude Code and Codex access the same MCP server using native stdio connections.
+- **Portable:** Claude Code, Codex CLI and OpenCode access the same MCP server using native stdio connections. ChatGPT gets a read-only, project-pinned mode through the OpenAI Secure MCP Tunnel; Claude Desktop has its own MCP entry.
 - **Discoverable:** compact task-based search returns metadata, then specific instructions are loaded on demand.
 - **Local-first:** SQLite WAL and a web UI bound to loopback.
 
 ## Component boundaries
 
 ```text
- Claude Code CLI      Codex CLI
-       |                  |
-       +--------+---------+
+ Claude Code CLI   Codex CLI   OpenCode (plugin)
+       |               |             |
+       +---------------+-------------+
                 | MCP stdio
       +---------v----------+
       | Personal Brain MCP |
@@ -38,7 +38,7 @@ This is a **personal working style product**. It is not a codebase index, projec
 ```mermaid
 sequenceDiagram
     actor User
-    participant Agent as Claude or Codex
+    participant Agent as Claude, Codex or OpenCode
     participant Brain as Personal Brain MCP
     participant DB as Style Database
     participant Tool as External MCP
@@ -62,14 +62,20 @@ sequenceDiagram
 
 | Table | Purpose |
 |---|---|
-| `records` | Current state of style, skill, example, review, and tool entries |
+| `records` | Current state of style, skill, example (shown as Templates), review, and tool entries |
+| `domains` | Capabilities, with a `combinable` flag |
+| `projects` | Project selections, overrides and version |
 | `revisions` | Immutable-by-API snapshots per record version |
 | `feedback` | User corrections, approvals, rejections to review |
 | `audit` | Creation, modification, restore, feedback operations |
 | `meta` | Internal metadata including the keyed prompt-trace HMAC secret |
 | `trace_events` | Privacy-minimized hook and MCP call evidence, record IDs, versions, and demo marker |
 
-Each record has an ID, kind, domain, title, summary, body, search tags, priority, status, version, timestamps, optional deterministic checks, and optional external MCP backend configuration.
+Each record has an ID, kind, domain, title, summary, body, search tags, priority, status, version, timestamps, optional deterministic checks, optional required links (`requiredIds`, up to 12 record IDs, no cycles), and optional external MCP backend configuration. The UI labels kind `example` as **Templates**; the stored kind and API value stay `example`.
+
+### Selection rules
+
+A project selects styles per capability (domain). In a **combinable** capability a project may select several styles of the same kind; in a **Pick one** capability it may select one style of each kind. All nine release-catalog capabilities are combinable. Switching a capability to Pick one is refused while any project selects two styles in it. Required styles load transitively; format styles (Draw.io, Mermaid) are selected per project, never required.
 
 ### Revision contract
 
@@ -111,13 +117,15 @@ The browser API requires no login or access token. The UI listens only on 127.0.
 
 ## Automatic activation integration (v1.1)
 
-Personal Brain uses the built-in lifecycle hook APIs of both Claude Code and Codex CLI. These are not additional agent harnesses.
+Personal Brain uses the built-in lifecycle hook APIs of Claude Code and Codex CLI, and a plugin for OpenCode. These are not additional agent harnesses.
 
 - `SessionStart`: invokes `src/cli.ts hook <agent> session`. Reads SQLite preference baseline and injects a short shared policy. Uses JSON `hookSpecificOutput.additionalContext`.
 - `UserPromptSubmit`: invokes `src/cli.ts hook <agent> prompt`. Reads the submitted task from hook stdin, classifies its intent, ranks active knowledge records and injects only the relevant skills and preferences.
-- Normal MCP server: separately registered using the existing `connect-macos.sh` script; deeper discovery is optional on demand.
-- The web UI `Auto Activation` tab shows which hook definitions are installed. It does not assert that a running agent has loaded or trusted the hooks.
-- Installer: `scripts/activate-personal-brain.sh --apply` merges hooks and backs up changed settings. Removal preserves any unrelated hooks or configuration.
+- `personal-brain connect claude|codex|opencode|all` installs the hooks (or the OpenCode plugin) and registers the MCP server through the agent's own CLI (`claude mcp add …`, `codex mcp add …`; an existing entry is removed first). `disconnect` removes both. If the agent CLI is not on PATH, the command to run is printed. `hooks install|remove|status` manages only hooks or the plugin.
+- OpenCode: one managed file, `~/.config/opencode/plugins/personal-brain.js`. Its `config` hook registers the MCP server (`opencode.json` is not edited), `chat.message` runs the session and prompt hooks, and `experimental.chat.system.transform` injects their context. It refuses to overwrite a file it did not create.
+- Install type decides how agents launch Personal Brain (`src/agents/launcher.ts`): a global install uses `personal-brain`; an npx copy uses `npx --yes personal-brain-style@<version>`, pinned so a cleared npx cache does not break registrations; a source checkout uses absolute paths. The UI always shows `personal-brain …` and offers the install, npx and absolute forms when that command is not on PATH.
+- The web UI **Agent setup** page shows one card per agent with its install status, copy buttons and undo command. Status means the hook or plugin file is installed; it does not assert that a running agent has loaded or trusted it.
+- Hook installation merges into existing settings and removal preserves unrelated hooks or configuration.
 
 The product supplies instructions, **not another user message**, and does not automatically start token-consuming agent turns. No project-specific knowledge is stored. Existing Claude and Codex user interaction permissions remain unchanged.
 
@@ -130,23 +138,19 @@ The trace writer is independent of the agent runtime. It records observable fact
 - `src/agents/hooks.ts` records startup and prompt hook output, exactly matched records and their versions, and a keyed digest of the submitted prompt. A hook trace records context **emitted**, not confirmed model consumption.
 - `src/agents/mcp.ts` records handshake, tool listing, and tool invocations. It records skill IDs and versions returned by `brain_discover`, `brain_get`, `brain_style` and `brain_bootstrap` and status for `brain_review`.
 - `src/core/database.ts` owns a shared append-only trace table and a separate demonstration flag. Real usage statistics exclude demo records.
-- `src/server/http.ts` exposes authenticated trace query and synthetic-example endpoints to the UI.
-- `web/app.ts` provides a reverse-trace lookup by preference/skill record, agent and channel, including recorded versions and evidence limitations.
+- `src/server/http.ts` exposes trace query endpoints, plus synthetic-example endpoints kept for development; the UI no longer offers sample traces.
+- `web/app.ts` provides a live-updating timeline and reverse-trace lookup by record, agent (including `opencode` and `chatgpt`) and channel, including recorded versions and evidence limitations.
 
 Hooks and MCP connections are often separate processes. Their run IDs must not be treated as one shared distributed trace unless the host provides a common correlation identifier; Personal Brain does not invent one. There is no prompt/response capture, no monitoring of model reasoning, and no automatic conclusion about instruction effectiveness.
 
 Read [TRACE.md](TRACE.md) for the privacy model and interpretation guide.
 
-## Complete example: edit, discover and verify a style
+## Example: select, discover and verify a catalog style
 
-The sky blue UI calls the same authenticated API; My Styles is the display name for existing `preference` records. No schema or MCP naming change is required.
+1. In **Configure project**, select **Drawing — clear architecture, flows and data models** and the format style **Draw.io — editable architecture, flow and ER diagrams**. Drawing is combinable, so both stay selected. Required styles are added transitively; saving validates them.
+2. Ask a connected agent: "Draw an editable architecture diagram of this service." The prompt hook (or OpenCode plugin) emits matching record IDs. For explicit discovery the agent calls `brain_discover` with the task and `projectId`, then `brain_prepare` or `brain_get` to load the full records and required links.
+3. The agent follows the style's METHOD and DELIVERABLES, uses listed skills only when installed, and reports any it lacks.
+4. Before completion it calls `brain_review` with the prepared `instructionSetId` and evidence per requirement. Visual and editability checks remain the agent's or reviewer's job.
+5. Trace Explorer shows which record versions were emitted or retrieved. Inspect the artifact itself before accepting it.
 
-1. Start the updated server. Server initialization imports the full missing sample library and clearly marked demo traces before accepting requests. The browser also posts to `/api/styles/seed` on connection; repeated imports preserve existing edits. Eleven new recipes start as drafts.
-2. Expand “Sky blue architecture drawing” to read its instructions, example prompt and worked topology. Edit it, customize it and save as Active. The browser sends a new record, or a PUT with `expectedVersion` for an existing recipe.
-3. The API checks origin and record input. BrainDB commits the record and revision together. A stale edit returns 409, with unsaved content retained in the editor.
-4. Ask an agent: “Draw an editable architecture diagram with sky blue groups and explicit trust boundaries.” An installed prompt hook can emit matching active instructions. For explicit discovery use `brain_discover` with that task, then `brain_get` with the returned recipe ID. Drafts are excluded.
-5. A complete topology has Browser → loopback HTTP API → BrainDB → SQLite WAL; Claude/Codex → hooks or MCP stdio → BrainDB; and an optional gated proxy → configured external MCP tool. Label interfaces and show the external process trust boundary.
-6. Produce the editable diagram using available tooling. Check syntax and visually inspect its rendering when supported. Record any missing verification. Style instructions alone do not install or enable drawing tools.
-7. Trace Explorer can show the recipe ID and version emitted or retrieved. Independently inspect the artifact before accepting it. History can restore an earlier rule as a new revision.
-
-The eleven recipes and their complete worked outputs are in [MY-STYLE.md](MY-STYLE.md). Technology comparisons there illustrate a decision method; they are not current vendor research.
+The full catalog is listed in [STYLE-CATALOG.md](STYLE-CATALOG.md). [MY-STYLE.md](MY-STYLE.md) describes the older sample recipes.

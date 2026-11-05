@@ -47,7 +47,7 @@ test("removal API requires a fresh preview and context token estimate excludes d
  const dir=mkdtempSync(join(tmpdir(),"pb-remove-api-")),db=new BrainDB(join(dir,"brain.sqlite")),server=createBrainHttpServer(db);
  const request=(url:string,method="GET",payload?:unknown)=>new Promise<{status:number;data:any}>(resolve=>{let status=0;server.emit("request",{url,method,headers:{},async *[Symbol.asyncIterator](){if(payload)yield JSON.stringify(payload);}},{setHeader(){},writeHead(n:number){status=n;},end(t:string){resolve({status,data:JSON.parse(t)});}});});
  try{
-  const r=db.create(input("Delete via API"));const url="/api/removal/record/"+r.id;
+  const r=db.create(input("Delete via API","foundations"));const url="/api/removal/record/"+r.id;
   assert.equal((await request(url,"POST",{})).status,409);const preview=await request(url);assert.equal((await request(url,"POST",{fingerprint:preview.data.fingerprint})).status,200);assert.equal(db.get(r.id),null);
   db.trace({agent:"codex",channel:"hook",eventType:"hook.session.context",outcome:"emitted",metadata:{contextChars:1001}});
   db.trace({agent:"codex",channel:"hook",eventType:"hook.session.context",outcome:"error",metadata:{contextChars:9000}});

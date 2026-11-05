@@ -1,5 +1,7 @@
 # Personal architecture styles
 
+> **Legacy document.** This describes the pre-catalog legacy installers and samples. Fresh installs use the release catalog instead; see [STYLE-CATALOG.md](STYLE-CATALOG.md). Where this document says required links allow eight IDs, the current limit is 12.
+
 The next HTTP server startup installs three active personal styles once. These are the requested personal records, not the generic samples. The installer marker prevents future startups from overwriting edits or restoring deliberately archived styles.
 
 | Style | Domain | Required-linked styles |

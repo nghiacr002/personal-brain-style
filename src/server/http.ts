@@ -4,7 +4,7 @@ import {fusionHistory,fusionJob,startFusion,applyFusion,rejectFusion,cancelFusio
 import {installResearchStyle} from '../styles/research-style.ts';
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { dirname, join, extname, resolve } from "node:path";
+import { dirname, join, extname, resolve, delimiter, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProjectScope, linkRepository } from "../projects/project-scope.ts";
 import {onboardingFolder,createLinkedProject,recommendProjectStyles} from '../projects/onboarding.ts';
@@ -26,6 +26,7 @@ import { installStyleContracts, installStyleExamples } from "../styles/style-con
 import { installPersonalBrainStyles, upgradeDesignComposition } from "../styles/personal-brain-styles.ts";
 import { installArchitectureStyles } from "../styles/architecture-styles.ts";
 import { manageHookConfig } from "../agents/hook-install.ts";
+import { commandLine } from "../agents/launcher.ts";
 import { BrainError, KINDS, type Domain, type Kind } from "../core/models.ts";
 
 const publicDir=resolve(dirname(fileURLToPath(import.meta.url)),"../../public");
@@ -41,6 +42,17 @@ function allowOrigin(req:IncomingMessage) {
   if(!origin)return true;
   try {const parsed=new URL(origin);return parsed.hostname==="127.0.0.1" && parsed.protocol==="http:" && parsed.host===req.headers.host;}catch{return false;}
 }
+// How this copy was installed decides which command a user can paste later:
+// npx caches can be cleared, so they get the npx form; a global install gets the bin name;
+// a source checkout gets absolute paths to this checkout.
+// Version, UI build time and the command a person should type for this copy.
+export function installInfo(here=dirname(fileURLToPath(import.meta.url))){
+  let dir=here,version="unknown";
+  for(let i=0;i<5;i++){try{const pkg=JSON.parse(readFileSync(join(dir,"package.json"),"utf8"));if(pkg.name==="personal-brain-style"){version=pkg.version;break;}}catch{/* keep looking upward */}dir=dirname(dir);}
+  let builtAt:string|null=null;try{builtAt=statSync(resolve(here,"../../public/app.js")).mtime.toISOString();}catch{/* no built UI */}
+  return {version,builtAt,...commandLine(here)};
+}
+
 export function createBrainHttpServer(db:BrainDB) {
   const development=process.env.PB_DEV_RELOAD==="1";
   const started=Date.now();
@@ -161,18 +173,21 @@ export function createBrainHttpServer(db:BrainDB) {
         }));
         if(path==="/api/trace/demo"&&method==="POST")return json(res,200,{created:db.seedTraceDemo()});
         if(path==="/api/trace/demo"&&method==="DELETE")return json(res,200,{removed:db.clearTraceDemo()});
+        if(path==="/api/about"&&method==="GET")return json(res,200,installInfo());
         if(path==="/api/chatgpt/setup"&&method==="GET"){
           const project=db.project(url.searchParams.get("projectId")||"");
           const quote=(value:string)=>"'"+value.replaceAll("'","'\\''")+"'";
           const command=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"../cli.ts"),"mcp","chatgpt",project.id].map(quote).join(" ");
-          const connectCommand=[process.execPath,resolve(dirname(fileURLToPath(import.meta.url)),"../../scripts/run.mjs"),resolve(dirname(fileURLToPath(import.meta.url)),"../cli.ts"),"chatgpt-connect",project.id].map(quote).join(" ");
-          return json(res,200,{command,connectCommand,projectId:project.id});
+          const info=installInfo(),connectCommand="personal-brain chatgpt-connect "+project.id,connectRaw=info.raw+" chatgpt-connect "+project.id;
+          // Lets the setup guide show whether tunnel-client is reachable before the user opens Terminal.
+          const onPath=(name:string)=>(process.env.PATH||"").split(delimiter).some(dir=>{try{return statSync(join(dir,name)).isFile();}catch{return false;}});
+          return json(res,200,{command,connectCommand,connectRaw,connectNpx:info.npx+" chatgpt-connect "+project.id,commandOnPath:info.onPath,projectId:project.id,tunnelClient:onPath(process.platform==="win32"?"tunnel-client.exe":"tunnel-client")});
         }
-        if(path==="/api/activation"&&method==="GET")return json(res,200,{claude:manageHookConfig("status","claude"),codex:manageHookConfig("status","codex")});
+        if(path==="/api/activation"&&method==="GET")return json(res,200,{claude:manageHookConfig("status","claude"),codex:manageHookConfig("status","codex"),opencode:manageHookConfig("status","opencode")});
         if(path==="/api/domains"&&method==="GET")return json(res,200,db.domains());
-        if(path==="/api/domains"&&method==="POST"){const x=await body(req);return json(res,201,db.saveDomain(x.name));}
+        if(path==="/api/domains"&&method==="POST"){const x=await body(req);return json(res,201,db.saveDomain(x.name,undefined,undefined,x.combinable));}
         const domainRoute=path.match(/^\/api\/domains\/([a-z][a-z0-9-]{0,59})$/);
-        if(domainRoute&&method==="PUT"){const x=await body(req);return json(res,200,db.saveDomain(x.name,domainRoute[1],x.expectedName));}
+        if(domainRoute&&method==="PUT"){const x=await body(req);return json(res,200,db.saveDomain(x.name,domainRoute[1],x.expectedName,x.combinable));}
         if(path==="/api/items"&&method==="GET") {
           const k=url.searchParams.get("kind");const d=url.searchParams.get("domain");
           const projectId=url.searchParams.get("projectId")||undefined;

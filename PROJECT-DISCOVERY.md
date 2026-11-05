@@ -2,7 +2,7 @@
 
 ## Lazy record discovery
 
-In any style, skill, example, review or tool editor, expand **Discovery**. Use **Search tags / keywords** for task vocabulary and **Use when** for a short description of applicable work. These fields are saved with the record's version and can also be changed through project-scoped MCP updates. Project updates preserve the shared original.
+In any style, skill, template, review or tool editor, expand **Discovery**. Use **Search tags / keywords** for task vocabulary and **Use when** for a short description of applicable work. These fields are saved with the record's version and can also be changed through project-scoped MCP updates. Project updates preserve the shared original.
 
 Startup supplies a bounded index with usage guidance and keywords, not instruction bodies. Task hooks can match custom capabilities through record metadata; they are not limited to built-in topic names. `brain_discover` ranks title, keywords, usage conditions and summary above full-text matches. Referenced skill names and embedded examples/review criteria are also searchable through their owning record. Matching is lexical, not a guarantee of semantic relevance; add the terms you actually use in requests.
 
@@ -14,7 +14,7 @@ Existing records receive capability-based keyword suggestions and usage guidance
 
 Open a project and choose **Discover styles & skills** to inspect selected styles, the repository source index, installed skills and findings. The dialog provides an agent instruction for personalizing those existing styles. It does not create a generic draft or require a new capability.
 
-On SessionStart, installed Claude/Codex hooks direct the agent to inspect repository evidence and amend applicable selected styles before substantive work. The hook does not interpret source or write styles itself. Restart the agent/MCP connection after updating server code. Existing generic drafts are preserved but no longer automatically created.
+On SessionStart, installed Claude/Codex hooks and the OpenCode plugin direct the agent to inspect repository evidence and amend applicable selected styles before substantive work. The hook does not interpret source or write styles itself. Restart the agent/MCP connection after updating server code. Existing generic drafts are preserved but no longer automatically created.
 
 The agent workflow is:
 
@@ -32,7 +32,7 @@ Installed skill metadata is read from project `.agents/skills`, `.codex/skills`,
 
 Skill bodies are not injected at startup. `brain_get` includes availability and skill IDs for its external references and required dependencies. Use `brain_get_installed_skill` with explicit `projectId` and an inventory ID to read applicable full instructions on demand. This loads SKILL.md only; supporting resources remain relative to its reported location. A skill being installed does not prove that it was used or that its tools are operational.
 
-Missing references and ambiguous differing installations are highlighted. Project installations take precedence; identical copies are not conflicts. Discovery reports invalid selections and skill-reference findings. It cannot prove that arbitrary natural-language instructions are compatible: review semantic contradictions before applying amendments. Scan failures and limits appear in findings; inventory is not a guarantee of complete host configuration coverage.
+Missing references and ambiguous differing installations are highlighted. Project installations take precedence; identical copies are not conflicts. Discovery reports invalid selections (for example, two styles selected in a Pick one capability) and skill-reference findings. Combinable capabilities allow several selected styles. It cannot prove that arbitrary natural-language instructions are compatible: review semantic contradictions before applying amendments. Scan failures and limits appear in findings; inventory is not a guarantee of complete host configuration coverage.
 
 ## Deleting and resetting
 

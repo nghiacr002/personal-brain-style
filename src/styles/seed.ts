@@ -267,15 +267,18 @@ const styleRecipes:RecordInput[] = [
   }
 ];
 
+// Explicit sample imports re-register legacy capabilities a fresh catalog library does not ship.
+const ensureDomain=(db:BrainDB,id:string)=>{if(!db.hasDomain(id))db.saveDomain(id[0].toUpperCase()+id.slice(1).replace(/-/g," "));};
+
 export function seed(db:BrainDB) {
   const present=new Set(db.list({limit:300}).map(r=>r.title));let created=0;
-  for(const r of [...seedRecords,...completeExamples]) if(!present.has(r.title)){db.create(r);created++;}
+  for(const r of [...seedRecords,...completeExamples]) if(!present.has(r.title)){ensureDomain(db,r.domain);db.create(r);created++;}
   return created+seedStyles(db);
 }
 
 export function seedStyles(db:BrainDB) {
   const present=new Set(db.list({limit:300}).map(r=>r.title));let created=0;
-  for(const record of styleRecipes) if(!present.has(record.title)){db.create(record);created++;}
+  for(const record of styleRecipes) if(!present.has(record.title)){ensureDomain(db,record.domain);db.create(record);created++;}
   return created;
 }
 

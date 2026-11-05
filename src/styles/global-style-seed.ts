@@ -11,7 +11,9 @@ export function seedGlobalStyles(db:BrainDB):number {
     db.db.prepare('SELECT 1 FROM records LIMIT 1').get()||
     db.db.prepare('SELECT 1 FROM revisions LIMIT 1').get()||
     db.db.prepare('SELECT 1 FROM projects LIMIT 1').get())return 0;
-  for(const domain of catalogDomains)db.db.prepare('INSERT INTO domains(id,name) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name').run(domain.id,domain.name);
+  for(const domain of catalogDomains)db.db.prepare('INSERT INTO domains(id,name,combinable) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,combinable=excluded.combinable').run(domain.id,domain.name,'combinable' in domain&&domain.combinable?1:0);
+  // Legacy built-in capabilities outside the catalog stay deleted on a fresh library.
+  for(const {id} of db.domains())if(!catalogDomains.some(d=>d.id===id)){db.db.prepare('DELETE FROM domains WHERE id=?').run(id);db.db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)').run('deleted-domain:'+id,'1');}
   const imported=new Map<string,string>(),visiting=new Set<string>();
   const add=(id:string):string=>{
    if(imported.has(id))return imported.get(id)!;

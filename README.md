@@ -1,6 +1,6 @@
 # Personal Brain
 
-Local-first working styles for Codex, Claude Code and ChatGPT. Manage reusable styles, project-private instructions, required skills, examples and review criteria through a browser UI and MCP.
+Local-first working styles for Claude Code, Codex CLI, OpenCode, ChatGPT (read-only) and Claude Desktop. Manage reusable styles, project-private instructions, required skills, templates and review criteria through a browser UI and MCP.
 
 ## How it works
 
@@ -14,7 +14,7 @@ flowchart TD
     Personalize -->|Save private changes|Project
 
     Project -->|Project-scoped discovery|MCP["Personal Brain MCP"]
-    MCP -->|Load task instructions on demand|Agent["Codex or Claude Code"]
+    MCP -->|Load task instructions on demand|Agent["Claude Code, Codex or OpenCode"]
     Skills["Installed external skills"] -->|Read required procedures|Agent
     Agent --> Work["Develop and verify deliverables"]
     Work --> Review["Review against prepared instructions"]
@@ -45,11 +45,15 @@ personal-brain setup
 
 Open http://127.0.0.1:4177. Setup starts the local workspace; create a project, select styles and link its repository in the UI. It does not change agent configuration automatically. Keep the process running while using the browser UI.
 
-For a temporary preview: `npx personal-brain-style@beta setup`. Use a stable global installation before registering agent hooks.
+For a temporary preview: `npx personal-brain-style@beta setup`. A global installation is recommended for daily use; agents connected from an npx copy start through npx, which is slower per hook call.
 
 ## Fresh-install global styles
 
-The first start with a new data directory installs the bundled global library: 18 styles and four linked review records, including the current UI/UX guidelines. This works with `personal-brain setup`, `personal-brain mcp` and `personal-brain seed`. Dependencies receive local IDs. External skill references are included; skill software must be installed separately.
+The first start with a new data directory installs the bundled release catalog: 52 records (51 styles and one review checklist) in nine capabilities: Foundations; Quality & review; Product & analysis; Architecture; Drawing; UI/UX design; Engineering standards; Delivery & operations; Writing documents. This works with `personal-brain setup`, `personal-brain mcp` and `personal-brain seed`. Dependencies receive local IDs. The full list is in [Style catalog](docs/STYLE-CATALOG.md).
+
+All nine capabilities are **combinable**: a project may select several styles from one capability. Switch a capability to **Pick one** (styles are alternatives, such as two palettes) under **Capabilities → Rename**, or choose **Combine styles** / **Pick one** when adding it. Pick one is refused while any project selects two styles in that capability. A style may require up to 12 others, without cycles; required styles load transitively. Format styles (Draw.io, Mermaid) are selected per project, never required.
+
+Writing documents holds Document writing plus 11 document templates (PRD, Roadmap, BRD, ADR, HLD, LLD, API specification, Database design, Test plan and test cases, Integration specification, Runbook). A style that produces a document requires its template; the requirement applies only when that document is in scope. Styles name skills by their plain installed name with a "(when …)" condition. Nothing requires installing new skills, and a missing skill never blocks work.
 
 Existing libraries and edits are preserved. Restarting does not reset styles or add deleted records. The release catalog contains no projects, private styles, conversations, audit history or tool credentials. It is a release snapshot, not synchronization between computers. Maintainers update `src/styles/global-style-catalog.ts` from reviewed global records before releasing changes.
 
@@ -59,7 +63,7 @@ Open **Projects → New Project**. The wizard guides you through:
 
 1. **Project & folder:** enter a name, then use **Browse folders** to select an existing repository on the computer running Personal Brain, or paste its absolute path. The standard operating-system folder dialog opens on the server computer; no files are uploaded. Linux requires Zenity and a graphical session. If a dialog cannot open, paste the path instead. Already-linked folders are rejected without changing their links.
 2. **Discover & personalize with AI:** optionally ask an installed, signed-in Codex or Claude CLI to recommend styles and draft project-specific guidelines. This sends bounded repository evidence and style guidelines to the chosen provider. Review the reasons and proposed guidelines on each card, then choose **Use suggestion**. Adaptations preserve the base guidelines and are saved as project-only overrides; global styles stay unchanged. You can cancel, retry or continue manually.
-3. **Select styles:** search immediately by name, capability or keyword. Selected styles remain visible; customization drafts survive search and Back navigation.
+3. **Select styles:** search immediately by name, capability or keyword. In a combinable capability you can select several styles; in a Pick one capability, one. Selected styles remain visible; customization drafts survive search and Back navigation.
 4. **Review:** check the folder and selections, then create the project and repository link. Required dependencies are validated before saving.
 
 AI discovery uses repository instructions, README and build manifests, not an exhaustive code review. Existing projects use the same workflow through **Repository setup → Discover & personalize with AI**, then save their reviewed selections. Closing or reloading an unfinished wizard discards its unsaved draft after the browser's leave warning.
@@ -67,14 +71,19 @@ AI discovery uses repository instructions, README and build manifests, not an ex
 ## Connect your agent
 
 ```sh
-codex mcp add personal-brain -- personal-brain mcp codex
-claude mcp add --transport stdio --scope user personal-brain -- personal-brain mcp claude
-personal-brain hooks install both
+personal-brain connect claude     # hooks + MCP server, via the claude CLI
+personal-brain connect codex      # hooks + MCP server, via the codex CLI
+personal-brain connect opencode   # one plugin: MCP server + context
+personal-brain connect all        # all three
 ```
 
-Restart your agent and approve hooks where required. Ensure its environment can find the installed personal-brain command. The UI provides repository linking and project personalization instructions. External skills are references; they must be installed separately.
+`connect` installs the hooks (or the OpenCode plugin) and registers the MCP server with the agent's own CLI; `disconnect` removes both. Without a global install use `npx --yes personal-brain-style@beta connect …`: agents are then started through npx pinned to that version, so clearing the npx cache does not break them. **Agent setup** always shows `personal-brain …`; when that command is not installed it shows the install command and, under **Other ways to run it**, the npx form and (from a source checkout) the absolute command. If an agent CLI is missing, `connect` prints the registration command to run yourself.
 
-For ChatGPT, open Agent setup and select a project. See [ChatGPT connection](docs/CHATGPT.md). OpenAI tunnel access and workspace authorization are required. The helper currently requires Bash.
+Restart your agent and approve hooks where required (Codex: `/hooks`). The UI provides repository linking and project personalization instructions. External skills are references; they must be installed separately.
+
+`hooks install|remove|status claude|codex|opencode|both|all` still manages only the hooks or plugin; `personal-brain doctor` prints the MCP registration commands. OpenCode uses one managed plugin file, `~/.config/opencode/plugins/personal-brain.js`; it is not tested against a live OpenCode session. The Agent setup card status means the hook or plugin file is installed, not that the agent loaded it.
+
+For ChatGPT, open **Agent setup → ChatGPT** and select a project. See [ChatGPT connection](docs/CHATGPT.md). OpenAI tunnel access and workspace authorization are required. The helper currently requires Bash.
 
 ## Claude Desktop: local installation
 
@@ -100,13 +109,21 @@ Optionally append `--project YOUR_PROJECT_ID` to set a default project, or `--co
 
 The `--desktop` option does not install Claude Code/Codex hooks. Existing activation commands without it retain their CLI-agent behavior. Configuration success is not proof of a live Desktop connection; check the server status in Claude Desktop after restarting.
 
+## Using the UI
+
+The sidebar groups pages into **Workspace** (Overview, Projects, Library, Fusion), **Setup** (Agent setup, Capabilities) and **Diagnostics** (Trace Explorer, Skill discovery, Style discovery, Startup index). Diagnostics is collapsed and opens when one of its pages is active. The footer shows the version and UI build time.
+
+The Library type **Templates** holds reusable document outlines, code scaffolds and prompt starters. Each row has a Copy action; agents find templates through MCP discovery. In data and the API the record kind remains `example`.
+
+Trace Explorer, under Diagnostics, updates live every 5 seconds. See [Trace Explorer](docs/TRACE.md).
+
 ## Fusion and project instructions
 
 Use **Fusion** to compare effective project instructions and review proposed shared-style revisions. Agents can use `brain_prepare` to load a version-bound task instruction set, then `brain_review` to check the same set before completion. See [Fusion and instruction workflow](docs/FUSION-AND-INSTRUCTIONS.md) for research decisions, examples and verification limits.
 
 ## Data and upgrades
 
-Data stays in ~/.personal-brain-style by default; PB_HOME selects another directory. The package contains no user database, credentials or installed third-party skill files. Startup installs built-in starter styles; review them before selecting them for a project.
+Data stays in ~/.personal-brain-style by default; PB_HOME selects another directory. The package contains no user database, credentials or installed third-party skill files. A new data directory receives the release catalog; review styles before selecting them for a project.
 
 ```sh
 personal-brain backup /absolute/path/brain-backup.sqlite
@@ -114,9 +131,9 @@ npm install -g personal-brain-style@beta
 personal-brain doctor
 ```
 
-Stop the running server before upgrading. Restart afterward. Reinstall hooks if the installation path changes. Keep backups before upgrades; do not run an older version against a migrated database.
+Stop the running server before upgrading. Restart afterward. Run `personal-brain connect …` again if the installation path or npx version changes. Keep backups before upgrades; do not run an older version against a migrated database.
 
-To uninstall, run `personal-brain hooks remove both`, remove the personal-brain MCP entry from each agent, then `npm uninstall -g personal-brain-style`. Your database is preserved. Removing the data folder is a separate, destructive action.
+To uninstall, run `personal-brain disconnect all`, then `npm uninstall -g personal-brain-style`. Your database is preserved. Removing the data folder is a separate, destructive action.
 
 ## Development
 
@@ -128,9 +145,9 @@ src/
   core/           Models, validation, ranking metadata and SQLite storage
   projects/       Project scope, repository evidence and skill discovery
   instructions/   Task preparation, compliance, review and Fusion
-  agents/         MCP transport, agent hooks and external tool bridge
+  agents/         MCP transport, agent hooks, OpenCode plugin, connect launcher and tool bridge
   server/         Local HTTP API and static file serving
-  styles/         Built-in style catalog, seeds and versioned upgrades
+  styles/         Release style catalog (global-style-catalog.ts), seeds and versioned upgrades
 web/              Browser TypeScript source
 public/           HTML, CSS and generated browser JavaScript
 scripts/          Development, packaging and agent setup commands
@@ -143,7 +160,9 @@ dist/             Generated npm package contents (do not edit)
 Keep agent and HTTP adapters thin; place shared behavior in the relevant source module. Update importing tests when moving a module. Keep the `src/cli.ts` entry point stable for existing agent registrations. The package build recursively compiles source modules and preserves their directory layout.
 
 
-```sh
+```
+
+After editing `src/styles/global-style-catalog.ts`, regenerate the catalog document with `node scripts/run.mjs scripts/catalog-doc.mjs` (writes docs/STYLE-CATALOG.md).sh
 npm install
 npm run build:package
 npm test
@@ -163,6 +182,6 @@ Package discovery keywords are maintained in `package.json`; npm displays them a
 
 ### Create project-private styles through MCP
 
-Agents can call `brain_create_project_style` with an explicit `projectId`, the current `expectedProjectVersion` from `brain_projects`, and a `style` containing `keyId` (a stable lowercase slug), `domain`, `title`, `summary` and `content`. Optional fields include skill references, examples, review criteria and required style IDs. The capability must already exist.
+Agents can call `brain_create_project_style` with an explicit `projectId`, the current `expectedProjectVersion` from `brain_projects`, and a `style` containing `keyId` (a stable lowercase slug), `domain`, `title`, `summary` and `content`. Optional fields include skill references, templates (`examples`), review criteria and required style IDs. The capability must already exist.
 
-The style is private to that project and selected by default. Use `select: false` to save an unselected alternative. If that capability already has a selected style, update it with `brain_update_project_style` or change the selection in Configure project. Matching uses the immutable `keyId`, not the display title. A global match is selected and personalized for the project; a private match is updated rather than duplicated. Different projects can own the same private key until publishing establishes its global identity. Publishing reuses an existing global key and never overwrites its content; private variants retain their content and link to the global style. Global edits belong in the Library or Fusion review workflow. New keys are generated from the title when omitted. The editor displays the key and locks it after creation. Existing conflicting legacy records retain distinct keys and their original content/history. Restart an existing MCP connection to discover the new tool; the ChatGPT read-only connection does not expose it.
+The style is private to that project and selected by default. Use `select: false` to save an unselected alternative. If that capability is Pick one and already has a selected style, update it with `brain_update_project_style` or change the selection in Configure project. Matching uses the immutable `keyId`, not the display title. A global match is selected and personalized for the project; a private match is updated rather than duplicated. Different projects can own the same private key until publishing establishes its global identity. Publishing reuses an existing global key and never overwrites its content; private variants retain their content and link to the global style. Global edits belong in the Library or Fusion review workflow. New keys are generated from the title when omitted. The editor displays the key and locks it after creation. Existing conflicting legacy records retain distinct keys and their original content/history. Restart an existing MCP connection to discover the new tool; the ChatGPT read-only connection does not expose it.

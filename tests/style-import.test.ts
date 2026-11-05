@@ -18,7 +18,7 @@ test("server installs requested architecture styles without generic samples; exp
   });
   try{
     const installed=db.list({limit:300});
-    assert.equal(installed.filter(r=>r.title.startsWith("Architecture ")).length,5);
+    assert.equal(installed.filter(r=>/(^|-)architecture$/.test(r.domain)).length,9);
     assert.ok(installed.every(r=>!r.tags.includes("style-recipe")));
     assert.equal(db.listTrace({includeDemo:true}).length,0);
     const seeded=seed(db);

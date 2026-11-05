@@ -1,0 +1,18 @@
+---
+title: Personal Brain containers — processes and durable storage
+---
+%% Scope: current implementation, 2026-11-05; evidence in ../design-verification.md
+flowchart LR
+ B["Browser studio
+HTML / CSS / compiled JS"] -->|"HTTP JSON / static assets"| S["Studio server
+Node HTTP process"]
+ H["Host agents"] -->|"MCP stdio / hook JSON"| M["Agent-facing processes
+Node CLI / MCP / hooks"]
+ S -->|"SQL"| D[("SQLite WAL
+Durable catalog and evidence")]
+ M -->|"SQL"| D
+ S -->|"File reads"| F["Repository / skill files"]
+ M -->|"File reads"| F
+ S -.->|"AI analysis / stdio"| A["Codex / Claude subprocess"]
+ M -.->|"Opt-in stdio call"| X["External MCP process"]
+ L["Legend: boxes = processes or filesystem; cylinder = durable truth; dashed = optional"]

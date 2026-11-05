@@ -1,0 +1,18 @@
+---
+title: Deployment — single-user workstation — 2026-11-05
+---
+%% Scope: current implementation, 2026-11-05; evidence in ../design-verification.md
+flowchart TB
+ subgraph W["Workstation / local OS user boundary"]
+ B["Browser"] -->|"HTTP 127.0.0.1:4177 default"| S["personal-brain serve"]
+ H["Host agent"] -->|"stdio"| M["personal-brain mcp"]
+ H -->|"JSON stdin"| K["Short-lived hook process"]
+ S -->|"SQL"| D[("PB_HOME/brain.sqlite + WAL")]
+ M -->|"SQL"| D
+ K -->|"SQL"| D
+ S -->|"Read static assets"| P["Installed dist/ or source checkout"]
+ T["Optional tunnel-client"] -->|"Launch pinned stdio"| C["mcp chatgpt projectId"]
+ C -->|"SQL and trace writes"| D
+ end
+ R["ChatGPT / external tunnel service"] -.->|"Tunnel transport, optional"| T
+ L["Legend: workstation is ownership boundary, not a VNet; dashed = optional remote path; no HA implied"]

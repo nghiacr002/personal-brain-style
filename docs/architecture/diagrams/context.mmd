@@ -1,0 +1,13 @@
+---
+title: Personal Brain system context — local user profile
+---
+%% Scope: current implementation, 2026-11-05; evidence in ../design-verification.md
+flowchart LR
+ U["Local user"] -->|"Manage via browser / HTTP"| P["Personal Brain Style
+Working-style system"]
+ H["Coding agents and Desktop"] <-->|"MCP stdio / hook JSON"| P
+ C["ChatGPT / secure tunnel"] -->|"Pinned read-only MCP"| P
+ P -->|"Bounded reads / repository link"| F["Local repositories and installed skills"]
+ P -.->|"Explicit analysis via stdio"| A["Codex or Claude CLI"]
+ P -.->|"Opt-in MCP stdio"| X["Registered external MCP backend"]
+ L["Legend: solid = normal interaction; dashed = optional; arrows show interaction direction"]

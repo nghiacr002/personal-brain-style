@@ -1,0 +1,21 @@
+---
+title: Record status and version lifecycle
+---
+%% Scope: current implementation, 2026-11-05; evidence in ../design-verification.md
+stateDiagram-v2
+ state "Stored record: draft, active or archived" as Stored
+ [*] --> Stored: create with validated status
+ Stored --> [*]: fresh preview and confirmed removal
+ note right of Stored
+  Any of the three statuses may change to another
+  through a validated update or historical restore.
+  Edit or restore stays in Stored and creates a revision.
+  Its expectedVersion must match the current version.
+  Only active records enter scoped retrieval.
+  Project personalisation must stay active.
+ end note
+ note left of Stored
+  Legend: arrows are operations, not auto-promotion.
+  Guards include valid inputs and dependencies.
+  Removal deletes revisions and related evidence.
+ end note

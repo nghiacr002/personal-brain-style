@@ -1,0 +1,22 @@
+---
+title: Create project and repository link
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant U as Browser caller
+participant S as HTTP / onboarding
+participant D as BrainDB
+participant F as Repository filesystem
+U->>S: createLinkedProject(project, folder)
+S->>F: Validate absolute unlinked directory
+S->>D: SAVEPOINT, saveProject and validate closure
+S->>F: Create .personal-brain.json exclusively
+alt Link or database write fails
+ S->>D: Roll back
+ S->>F: Remove newly created matching link if present
+ S-->>U: Error, preserve pre-existing foreign link
+else Success
+ S->>D: Store repository location, commit
+ S-->>U: HTTP 201 project
+end
+Note over U,F: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

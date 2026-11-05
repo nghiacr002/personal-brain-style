@@ -1,0 +1,33 @@
+---
+title: Fusion analysis and explicit application
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+actor U as User
+participant S as HTTP / Fusion service
+participant D as BrainDB
+participant C as Codex or Claude CLI
+U->>S: Start analysis for project IDs
+S->>D: Snapshot effective sources and shared targets
+S->>D: Persist running job
+S->>C: Spawn restricted CLI, send bounded prompt
+S-->>U: Job ID (HTTP 202)
+alt CLI failure, timeout or invalid output
+ C-->>S: Error / invalid response
+ S->>D: Persist failed job
+else Valid proposals
+ C-->>S: Proposal JSON
+ S->>S: Parse and validate IDs, skills, criteria
+ S->>D: Persist ready job
+ U->>S: Apply selected target
+ S->>D: SAVEPOINT, recheck sources, selections and target
+ alt Drift or unresolved conflicts
+ D-->>S: Reject, rollback
+ S-->>U: Error / conflict
+ else Fresh evidence
+ S->>D: New shared revision and applied marker, commit
+ S-->>U: Updated shared record
+ end
+end
+Note over U,D: Reject changes only job decisions, cancel kills an active child, neither applies a style
+Note over U,C: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

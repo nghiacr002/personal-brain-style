@@ -1,5 +1,7 @@
 # Architecture — Personal Brain Style Studio
 
+Current implementation design: [HLD](architecture/hld-personal-brain-style.md), [application-core LLD](design/lld-personal-brain-core.md), and [verification report](architecture/design-verification.md). These source-verified drafts expand this overview and identify current limitations.
+
 ## Scope
 
 This is a **personal working style product**. It is not a codebase index, project-memory engine, repository analysis tool, or LLM runtime.

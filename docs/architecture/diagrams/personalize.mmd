@@ -1,0 +1,24 @@
+---
+title: Project-private style update
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant A as UI or MCP caller
+participant S as Adapter
+participant D as BrainDB
+A->>S: Project, record, versions, changes
+S->>D: personalizeRecord
+D->>D: SAVEPOINT, validate scope and versions
+alt Invalid or stale input
+ D->>D: ROLLBACK TO savepoint
+ D-->>S: BrainError / conflict
+ S-->>A: HTTP 400/404/409 or MCP isError
+else Valid change
+ D->>D: Copy shared record or update private copy
+ D->>D: Rewire affected ancestor copies
+ D->>D: Write snapshots, revisions, audit, project version
+ D->>D: Validate closure, RELEASE savepoint
+ D-->>S: Effective private record
+ S-->>A: New record and version
+end
+Note over A,D: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

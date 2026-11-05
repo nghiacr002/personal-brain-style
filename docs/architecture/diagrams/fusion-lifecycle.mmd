@@ -1,0 +1,26 @@
+---
+title: Fusion job lifecycle
+---
+%% Scope: current implementation, 2026-11-05; evidence in ../design-verification.md
+stateDiagram-v2
+ [*] --> Running: accepted start
+ [*] --> Failed: launch resolution fails
+ Running --> Ready: valid proposals
+ Running --> Failed: timeout, invalid output, exit failure
+ Running --> Failed: read after server restart without live child
+ Running --> Cancelled: explicit cancel
+ Ready --> Ready: apply or reject an undecided proposal
+ Ready --> [*]: related data removal
+ Failed --> [*]: related data removal
+ Cancelled --> [*]: related data removal
+ Running --> [*]: related data removal
+ note right of Ready
+  Each target is undecided, applied, or rejected.
+  No separate completed job status is written.
+  Apply checks source and target freshness.
+ end note
+ note left of Running
+  Legend: arrows show persisted status transitions.
+  Deleted jobs are not recreated by completion callbacks.
+  Retry creates a new job.
+ end note

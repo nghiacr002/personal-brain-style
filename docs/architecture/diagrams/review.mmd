@@ -1,0 +1,29 @@
+---
+title: Review artifacts with bounded evidence
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant A as Host agent
+participant M as MCP adapter
+participant R as Review service
+participant D as BrainDB
+participant F as Linked repository
+A->>M: brain_review(set ID, paths, evidence, optional text)
+M->>R: reviewArtifacts
+R->>D: Re-resolve set and compare project version / digest
+alt Stale set or invalid evidence
+ R-->>M: BrainError
+ M-->>A: isError, prepare again if stale
+else Valid scope
+ R->>F: realpath and stat bounded relative paths
+ F-->>R: File metadata or missing file
+ Note over R,F: Escaping paths raise error, file contents are not read
+ R->>D: Evaluate submitted text checks
+ D-->>R: Deterministic findings
+ R->>R: Presence results, manual claims stay not_verified
+ R->>D: Persist compliance.review trace
+ D-->>R: Review ID
+ R-->>M: Bounded report
+ M-->>A: pass / fail / not_verified with evidence limits
+end
+Note over A,F: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

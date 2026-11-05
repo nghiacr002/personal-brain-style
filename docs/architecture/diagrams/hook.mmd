@@ -1,0 +1,20 @@
+---
+title: Session and prompt hook delivery
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant H as Host
+participant C as Hook CLI
+participant D as BrainDB
+H->>C: SessionStart or UserPromptSubmit JSON
+C->>C: Parse input and resolve project scope
+alt Scope or processing error
+ C-->>H: No context, diagnostic on stderr
+else Valid scope
+ C->>D: Bootstrap index or scoped task ranking
+ D-->>C: Selected metadata
+ C->>D: Persist emitted/skipped trace, keyed prompt digest for prompt hook
+ C-->>H: hookSpecificOutput.additionalContext or no output
+end
+Note over H,D: Context emission does not prove host consumption, no extra agent turn is started
+Note over H,D: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

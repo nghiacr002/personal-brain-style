@@ -1,0 +1,32 @@
+---
+title: Optional external MCP bridge
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant A as Agent
+participant M as MCP adapter
+participant D as BrainDB
+participant B as Bridge
+participant X as Backend process
+A->>M: brain_call_tool(id, arguments)
+M->>D: Read active tool backend
+D-->>M: Backend configuration
+M->>B: invokeBackend
+alt Disabled backend or proxy flag absent
+ B-->>M: DISABLED
+ M-->>A: isError
+else Enabled
+ B->>X: Spawn without shell, initialize
+ X-->>B: Initialize response
+ B->>X: initialized notification and tools/call
+ alt Timeout, process error or oversized buffer
+ B->>X: SIGTERM
+ B-->>M: Error
+ else Backend response
+ X-->>B: Tool result
+ B->>X: SIGTERM
+ B-->>M: Result
+ end
+ M-->>A: MCP text result or isError
+end
+Note over A,X: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

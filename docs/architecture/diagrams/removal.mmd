@@ -1,0 +1,25 @@
+---
+title: Preview-confirmed destructive removal
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant U as Browser caller
+participant S as HTTP adapter
+participant D as BrainDB
+U->>S: GET removal preview(kind, id)
+S->>D: deletionPreview
+D-->>U: Impact list and fingerprint through HTTP
+U->>S: POST confirmation with fingerprint
+S->>D: deleteWithPreview
+D->>D: SAVEPOINT, recompute preview
+alt Data changed
+ D->>D: Rollback
+ D-->>S: CONFLICT
+ S-->>U: HTTP 409, refresh preview
+else Fingerprint matches
+ D->>D: Remove affected rows/history, rewire survivors
+ D->>D: Clean related meta and traces, commit
+ D-->>S: Applied preview
+ S-->>U: HTTP 200
+end
+Note over U,D: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

@@ -1,0 +1,25 @@
+---
+title: Record edit or restore with revision history
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant U as Browser caller
+participant S as HTTP adapter
+participant D as BrainDB
+U->>S: Create / update / restore request
+S->>D: create, update or restore
+D->>D: SAVEPOINT, validate record and required links
+alt Missing record, invalid input or stale version
+ D->>D: Rollback
+ D-->>S: BrainError
+ S-->>U: 400 / 404 / 409
+else Accepted
+ opt Restore
+ D->>D: Read historical snapshot, keep identity and scope
+ end
+ D->>D: Write current snapshot, new revision, audit
+ D->>D: RELEASE savepoint
+ D-->>S: Record with new version
+ S-->>U: HTTP 200 or 201
+end
+Note over U,D: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

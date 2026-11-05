@@ -1,0 +1,23 @@
+---
+title: Prepare version-bound instructions
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant A as Host agent
+participant M as MCP adapter
+participant I as Instruction service
+participant D as BrainDB
+A->>M: brain_prepare(projectId, task, root IDs)
+M->>I: prepareInstructions
+I->>D: Read project and dependency closure
+D-->>I: Effective records with versions
+alt Invalid roots, task or oversized checklist
+ I-->>M: BrainError
+ M-->>A: isError text
+else Valid set
+ I->>I: SHA-256 effective records
+ I->>D: Insert meta instruction-set UUID
+ I-->>M: Set ID, full records, checklist
+ M-->>A: Prepared instructions
+end
+Note over A,D: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes

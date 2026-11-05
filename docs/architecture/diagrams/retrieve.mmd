@@ -1,0 +1,32 @@
+---
+title: Scoped instruction retrieval
+---
+%% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
+sequenceDiagram
+participant A as Host agent
+participant M as MCP adapter
+participant D as BrainDB
+participant F as Local skills
+A->>M: brain_discover(task, projectId)
+M->>D: scopedRecords and rankRecord
+alt Missing project or conflicting selection
+ D-->>M: BrainError
+ M-->>A: isError text
+else Valid scope
+ D-->>M: Metadata shortlist
+ M-->>A: IDs and versions
+ A->>M: brain_get(id, projectId)
+ M->>D: Resolve effective record and required closure
+ D-->>M: Full records and checklist
+ M->>F: Inventory references (normal local mode)
+ F-->>M: Available / missing / ambiguous
+ M-->>A: Instructions and skill metadata
+ opt Explicit skill load in normal local mode
+ A->>M: brain_get_installed_skill(projectId, id)
+ M->>F: Bounded read and digest
+ F-->>M: Skill text or read error
+ M-->>A: Skill text or isError
+ end
+end
+Note over M,D: MCP dispatch records invocation metadata.<br/>ChatGPT omits local skill access
+Note over A,M: Legend: solid = calls, dashed = replies.<br/>alt = guarded outcomes

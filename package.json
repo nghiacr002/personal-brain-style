@@ -1,6 +1,6 @@
 {
   "name": "personal-brain-style",
-  "version": "1.3.0-beta.2",
+  "version": "1.3.0-beta.3",
   "type": "module",
   "description": "Personal style studio with discovery, global skills, trace explorer, and Claude Code/Codex MCP hooks",
   "license": "MIT",

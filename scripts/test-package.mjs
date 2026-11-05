@@ -37,7 +37,8 @@ if(!response.includes('app.js'))throw Error('Missing packaged browser UI');
 const project=db.saveProject({name:'Package check',description:'',assignments:[]});
 const setup=JSON.parse(await new Promise(resolve=>server.emit('request',{url:'/api/chatgpt/setup?projectId='+project.id,method:'GET',headers:{}},{setHeader(){},writeHead(status){if(status!==200)throw Error('Setup response '+status);},end(body){resolve(String(body));}})));
 const {existsSync}=await import('node:fs');
-for(const command of [setup.command,setup.connectCommand]){
+if(setup.connectCommand!=='personal-brain chatgpt-connect '+project.id)throw Error('Invalid installed connect command');
+for(const command of [setup.command,setup.connectRaw]){
  if(command.includes('cli.ts')||!command.includes('dist/src/cli.js'))throw Error('Setup must use compiled CLI');
  for(const match of command.matchAll(/'([^']+)'/g)){if(match[1].includes('/')&&!existsSync(match[1]))throw Error('Missing setup executable: '+match[1]);}
 }

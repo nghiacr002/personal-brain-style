@@ -2,7 +2,7 @@ import { complianceReminder } from "../instructions/compliance.ts";
 import { dirname } from "node:path";
 import { resolveProjectScope } from "../projects/project-scope.ts";
 import { readFileSync } from "node:fs";
-import { BrainDB, rankRecord } from "../core/database.ts";
+import { BrainDB } from "../core/database.ts";
 import type { BrainRecord, Domain } from "../core/models.ts";
 
 /** Personal Brain supplies context; it never starts a second LLM turn. */
@@ -43,14 +43,11 @@ export function taskContext(db:BrainDB, prompt: string, onMatch?: (matches:Brain
   const task=prompt.trim().slice(0,4000);
   if(!task || task.length<4) return null;
   const domains=classify(task);
-  const candidates=db.scopedRecords(projectId)
-    .filter(r=>r.kind==="skill" || r.kind==="preference" || r.kind==="review" || r.kind==="example" || r.kind==="tool")
-    .map(r=>({record:r,score:rankRecord(r,task)+(domains.includes(r.domain)?30:0)}))
-    .filter(v=>v.score>0)
-    .sort((a,b)=>b.score-a.score || b.record.priority-a.record.priority);
+  const scoped=db.scopedRecords(projectId);
+  const candidates=db.discover(task,undefined,30,projectId).map(match=>({record:scoped.find(r=>r.id===match.id)!}));
   const selected:BrainRecord[]=[];
-  // Skills are most important; use at most 2, 2 preferences, and one review/tool hint.
-  const limits:Record<string,number>={skill:2,preference:2,review:1,example:1,tool:1};
+  // Share ranking with MCP; bound only the delivered index size.
+  const limits:Record<string,number>={skill:2,preference:4,review:2,example:2,tool:1};
   const counts:Record<string,number>={};
   let used=0;
   for (const {record:r} of candidates) {

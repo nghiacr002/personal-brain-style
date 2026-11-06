@@ -12,7 +12,15 @@ export type ToolBackend = {
   enabled: boolean;
   timeoutMs?: number;
 };
+export type Applicability = { activities?: string[]; formats?: string[] };
+export type SkillBinding = { name:string; when?:Applicability; required:boolean; fallback:string };
+export type PreferenceValue = { key:string; value:string };
+export type TaskContext = { activity?:string; formats?:string[]; preferences?:PreferenceValue[] };
 export type BrainRecord = {
+  supportingLinks?: Array<{recordId:string; when:Applicability}>;
+  skillBindings?: SkillBinding[];
+  preferences?: PreferenceValue[];
+  sourceVersion?: number;
   id: string;
   keyId?: string;
   sourceStyleId?: string;

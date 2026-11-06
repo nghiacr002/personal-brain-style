@@ -1,0 +1,72 @@
+{
+  "kind": "preference",
+  "domain": "engineering-standards",
+  "status": "active",
+  "backend": null,
+  "id": "coding-style",
+  "keyId": "coding-style",
+  "priority": 89,
+  "title": "Coding style \u2014 readable, consistent code",
+  "summary": "Language-independent readability rules plus naming, file and formatter conventions for TypeScript, C#, Swift, Kotlin and Dart.",
+  "useWhen": "Use when writing, renaming, refactoring or reviewing code in any language, setting up a formatter or linter, or settling a naming or comment question.",
+  "content": "SCOPE\nHow code reads: naming, function and file size, nesting, comments, dead code, immutability, null handling, error messages and automated formatting, plus the conventions of record per language. Used by every developer and code reviewer. Software development requires this style, so it applies to all code; stack styles do not repeat naming or formatting rules. It does not decide module boundaries (Software design & code architecture), implementation patterns (Coding patterns), log content (Logging and tracing) or toolchain versions and lint rule sets (the stack styles).\n\nINPUTS\n- Formatter, linter and editor config in the repository (.editorconfig, Prettier, ESLint, dotnet format and analyzers, SwiftLint, ktlint or detekt, dart analyze) and the commands that run them.\n- Naming already used in the files you touch; the domain glossary or API contract vocabulary.\n\nMETHOD\n1. Consistency wins: follow the file's and the repository's conventions even where this style differs. Change a convention only in a dedicated change that also updates the tooling.\n2. Formatting is automated: one formatter of record, run on save or pre-commit and checked in CI. Never hand-format or debate layout in review. Keep reformatting out of behavior changes.\n3. Names: domain words from the glossary; intention-revealing (elapsedMs, not t); booleans as predicates (isActive, hasAccess, canRetry); functions as verbs, types and values as nouns; units when the type does not carry them (timeoutMs, sizeBytes); plural collections; no abbreviations except universal ones (id, url, http); no type encoding (strName).\n4. Functions: one level of abstraction; aim for under 30 lines and at most 4 parameters (use an options object or record beyond that); nesting depth at most 3, using early returns; no boolean flag parameter that switches behavior (split the function).\n5. Files: one main concept per file, named after it; split a file of roughly 400 lines that holds more than one concept.\n6. Comments explain why (constraint, trade-off, linked issue or spec), never restate the code. Public APIs carry doc comments (TSDoc, XML docs, DocC, KDoc, dartdoc). Delete commented-out code; version control keeps it. A deferred-work comment names an owner or issue.\n7. Immutability by default: const, readonly, let (Swift), val, final; mutate only locally and visibly; return new values instead of mutating arguments.\n8. Absence is explicit: language null checking on; optional types instead of sentinel values; no non-null assertion without a one-line reason.\n9. No magic values: named constants or enums for meaningful numbers and strings.\n10. Error messages state what failed, for which identifier, and what to do: \"Order 4711 not found for tenant acme\", not \"Error\". No secrets or personal data in them.\n11. No dead code: remove unused imports, variables, parameters, branches and expired feature flags.\n\nCONVENTIONS OF RECORD (casing; files; formatter and linter)\n- TypeScript/JavaScript: camelCase values and functions, PascalCase types, classes and components, UPPER_SNAKE_CASE only for module-level constants; no I prefix on interfaces; files kebab-case (order-service.ts) unless the framework names components in PascalCase; Prettier and ESLint with typescript-eslint.\n- C#: PascalCase types, methods, properties, constants and public members; camelCase locals and parameters; _camelCase private fields; I prefix on interfaces; Async suffix on awaitable methods; one type per file named after it; file-scoped namespace matching the folder; dotnet format with .editorconfig and analyzers.\n- Swift: UpperCamelCase types and protocols, lowerCamelCase everything else including constants; argument labels read as phrases; file named after its main type; swift-format or SwiftFormat plus SwiftLint.\n- Kotlin: PascalCase classes, camelCase functions and properties, UPPER_SNAKE_CASE for const val; file named after its main class; ktlint (official style) or detekt.\n- Dart: UpperCamelCase types, lowerCamelCase members and constants, lowercase_with_underscores files and import prefixes; dart format and dart analyze with lints or flutter_lints.\n\nExample (TypeScript):\n  // before: function proc(d: any, f: boolean) { if (d) { if (f) { ... } } }\n  function approveRefund(refund: Refund): Refund {\n    if (refund.status !== \"requested\") return refund;\n    return { ...refund, status: \"approved\" };\n  }\nExample (C#):\n  public async Task<Order?> FindOrderAsync(OrderId id, CancellationToken cancellationToken)\n\nDELIVERABLES\n- Changed code that passes the formatter check and the linter with no new warnings; any suppression carries a reason.\n- In review: style findings cite the rule or config line; formatter-fixable issues are fixed, not commented.\n\nSKILLS\nOrder: understand first when the repository is unfamiliar, then codebase-memory for precise naming and usage evidence.\n- understand (when the repository is unfamiliar and its conventions must be learned): read its SKILL.md; use the knowledge graph's file and layer summaries to learn naming and file conventions before writing. It never overrides the formatter or linter config.\n- codebase-memory (when renaming a symbol, checking how similar things are named, or removing dead code): read its SKILL.md; use name-pattern search, trace callers before a rename and run dead-code search; check index coverage for every path relied on and confirm in source. It never decides a convention.\nIf a skill is not installed, follow this style's METHOD, read the code directly, report the skill as missing and continue; it never blocks the work.\n\nREQUIRED STYLES\nNone. Software development requires this style; Coding patterns, Logging and tracing and the stack styles rely on it for naming and formatting.\n\nVERIFICATION\nRun the formatter in check mode and the linter on changed files. Report each as passed (command and zero findings), failed (rule and location) or not verified (tool not configured or not runnable). Naming and comment quality are review findings, never reported as a passed tool check.\n\nREFERENCES\nhttps://google.github.io/styleguide/tsguide.html\nhttps://learn.microsoft.com/dotnet/csharp/fundamentals/coding-style/identifier-names\nhttps://www.swift.org/documentation/api-design-guidelines/\nhttps://kotlinlang.org/docs/coding-conventions.html\nhttps://dart.dev/effective-dart/style",
+  "principles": [
+    "Follow the repository's conventions before personal preference.",
+    "Let the formatter decide layout; never argue it in review.",
+    "Name things with domain words that reveal intent and units.",
+    "Return early and keep nesting shallow.",
+    "Comment why, delete dead and commented-out code."
+  ],
+  "externalSkills": [
+    "understand (when the repository is unfamiliar and its naming and file conventions must be learned first)",
+    "codebase-memory (when renaming a symbol, comparing existing naming or removing dead code)"
+  ],
+  "reviewCriteria": [
+    "The formatter check and linter pass on changed files, or their failures are listed with rule and location.",
+    "New identifiers use the casing and file naming of the language table or the repository's established convention.",
+    "Boolean names read as predicates and quantities carry units when the type does not.",
+    "Changed functions stay within three levels of nesting and avoid boolean flag parameters.",
+    "No commented-out code, unused imports or unreachable branches remain in the diff.",
+    "Comments state reasons or constraints rather than paraphrasing the statements below them."
+  ],
+  "examples": [
+    "A C# PR adds private field 'userRepo' and method 'GetUser' returning Task. Rename to _userRepository and GetUserAsync per the C# table, run dotnet format --verify-no-changes and report it as passed.",
+    "A TypeScript handler nests four if blocks and takes (order, true). Replace the flag with two functions, invert conditions into guard clauses, and keep the reformatting in the same file only because the formatter produced it.",
+    "A Kotlin repository already uses detekt with a custom rule set that differs from this style; keep the repository's rules, note the difference and do not reformat untouched files."
+  ],
+  "requirements": [
+    {
+      "id": "req-coding-style-format-lint",
+      "label": "Formatter check and linter results for changed files reported as passed, failed or not verified",
+      "type": "manual"
+    }
+  ],
+  "checks": [
+    {
+      "type": "not_contains",
+      "value": "lorem ipsum",
+      "label": "No placeholder text"
+    },
+    {
+      "type": "not_contains",
+      "value": "FIXME",
+      "label": "No unresolved FIXME markers"
+    }
+  ],
+  "tags": [
+    "coding-style",
+    "naming",
+    "formatting",
+    "readability",
+    "conventions",
+    "linting",
+    "developer",
+    "code-reviewer",
+    "typescript",
+    "csharp",
+    "swift",
+    "kotlin",
+    "dart"
+  ],
+  "requiredIds": []
+}

@@ -1,3 +1,4 @@
+import {linkedIds,validatePreferenceContract} from "./preference-contract.ts";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHmac } from "node:crypto";
 import { mkdirSync, chmodSync } from "node:fs";
@@ -45,20 +46,26 @@ function checkInput(raw: unknown): RecordInput {
     if (b.args.length > 30 || b.args.some((v: string) => v.length > 500)) throw new BrainError("Tool arguments too long");
     backend = { command: b.command, args: b.args, toolName: b.toolName, enabled: b.enabled, timeoutMs: Math.min(120000, Math.max(1000, Number(b.timeoutMs) || 30000)) };
   }
-  return { keyId:(x.keyId as string|undefined)||slug(String(x.title))||"style", sourceStyleId:x.sourceStyleId as string|undefined, projectId:x.projectId as string|undefined, kind: x.kind, domain: x.domain, title: String(x.title).trim(), summary: String(x.summary), content: String(x.content), tags: x.tags as string[],
+  return { ...validatePreferenceContract(x), keyId:(x.keyId as string|undefined)||slug(String(x.title))||"style", sourceStyleId:x.sourceStyleId as string|undefined, projectId:x.projectId as string|undefined, kind: x.kind, domain: x.domain, title: String(x.title).trim(), summary: String(x.summary), content: String(x.content), tags: x.tags as string[],
     useWhen:typeof x.useWhen==="string"?x.useWhen.trim():discoveryMetadata(x as unknown as RecordInput).useWhen,
     requirements:validateRequirements(x.requirements),
     examples:(x.examples||[]) as string[],principles:(x.principles||[]) as string[],externalSkills:(x.externalSkills||[]) as string[],reviewCriteria:(x.reviewCriteria||[]) as string[],
     priority: x.priority as number, status: x.status as RecordInput["status"], requiredIds:[...new Set((x.requiredIds||[]) as string[])], checks, backend };
 }
-const stopWords=new Set("the a an and or to of for in on with is it this that my me please let should have use when how can do we you all as at by from be are new using".split(" "));
+const stopWords=new Set("the a an and or to of for in on with is it this that my me please let should have use when how can do we you all as at by from be are new using what which who where why there here plus".split(" "));
 function tokenize(s: string): string[] { return [...new Set(s.toLowerCase().normalize("NFKD").split(/[^\p{L}\p{N}]+/u).filter(t => t.length > 1&&!stopWords.has(t)))]; }
-export function rankRecord(record: BrainRecord, query: string): number {
-  if (!query.trim()) return record.priority / 20;
-  const terms = tokenize(query);
-  const fields=[record.title,record.tags.join(" "),record.useWhen||"",record.summary,[record.content,...record.externalSkills||[],...record.examples||[],...record.reviewCriteria||[]].join(" ")].map(value=>new Set(tokenize(value)));
-  return terms.reduce((sum,t)=>sum+fields.reduce((score,words,index)=>score+(words.has(t)?[8,6,5,3,1][index]:0),0),0);
+export function recordMatch(record:BrainRecord,query:string){
+  const terms=tokenize(query),labels=['title','tags','useWhen','summary','guidance'];
+  const fields=[record.title,record.tags.join(" "),record.useWhen||"",record.summary,[record.content,...record.externalSkills||[],...(record.skillBindings||[]).map(s=>s.name),...record.examples||[],...record.reviewCriteria||[]].join(" ")].map(value=>new Set(tokenize(value)));
+  const matches=fields.flatMap((words,i)=>{const matched=terms.filter(t=>words.has(t));return matched.length?[{field:labels[i],terms:matched}]:[];});
+  const score=terms.reduce((sum,t)=>sum+fields.reduce((n,words,i)=>n+(words.has(t)?[8,6,5,3,1][i]:0),0),0);
+  const keyTerms=tokenize(record.keyId||'');
+  const named=keyTerms.length>0&&keyTerms.every(t=>terms.includes(t));
+  if(named)matches.push({field:'key',terms:keyTerms});
+  return {score:query.trim()?score+(named?20:0):record.priority/20,matches};
 }
+export function rankRecord(record:BrainRecord,query:string):number{return recordMatch(record,query).score;}
+
 
 export class BrainDB {
   db: DatabaseSync;
@@ -152,7 +159,7 @@ export class BrainDB {
       // Preserve genuine shared consumers; only move records owned exclusively by this project.
       const otherIds=new Set(this.projects().filter(p=>p.id!==projectId).flatMap(p=>this.scopedRecords(p.id).map(r=>r.id)));
       let changed=true;
-      while(changed){changed=false;for(const id of candidates.keys())if(otherIds.has(id)||all.some(r=>!candidates.has(r.id)&&(r.requiredIds||[]).includes(id))){candidates.delete(id);changed=true;}}
+      while(changed){changed=false;for(const id of candidates.keys())if(otherIds.has(id)||all.some(r=>!candidates.has(r.id)&&linkedIds(r).includes(id))){candidates.delete(id);changed=true;}}
       for(const record of candidates.values())this.write({...record,projectId,version:record.version+1,updatedAt:new Date().toISOString()},"update");
       for(const record of candidates.values())this.validateRequired(this.get(record.id)!);
       const selected=new Set(this.scopedRecords(projectId).map(r=>r.id));
@@ -186,10 +193,10 @@ export class BrainDB {
     for(const p of this.projects()){
       const seen=new Set<string>();const visit=(id:string)=>{if(seen.has(id))return;seen.add(id);const r=this.get(id);if(!r||r.status!=="active"||(r.projectId&&r.projectId!==p.id))return;
         if(!r.projectId){if(!usage.has(r.domain))usage.set(r.domain,new Set());usage.get(r.domain)!.add(p.id);}
-        for(const child of r.requiredIds||[])visit(child);
+        for(const child of linkedIds(r))visit(child);
       };p.assignments.forEach(a=>visit(a.recordId));
     }
-    return this.domains().map(d=>{const rows=records.filter(r=>r.domain===d.id);return {...d,styles:rows.filter(r=>r.kind==="preference").length,skills:rows.filter(r=>r.kind==="skill").length+rows.reduce((n,r)=>n+(r.externalSkills?.length||0),0),examples:rows.filter(r=>r.kind==="example").length+rows.reduce((n,r)=>n+(r.examples?.length||0),0),rules:rows.filter(r=>r.kind==="review").length+rows.reduce((n,r)=>n+(r.reviewCriteria?.length||0)+r.checks.length,0),projects:usage.get(d.id)?.size||0};});
+    return this.domains().map(d=>{const rows=records.filter(r=>r.domain===d.id);return {...d,styles:rows.filter(r=>r.kind==="preference").length,skills:rows.filter(r=>r.kind==="skill").length+rows.reduce((n,r)=>n+(r.externalSkills?.length||0)+(r.skillBindings?.length||0),0),examples:rows.filter(r=>r.kind==="example").length+rows.reduce((n,r)=>n+(r.examples?.length||0),0),rules:rows.filter(r=>r.kind==="review").length+rows.reduce((n,r)=>n+(r.reviewCriteria?.length||0)+r.checks.length,0),projects:usage.get(d.id)?.size||0};});
   }
   projectDefaultStyleIds():string[]{
     const row=this.db.prepare("SELECT value FROM meta WHERE key='new_project_style_defaults_v1'").get() as {value:string}|undefined;
@@ -216,7 +223,7 @@ export class BrainDB {
     if(kind==="project"||kind==="reset")title=this.project(id).name;
     const records=all.filter(r=>kind==="record"?r.id===id:kind==="domain"?r.domain===id:r.projectId===id);
     const ids=new Set(records.map(r=>r.id));
-    const links=all.filter(r=>!ids.has(r.id)&&((r.requiredIds||[]).some(x=>ids.has(x))||!!r.sourceStyleId&&ids.has(r.sourceStyleId)));
+    const links=all.filter(r=>!ids.has(r.id)&&(linkedIds(r).some(x=>ids.has(x))||!!r.sourceStyleId&&ids.has(r.sourceStyleId)));
     const projects=this.projects().filter(p=>p.id===id&&(kind==="project"||kind==="reset")||p.assignments.some(a=>ids.has(a.recordId)));
     let restored:Array<{recordId:string;override:null}>=[];
     if(kind==="reset"){
@@ -231,7 +238,7 @@ export class BrainDB {
       const preview=this.deletionPreview(kind,id);
       if(fingerprint!==preview.fingerprint)throw new BrainError("Data changed. Review a fresh deletion preview.","CONFLICT",409);
       const ids=new Set(preview.records.map(r=>r.id));
-      for(const linked of preview.linkedRecords){const r=this.get(linked.id)!;this.write({...r,requiredIds:(r.requiredIds||[]).filter(x=>!ids.has(x)),version:r.version+1,updatedAt:new Date().toISOString()},"update");}
+      for(const linked of preview.linkedRecords){const r=this.get(linked.id)!;this.write({...r,requiredIds:(r.requiredIds||[]).filter(x=>!ids.has(x)),supportingLinks:r.supportingLinks?.filter(x=>!ids.has(x.recordId)),version:r.version+1,updatedAt:new Date().toISOString()},"update");}
       for(const p of this.projects()){
         if(kind==="project"&&p.id===id){this.db.prepare("DELETE FROM projects WHERE id=?").run(id);continue;}
         const assignments=kind==="reset"&&p.id===id?preview.restored.map(({recordId})=>({recordId,override:null})):p.assignments.filter(a=>!ids.has(a.recordId));
@@ -247,7 +254,7 @@ export class BrainDB {
       }
       for(const row of this.db.prepare("SELECT snapshot FROM records WHERE json_extract(snapshot,'$.sourceStyleId') IS NOT NULL").all() as {snapshot:string}[]){
         const record=this.parse(row.snapshot);
-        if(ids.has(record.sourceStyleId!))this.write({...record,sourceStyleId:undefined,version:record.version+1,updatedAt:new Date().toISOString()},"update");
+        if(ids.has(record.sourceStyleId!))this.write({...record,sourceStyleId:undefined,sourceVersion:undefined,version:record.version+1,updatedAt:new Date().toISOString()},"update");
       }
       const defaults=this.db.prepare("SELECT value FROM meta WHERE key='new_project_style_defaults_v1'").get() as {value:string}|undefined;
       for(const row of this.db.prepare("SELECT key,value FROM meta WHERE key LIKE 'fusion:%' OR key LIKE 'instruction-set:%'").all() as {key:string;value:string}[]){
@@ -303,7 +310,7 @@ export class BrainDB {
       const prev = this.get(id);
       if (!prev) throw new BrainError("Record not found", "NOT_FOUND", 404);
       if (prev.version !== expectedVersion) throw new BrainError("Version conflict. Refresh and try again.", "CONFLICT", 409);
-      const input = checkInput({...prev,...raw as object}); if(input.keyId!==prev.keyId||input.sourceStyleId!==prev.sourceStyleId)throw new BrainError("Style identity cannot be changed"); if(input.projectId!==prev.projectId)throw new BrainError("Record scope cannot be changed"); if(!this.hasDomain(input.domain))throw new BrainError("Register this domain before using it"); const rec: BrainRecord = {...prev,...input,version:prev.version+1,updatedAt:new Date().toISOString()};
+      const input = checkInput({...prev,...raw as object}); if(input.keyId!==prev.keyId||input.sourceStyleId!==prev.sourceStyleId||input.sourceVersion!==prev.sourceVersion)throw new BrainError("Style identity cannot be changed"); if(input.projectId!==prev.projectId)throw new BrainError("Record scope cannot be changed"); if(!this.hasDomain(input.domain))throw new BrainError("Register this domain before using it"); const rec: BrainRecord = {...prev,...input,version:prev.version+1,updatedAt:new Date().toISOString()};
       this.validateRequired(rec);this.write(rec,"update"); return rec;
     });
   }
@@ -476,7 +483,7 @@ export class BrainDB {
       if(done.has(r.id))return;
       if(visiting.has(r.id))throw new BrainError("Required links cannot contain a cycle");
       visiting.add(r.id);
-      for(const id of r.requiredIds||[]){
+      for(const id of linkedIds(r)){
         const linked=id===record.id?record:this.get(id);
         if(!linked||linked.status!=="active")throw new BrainError("Required linked record must exist and be active: "+id);
         if(linked.projectId&&linked.projectId!==record.projectId)throw new BrainError("Dependency belongs to another project");
@@ -571,10 +578,11 @@ export class BrainDB {
           if(!linked||linked.status!=="active")throw new BrainError("Required dependency is unavailable");
           return publish(linked).id;
         });
+        const supportingLinks=record.supportingLinks?.map(link=>{const child=this.get(link.recordId);if(!child)throw new BrainError("Supporting record unavailable");return {...link,recordId:publish(child).id};});
         const now=new Date().toISOString();
-        const shared:BrainRecord={...checkInput({...record,projectId:undefined,sourceStyleId:undefined,requiredIds}),id:randomUUID(),version:1,createdAt:now,updatedAt:now};
+        const shared:BrainRecord={...checkInput({...record,projectId:undefined,sourceStyleId:undefined,sourceVersion:undefined,requiredIds,supportingLinks}),id:randomUUID(),version:1,createdAt:now,updatedAt:now};
         const locals=this.db.prepare("SELECT snapshot FROM records WHERE json_extract(snapshot,'$.keyId')=?").all(record.keyId!) as {snapshot:string}[];
-        for(const row of locals){const local=this.parse(row.snapshot);if(local.kind!==shared.kind||local.domain!==shared.domain)throw new BrainError("Private styles with this key have different capabilities or types. Resolve the key conflict before publishing.","CONFLICT",409);this.db.prepare("UPDATE records SET snapshot=? WHERE id=?").run(JSON.stringify({...local,sourceStyleId:shared.id}),local.id);}
+        for(const row of locals){const local=this.parse(row.snapshot);if(local.kind!==shared.kind||local.domain!==shared.domain)throw new BrainError("Private styles with this key have different capabilities or types. Resolve the key conflict before publishing.","CONFLICT",409);this.db.prepare("UPDATE records SET snapshot=? WHERE id=?").run(JSON.stringify({...local,sourceStyleId:shared.id,sourceVersion:local.id===record.id?shared.version:undefined}),local.id);}
         this.validateRequired(shared);this.write(shared,"create");
         for(const row of locals){const local=this.parse(row.snapshot);this.write({...local,sourceStyleId:shared.id,version:local.version+1,updatedAt:now},"update");}
         copies.set(record.id,shared);visiting.delete(record.id);return shared;
@@ -618,7 +626,7 @@ export class BrainDB {
         const row=this.db.prepare("SELECT snapshot FROM records WHERE json_extract(snapshot,'$.keyId')=? AND json_extract(snapshot,'$.projectId')=?").get(record.keyId!,projectId) as {snapshot:string}|undefined;
         const previous=row?this.parse(row.snapshot):record;
         const local=previous.projectId===projectId;
-        const next:BrainRecord={...record,...changes,projectId,sourceStyleId:local?previous.sourceStyleId:record.id,id:local?previous.id:randomUUID(),version:local?previous.version+1:1,createdAt:local?previous.createdAt:now,updatedAt:now};
+        const next:BrainRecord={...record,...changes,projectId,sourceStyleId:local?previous.sourceStyleId:record.id,sourceVersion:local?previous.sourceVersion:record.version,id:local?previous.id:randomUUID(),version:local?previous.version+1:1,createdAt:local?previous.createdAt:now,updatedAt:now};
         this.validateRequired(next);this.write(next,local?"update":"create");replacements.set(record.id,next);return next;
       };
       const edited=copy(source,input);
@@ -629,7 +637,8 @@ export class BrainDB {
         if(visited.has(record.id))return record;
         visited.add(record.id);
         const requiredIds=(record.requiredIds||[]).map(id=>{const child=effective.find(r=>r.id===id);return child?rewire(child).id:id;});
-        return requiredIds.some((id,i)=>id!==record.requiredIds?.[i])?copy(record,{requiredIds}):record;
+        const supportingLinks=record.supportingLinks?.map(link=>{const child=effective.find(r=>r.id===link.recordId);return {...link,recordId:child?rewire(child).id:link.recordId};});
+        return requiredIds.some((id,i)=>id!==record.requiredIds?.[i])||JSON.stringify(supportingLinks)!==JSON.stringify(record.supportingLinks)?copy(record,{requiredIds,supportingLinks}):record;
       };
       effective.forEach(rewire);
       const assignments=project.assignments.map(a=>replacements.has(a.recordId)?{recordId:replacements.get(a.recordId)!.id,override:null}:a);
@@ -656,24 +665,26 @@ export class BrainDB {
     }
     const effective=new Map(selected.map(r=>[r.id,r]));
     const visiting=new Set<string>(),done=new Set<string>();
-    const include=(record:BrainRecord)=>{
+    const include=(record:BrainRecord,conditional=false)=>{
       if(visiting.has(record.id))throw new BrainError("Required-link cycle");
       if(done.has(record.id))return;
       visiting.add(record.id);
-      for(const id of record.requiredIds||[]){
+      for(const id of conditional?linkedIds(record):record.requiredIds||[]){
         let linked=effective.get(id);
         if(!linked){
           const shared=all.find(r=>r.id===id&&(!r.projectId||r.projectId===projectId));
           if(!shared)throw new BrainError("Required linked style is inactive or unavailable: "+id);
           const slot=this.selectionSlot(shared);
-          if(slots.has(slot))throw new BrainError("Required linked style conflicts with project selection: "+id);
-          linked={...shared,source:"Required dependency"};effective.set(id,linked);slots.add(slot);
+          if(!conditional&&slots.has(slot))throw new BrainError("Required linked style conflicts with project selection: "+id);
+          linked={...shared,source:conditional?"Supporting guidance":"Required dependency"};effective.set(id,linked);if(!conditional)slots.add(slot);
         }
-        include(linked);
+        include(linked,conditional);
       }
       visiting.delete(record.id);done.add(record.id);
     };
-    selected.forEach(include);
+    selected.forEach(record=>include(record));
+    done.clear();
+    selected.forEach(record=>include(record,true));
     return [...effective.values()];
   }
   bootstrapWithRecords(maxChars=3500,projectId?:string) {
@@ -689,8 +700,9 @@ export class BrainDB {
     return {text:out,records:included};
   }
   bootstrap(maxChars=3500,projectId?:string) { return this.bootstrapWithRecords(maxChars,projectId).text; }
+  projectSelectionReason(id:string,projectId?:string){return !projectId?'global':this.project(projectId).assignments.some(a=>a.recordId===id)?'selected':'dependency';}
   discover(task:string,kinds:Kind[]=["skill","preference","tool","review","example"],limit=12,projectId?:string) {
-    return this.scopedRecords(projectId).map(r=>({r,score:rankRecord(r,task)})).filter(({r,score})=>score>0&&kinds.includes(r.kind)).sort((a,b)=>b.score-a.score||b.r.priority-a.r.priority).slice(0,Math.max(1,Math.min(30,limit))).map(({r})=>({id:r.id,keyId:r.keyId,kind:r.kind,domain:r.domain,title:r.title,summary:r.summary,useWhen:r.useWhen||"",tags:r.tags,requiredIds:r.requiredIds||[],version:r.version,priority:r.priority,invokable:r.kind==="tool" && !!r.backend?.enabled}));
+    return this.scopedRecords(projectId).map(r=>({r,...recordMatch(r,task)})).filter(({r,score})=>score>0&&kinds.includes(r.kind)).sort((a,b)=>b.score-a.score||b.r.priority-a.r.priority).slice(0,Math.max(1,Math.min(30,limit))).map(({r,score,matches})=>({id:r.id,keyId:r.keyId,kind:r.kind,domain:r.domain,title:r.title,summary:r.summary,useWhen:r.useWhen||"",tags:r.tags,requiredIds:r.requiredIds||[],version:r.version,priority:r.priority,matches,matchReason:matches.map(m=>m.field+": "+m.terms.join(", ")).join("; "),score,selection:this.projectSelectionReason(r.id,projectId),invokable:r.kind==="tool" && !!r.backend?.enabled}));
   }
   evaluate(content:string,domain:Domain="general",projectId?:string) {
     const rules = this.scopedRecords(projectId).filter(r=>r.kind==="review"||r.kind==="preference").filter(r=>r.domain==="general" || r.domain===domain);

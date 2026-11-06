@@ -1,3 +1,5 @@
+import {catalogUpgradePreview,applyCatalogUpgrade} from "../styles/catalog-upgrade.ts";
+import {resolveInstructions} from "../instructions/resolve.ts";
 import {seedGlobalStyles,installCatalogAdditions,globalCatalogMarker} from "../styles/global-style-seed.ts";
 import {installDevelopmentStructureStyle} from '../styles/development-structure-style.ts';
 import {fusionHistory,fusionJob,startFusion,applyFusion,rejectFusion,cancelFusion} from '../instructions/fusion.ts';
@@ -195,8 +197,11 @@ export function createBrainHttpServer(db:BrainDB) {
           let folder:string|undefined;if(projectId)try{folder=projectFolder(db,projectId);}catch{/* Missing repository is reported by project discovery. */}
           const inventory=installedSkills(folder);
           return json(res,200,db.list({projectId,kind:KINDS.includes(k as Kind)?k as Kind:undefined,domain:db.hasDomain(d)?d as Domain:undefined,
-            status:url.searchParams.get("status")||undefined,query:url.searchParams.get("q")||undefined,limit:300}).map(record=>({...record,skillWarnings:(record.externalSkills||[]).map(ref=>matchSkill(ref,inventory.skills)).filter(ref=>ref.status!=="available").map(ref=>ref.reference+": "+ref.status)})));
+            status:url.searchParams.get("status")||undefined,query:url.searchParams.get("q")||undefined,limit:300}).map(record=>({...record,skillWarnings:skillReferences([record],inventory.skills).filter(ref=>ref.status!=="available").map(ref=>ref.reference+": "+ref.status)})));
         }
+        if(path==="/api/preferences/resolve"&&method==="POST"){const x=await body(req);if(typeof x.projectId!=="string")throw new BrainError("Project required");return json(res,200,resolveInstructions(db,x.projectId,x));}
+        if(path==="/api/catalog-upgrade"&&method==="GET")return json(res,200,catalogUpgradePreview(db));
+        if(path==="/api/catalog-upgrade"&&method==="POST"){const x=await body(req);return json(res,200,applyCatalogUpgrade(db,x.id,x.expectedVersion));}
         if(path==="/api/items"&&method==="POST")return json(res,201,db.create(await body(req)));
         const item=path.match(/^\/api\/items\/([a-f0-9-]{36})$/);
         if((item||path.match(/^\/api\/items\/([a-f0-9-]{36})\/(history|restore)$/))){

@@ -1,3 +1,4 @@
+import {resolveInstructions} from './resolve.ts';
 import {checkInstructionSet} from "./instruction-set.ts";
 import {realpathSync,statSync} from 'node:fs';
 import {isAbsolute,relative,resolve,extname,sep} from 'node:path';
@@ -11,10 +12,8 @@ export function reviewArtifacts(db:BrainDB,projectId:string,args:Record<string,u
   if(args.instructionSetId!==undefined)args=checkInstructionSet(db,projectId,args);
   if(typeof args.task!=='string'||!args.task.trim()||args.task.length>1000)throw new BrainError('Artifact review requires a task description (1-1000 characters)');
   if(!Array.isArray(args.recordIds)||!args.recordIds.length||args.recordIds.length>20||!args.recordIds.every(id=>typeof id==='string'))throw new BrainError('Select 1-20 applicable recordIds from this project');
-  const scoped=db.scopedRecords(projectId);
-  const roots=args.recordIds.map(id=>{const r=scoped.find(r=>r.id===id&&r.status==='active');if(!r)throw new BrainError('Review record is not active in this project');return r;});
-  const records=db.requiredRecords(roots,projectId);
-  const checklist=requirementChecklist(records);
+  const resolved=resolveInstructions(db,projectId,args);
+  const records=resolved.records,checklist=resolved.requirementChecklist;
   if(checklist.length>300)throw new BrainError('Review scope exceeds 300 requirements; review fewer root styles');
   const evidence=args.evidence??[];
   if(!Array.isArray(evidence)||evidence.length>300)throw new BrainError('Evidence must be an array of at most 300 entries');
@@ -42,15 +41,15 @@ export function reviewArtifacts(db:BrainDB,projectId:string,args:Record<string,u
     const claim=byKey.get(r.recordId+':'+r.id);
     const matching=r.type==='artifact'?artifacts.filter(a=>a.extension===r.extension):[];
     // File metadata proves presence only; editability, meaning and visual quality stay manual.
-    const status=claim?.status==='fail'?'fail':r.type==='artifact'?(matching.some(a=>a.exists)?'pass':'fail'):'not_verified';
+    const status=r.applicability==='not_applicable'?'not_applicable':r.optional?'optional':claim?.status==='fail'?'fail':r.type==='artifact'?(matching.some(a=>a.exists)?'pass':'fail'):'not_verified';
     return {...r,status,verification:r.type==='artifact'&&claim?.status!=='fail'?'file-presence-only':'agent-report-only',agentReported:claim?.status??null,note:claim?.note??'',artifacts:matching.map(a=>a.path)};
   });
   const textReviews=typeof args.content==='string'?[...new Set(records.map(r=>r.domain))].map(domain=>db.evaluate(args.content as string,domain,projectId)):[];
   const recordIds=new Set(records.map(r=>r.id));
   const pendingTextChecks=typeof args.content==='string'?0:records.reduce((n,r)=>n+(r.checks?.length||0),0);
   const textFindings=[...new Map(textReviews.flatMap(r=>r.findings).filter(f=>recordIds.has(f.ruleId)).map(f=>[JSON.stringify(f),f])).values()];
-  const status=results.some(r=>r.status==='fail')||textFindings.some(f=>!f.passed)?'fail':(!results.length&&!textFindings.length)||pendingTextChecks>0||results.some(r=>r.status==='not_verified')?'not_verified':'pass';
-  const report={instructionSetId:args.instructionSetId??null,task:args.task,status,scope:'Agent-selected applicable styles and required dependencies; completeness of task selection is not verified.',results,artifacts,textFindings,pendingTextChecks,note:'Pass covers the listed automated checks only. File presence does not prove format validity or editability. Agent-reported passes remain Not verified. This report does not certify full compliance.'};
+  const status=results.some(r=>r.status==='fail')||textFindings.some(f=>!f.passed)?'fail':resolved.unresolved.length||(!results.length&&!textFindings.length)||pendingTextChecks>0||results.some(r=>r.status==='not_verified')?'not_verified':'pass';
+  const report={instructionSetId:args.instructionSetId??null,task:args.task,status,unresolved:resolved.unresolved,scope:'Agent-selected applicable styles and required dependencies; completeness of task selection is not verified.',results,artifacts,textFindings,pendingTextChecks,note:'Pass covers the listed automated checks only. File presence does not prove format validity or editability. Agent-reported passes remain Not verified. This report does not certify full compliance.'};
   const serialized=JSON.stringify(report);
   if(serialized.length>100000)throw new BrainError('Review report too large; reduce scope or evidence');
   const event=db.trace({agent:'unknown',channel:'review',eventType:'compliance.review',outcome:status,recordIds:records.map(r=>r.id),recordVersions:Object.fromEntries(records.map(r=>[r.id,r.version])),metadata:{projectId,complianceReport:serialized,sessionLinked:false}});

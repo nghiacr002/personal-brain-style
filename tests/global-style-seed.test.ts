@@ -16,7 +16,7 @@ test('fresh startup installs the complete global catalog and remaps dependencies
   assert.equal(records.length,globalStyleCatalog.length);
   assert.equal(records.filter(r=>r.kind==='preference').length,54);
   assert.deepEqual(db.domains().map(d=>d.id).sort(),catalogDomains.map(d=>d.id).sort());
-  for(const r of records){assert.ok(r.summary&&r.useWhen&&r.principles.length&&r.reviewCriteria.length&&r.examples.length&&r.requirements.length&&r.checks.length&&r.externalSkills.length,r.title);assert.ok(r.externalSkills.every(s=>!s.includes(':')),r.title);}
+  for(const r of records){assert.ok(r.summary&&r.useWhen&&r.principles.length&&r.reviewCriteria.length&&r.examples.length&&r.requirements.length&&r.checks.length&&r.skillBindings.length,r.title);assert.ok(r.skillBindings.every(s=>!s.name.includes(':')),r.title);}
   assert.deepEqual(db.projects(),[]);
   for(const source of globalStyleCatalog){
    const record=records.find(r=>r.title===source.title)!;
@@ -28,11 +28,10 @@ test('fresh startup installs the complete global catalog and remaps dependencies
   assert.equal(db.scopedRecords(all.id).length,records.length);
   db.deleteWithPreview('project',all.id,db.deletionPreview('project',all.id).fingerprint);
   const ui=records.find(r=>r.keyId==='ui-ux')!;
-  assert.match(ui.content,/USEFUL UI CONTENT/);
-  assert.ok(ui.externalSkills.some(s=>s.startsWith("ui-ux-pro-max (when ")));
-  assert.ok(ui.externalSkills.some(s=>s.startsWith("design-taste-frontend (when ")));
-  assert.match(ui.content,/COMBINED UI\/UX SKILLS/);
-  assert.match(ui.content,/references\/app-screens.md/);
+  assert.ok(ui.skillBindings.some(s=>s.name==='ui-ux-pro-max'));
+  assert.ok(ui.skillBindings.some(s=>s.name==='design-taste-frontend'));
+  assert.match(ui.content,/PREFERRED OUTCOMES/);
+  assert.doesNotMatch(ui.content,/references\/app-screens.md/);
   db.update(ui.id,{...ui,content:'My edit'},ui.version);
   createBrainHttpServer(db).close();
   assert.equal(seedGlobalStyles(db),0);assert.equal(db.get(ui.id)!.content,'My edit');

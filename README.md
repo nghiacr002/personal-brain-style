@@ -1,6 +1,10 @@
 # Personal Brain
 
-Local-first working styles for Claude Code, Codex CLI, OpenCode, ChatGPT (read-only) and Claude Desktop. Manage reusable styles, project-private instructions, required skills, templates and review criteria through a browser UI and MCP.
+**Your working preferences, applied consistently across AI tools.**
+
+Personal Brain stores how you want work done: communication preferences, quality expectations, artifact formats and review criteria. External skills provide task procedures. Manage preferences locally and retrieve them through Claude Code, Codex CLI, OpenCode, ChatGPT (read-only) or Claude Desktop.
+
+Task resolution makes applicability, conflicts and provenance visible. It does not guarantee that a host model follows instructions. See [the preference contract](docs/PREFERENCE-CONTRACT.md) for precedence, conditional guidance and safe catalog upgrades.
 
 ## How it works
 

@@ -57,7 +57,7 @@ test("My Styles renders recipes safely and filters through the existing library"
   assert.match(html,/>Library</);
   assert.doesNotMatch(html,/Import samples/);
   assert.doesNotMatch(html,/style-intro|Your sample style library/);
-  assert.match(html,/New Style/);
+  assert.match(html,/New Preference/);
   assert.match(html,/View style guidelines/);
   assert.match(html,/&lt;script&gt;unsafe&lt;\/script&gt;/);
   assert.doesNotMatch(html,/<script>unsafe/);
@@ -66,7 +66,7 @@ test("My Styles renders recipes safely and filters through the existing library"
   element("searchBox").listeners.input();
   assert.match(element(".record-list").innerHTML,/Clear writing/);
   assert.doesNotMatch(element(".record-list").innerHTML,/Sky drawing/);
-  assert.match(element(".results-count").textContent,/1 style/);
+  assert.match(element(".results-count").textContent,/1 preference/);
   vm.runInContext('domain="diagrams";search="";records("preference");',context);
   assert.match(element("main").innerHTML,/Sky drawing/);
   assert.doesNotMatch(element("main").innerHTML,/Clear writing/);
@@ -282,7 +282,7 @@ test("URL navigation restores views, library filters and project configuration",
   assert.equal(typeof events.hashchange,"function");
   window.location.hash="#/library?type=skill&q=cloud&domain=architecture&mode=map";
   await vm.runInContext('loadRoute()',context);
-  assert.equal(vm.runInContext('active',context),"skill");assert.equal(vm.runInContext('search',context),"cloud");assert.equal(vm.runInContext('libraryMode',context),"map");
+  assert.equal(vm.runInContext('active',context),"preference");assert.equal(vm.runInContext('search',context),"cloud");assert.equal(vm.runInContext('libraryMode',context),"map");
   window.location.hash="#/projects/"+project.id+"/configure";await vm.runInContext('loadRoute()',context);
   assert.match(element("main").innerHTML,/Configure project/);assert.match(element("main").innerHTML,/IoT Platform/);
   await vm.runInContext('delegated({target:{closest(){return {dataset:{action:"project-cancel"}}}}})',context);
@@ -455,6 +455,14 @@ test("editing a selected shared style uses the project copy endpoint",async()=>{
  await vm.runInContext('saveEditor({preventDefault(){}})',context);
  assert.equal(calls[0].path,"/api/projects/p/items/s");assert.equal(calls[0].body.expectedProjectVersion,3);assert.equal(calls[0].body.expectedVersion,2);
  assert.equal(calls[0].body.record.content,"Project instructions");
+ vm.runInContext('items[0].kind="skill";openEditor(items[0])',context);
+ assert.equal(element("editKindField").hidden,true);
+ await vm.runInContext('saveEditor({preventDefault(){}})',context);
+ assert.equal(calls[1].body.record.kind,"skill");
+ vm.runInContext('openEditor()',context);assert.equal(element("editKindField").hidden,false);
+ const html=readFileSync(new URL("../public/index.html",import.meta.url),"utf8");
+ assert.doesNotMatch(html,/<option value="skill">/);
+
 });
 
 

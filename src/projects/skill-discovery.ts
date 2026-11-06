@@ -22,8 +22,9 @@ export function projectFolder(db:BrainDB,projectId:string){
 export function installedSkills(folder?:string,home=homedir()){
   const skills:InstalledSkill[]=[],issues:Issue[]=[],seen=new Set<string>();let visited=0;
   const roots:Array<[string,InstalledSkill["scope"],string]>=[];
-  if(folder)for(const agent of ["agents","codex","claude"])roots.push([join(folder,"."+agent,"skills"),"project",agent]);
+  if(folder)for(const agent of ["agents","codex","claude","opencode"])roots.push([join(folder,"."+agent,"skills"),"project",agent]);
   roots.push([join(home,".agents/skills"),"global","shared"]);
+  roots.push([join(home,".config/opencode/skills"),"agent","opencode"]);
   for(const agent of ["codex","claude"]){roots.push([join(home,"."+agent,"skills"),"agent",agent]);roots.push([join(home,"."+agent,"plugins/cache"),"agent",agent]);}
   function walk(path:string,scope:InstalledSkill["scope"],agent:string,depth:number){
     if(depth>9||visited>=6000){issues.push({type:"scan-limit",message:"Skill scan limit reached at "+path});return;}
@@ -51,8 +52,9 @@ export function installedSkills(folder?:string,home=homedir()){
   for(const [path,scope,agent] of roots)walk(path,scope,agent,0);
   return {skills,issues};
 }
-export function matchSkill(reference:string,skills:InstalledSkill[]){
+export function matchSkill(reference:string,skills:InstalledSkill[],host?:string){
   const name=reference.replace(/\s*\([^)]*\)\s*$/,"").trim().toLowerCase();
+  if(host)skills=skills.filter(s=>s.agent===host||(host==="opencode"&&s.agent==="claude"&&s.file.includes("/skills/")&&!s.file.includes("/plugins/"))||s.agent==="shared"||s.agent==="agents");
   let matches=skills.filter(s=>s.name.toLowerCase()===name);
   if(!matches.length&&name.includes(":"))matches=skills.filter(s=>s.name.toLowerCase()===name.split(":").at(-1));
   // Project installation takes precedence; differing agent copies require explicit choice.
@@ -60,7 +62,7 @@ export function matchSkill(reference:string,skills:InstalledSkill[]){
   const versions=new Set(matches.map(s=>s.digest));
   return {reference,status:matches.length===0?"missing":versions.size>1?"ambiguous":"available",skills:matches};
 }
-export function skillReferences(records:BrainRecord[],skills:InstalledSkill[]){return records.flatMap(r=>(r.externalSkills||[]).map(ref=>({recordId:r.id,title:r.title,...matchSkill(ref,skills)})));}
+export function skillReferences(records:BrainRecord[],skills:InstalledSkill[],host?:string){return records.flatMap(r=>[...(r.externalSkills||[]).map(ref=>({recordId:r.id,title:r.title,...matchSkill(ref,skills,host)})),...(r.skillBindings||[]).map(binding=>({recordId:r.id,title:r.title,...binding,...matchSkill(binding.name,skills,host)}))]);}
 export function discoverProject(db:BrainDB,projectId:string,createDraft=false,home=homedir(),files?:string[],fileOffset=0){
   const project=db.project(projectId),issues:Issue[]=[];let folder:string|undefined;
   try{folder=projectFolder(db,projectId);}catch(e){issues.push({type:"repository",message:(e as Error).message});}

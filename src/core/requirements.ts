@@ -1,4 +1,5 @@
-import {BrainError, type BrainRecord, type Requirement} from './models.ts';
+import {applicability} from './preference-contract.ts';
+import {BrainError, type BrainRecord, type Requirement, type TaskContext} from './models.ts';
 
 export function validateRequirements(value:unknown):Requirement[]{
   if(value===undefined)return [];
@@ -12,10 +13,11 @@ export function validateRequirements(value:unknown):Requirement[]{
   });
 }
 
-export function requirementChecklist(records:BrainRecord[]){
+export function requirementChecklist(records:BrainRecord[],context:TaskContext={}){
   return records.flatMap(r=>[
     ...(r.requirements||[]),
     ...(r.reviewCriteria||[]).map((label,i)=>({id:`review-${i+1}`,label,type:'manual' as const})),
+    ...(r.skillBindings||[]).map((skill,i)=>({id:`binding-${i+1}`,label:`${skill.required?"Required":"Optional"} procedure: ${skill.name}. Fallback: ${skill.fallback}`,type:'manual' as const,applicability:applicability(skill.when,context),optional:!skill.required})),
     ...(r.externalSkills||[]).map((skill,i)=>({id:`skill-${i+1}`,label:`Read and apply applicable skill: ${skill}`,type:'manual' as const}))
-  ].map(requirement=>({...requirement,recordId:r.id,recordVersion:r.version,style:r.title})));
+  ].map(requirement=>({applicability:'applicable',optional:false,...requirement,recordId:r.id,recordVersion:r.version,style:r.title})));
 }

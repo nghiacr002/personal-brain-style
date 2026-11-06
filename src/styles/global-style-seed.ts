@@ -21,7 +21,7 @@ export function seedGlobalStyles(db:BrainDB):number {
    const source=globalStyleCatalog.find(r=>r.id===id);
    if(!source||source.projectId||source.backend)throw new Error('Invalid global style catalog');
    visiting.add(id);
-   const record=db.create({...source,requiredIds:(source.requiredIds||[]).map(add)});
+   const record=db.create({...source,requiredIds:(source.requiredIds||[]).map(add),supportingLinks:source.supportingLinks?.map(link=>({...link,recordId:add(link.recordId)}))});
    imported.set(id,record.id);visiting.delete(id);return record.id;
   };
   for(const record of globalStyleCatalog)add(record.id);

@@ -70,12 +70,17 @@ test("ChatGPT MCP is read-only and pinned to its selected project",{timeout:1200
     child.stdin.write(JSON.stringify({jsonrpc:"2.0",method:"notifications/initialized"})+"\n");
     const list=await call("tools/list");
     assert.ok(list.result.tools.some((t:any)=>t.name==="brain_discover"));
-    assert.deepEqual(list.result.tools.map((t:any)=>t.name).sort(),["brain_bootstrap","brain_discover","brain_get","brain_style"].sort());
+    assert.deepEqual(list.result.tools.map((t:any)=>t.name).sort(),["brain_bootstrap","brain_discover","brain_get","brain_resolve","brain_style"].sort());
     assert.ok(list.result.tools.every((t:any)=>t.annotations.readOnlyHint));
     const search=await call("tools/call",{name:"brain_discover",arguments:{task:"drawio architecture"}});
     assert.ok(JSON.parse(search.result.content[0].text).every((r:any)=>r.id===selected.id));
     const loaded=JSON.parse((await call("tools/call",{name:"brain_get",arguments:{id:selected.id}})).result.content[0].text);
     assert.equal(loaded.id,selected.id);assert.equal(loaded.skillAvailability,undefined);
+    assert.match(loaded.complianceInstructions,/READ-ONLY PREFERENCES/);
+    assert.doesNotMatch(loaded.complianceInstructions,/Submit brain_review/);
+    const resolved=JSON.parse((await call("tools/call",{name:"brain_resolve",arguments:{task:"Work",recordIds:[selected.id],context:{activity:"plan",formats:[]}}})).result.content[0].text);
+    assert.equal(resolved.projectId,project.id);assert.match(resolved.complianceInstructions,/READ-ONLY PREFERENCES/);
+    assert.ok((await call("tools/call",{name:"brain_resolve",arguments:{projectId:"other",task:"Work",recordIds:[selected.id]}})).error);
     assert.equal((await call("tools/call",{name:"brain_get",arguments:{id:foreign.id}})).result.isError,true);
     for(const name of ["brain_projects","brain_update_project_style","brain_get_installed_skill","brain_call_tool"]){
       assert.ok((await call("tools/call",{name,arguments:{}})).error);

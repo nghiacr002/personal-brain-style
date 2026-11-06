@@ -85,6 +85,7 @@ test('Fusion retains different overrides, excludes unselected styles, rejects dr
   assert.notEqual(input.sources[0].id,input.sources[1].id);
   const proposal={targetId:r.id,title:'Code',summary:'Better',content:'Reusable convention',principles:[],examples:[],externalSkills:[],reviewCriteria:['Keep this check'],rationale:'Compare evidence',conflicts:[],sourceIds:[input.sources[0].id]};
   assert.throws(()=>validateFusion({proposals:[{...proposal,externalSkills:['invented']}]},input.sources,input.targets),/invents/);
+  assert.throws(()=>validateFusion({proposals:[{...proposal,content:'Run npm install renderer then write mxGeometry'}]},input.sources,input.targets),/technical recipe/);
   assert.throws(()=>validateFusion({proposals:[{...proposal,reviewCriteria:[]}]},input.sources,input.targets),/removes/);
   const proposals=validateFusion({proposals:[proposal]},input.sources,input.targets);
   const job={id:'atomic',status:'ready',sources:input.sources,targets:input.targets,proposals,applied:[]};
@@ -128,7 +129,7 @@ test('Fusion CLI completes, cancels and does not recreate deleted project histor
  }finally{process.env.PATH=path;db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('Fusion includes linked review evidence and preserves required skill references',()=>{
+test('Fusion uses preference evidence and preserves required skill references',()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-fusion-evidence-')),db=new BrainDB(join(dir,'db'));
  try{
   const base={domain:'coding',title:'Code',summary:'Summary',content:'Instructions',tags:[],priority:90,status:'active',checks:[],backend:null};
@@ -136,7 +137,7 @@ test('Fusion includes linked review evidence and preserves required skill refere
   const style=db.create({...base,kind:'preference',externalSkills:['verified-reference'],requiredIds:[review.id]});
   const project=db.saveProject({name:'A',description:'',assignments:[{recordId:style.id,override:null}]});
   const input=fusionInput(db,[project.id]);
-  assert.ok(input.sources.some(r=>r.recordId===review.id&&r.kind==='review'));
+  assert.ok(!input.sources.some(r=>r.recordId===review.id&&r.kind==='review'));
   const proposal={targetId:style.id,title:'Code',summary:'Improved',content:'Improved instructions',principles:[],examples:[],externalSkills:[],reviewCriteria:[],rationale:'Evidence',conflicts:[],sourceIds:[project.id+':'+style.id]};
   assert.throws(()=>validateFusion({proposals:[proposal]},input.sources,input.targets),/removes a required skill/);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}

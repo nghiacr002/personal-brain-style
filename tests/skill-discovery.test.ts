@@ -128,3 +128,16 @@ test('rescanning rereads changed skill files and explicit IDs remain loadable du
   assert.equal(matchSkill('review',installedSkills(undefined,home).skills).status,'missing');
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('OpenCode inventory uses its documented global root and compatible Claude skill folders',()=>{
+ const home=mkdtempSync(join(tmpdir(),'pb-opencode-skills-'));
+ try{
+  put(join(home,'.config/opencode/skills/render/SKILL.md'),skill('render'));
+  put(join(home,'.claude/skills/write/SKILL.md'),skill('write'));
+  const inventory=installedSkills(undefined,home);
+  assert.equal(matchSkill('render',inventory.skills,'opencode').status,'available');
+  assert.equal(matchSkill('write',inventory.skills,'opencode').status,'available');
+  assert.equal(matchSkill('render',inventory.skills,'codex').status,'missing');
+ }finally{rmSync(home,{recursive:true,force:true});}
+});

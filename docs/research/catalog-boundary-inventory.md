@@ -1,0 +1,61 @@
+# Catalog boundary inventory
+
+All release records retain identity and acceptance requirements. Technical METHOD and SKILLS recipes are removed from preference bodies; document template conventions remain. External procedures are optional, with explicit applicable formats or activities where known. Existing user records require a previewed upgrade.
+
+| Key | Classification | Previous content characters | New content characters |
+|---|---|---:|---:|
+| quality-control | Working preferences and acceptance criteria | 5576 | 1784 |
+| research | Working preferences and acceptance criteria | 4601 | 1606 |
+| writing | Working preferences and acceptance criteria | 4853 | 1548 |
+| doc-markdown | Format preference and outcome criteria | 3448 | 1477 |
+| doc-html | Format preference and outcome criteria | 3671 | 1512 |
+| doc-word | Format preference and outcome criteria | 3938 | 1650 |
+| thinking | Working preferences and acceptance criteria | 4748 | 1624 |
+| review-standard | Working preferences and acceptance criteria | 5190 | 1440 |
+| review-checklist | Working preferences and acceptance criteria | 6490 | 1422 |
+| ai-delivery | Working preferences and acceptance criteria | 5618 | 1412 |
+| product-ownership | Working preferences and acceptance criteria | 5598 | 2069 |
+| business-analysis | Working preferences and acceptance criteria | 5992 | 1769 |
+| technology-research | Working preferences and acceptance criteria | 4968 | 1722 |
+| drawing | Working preferences and acceptance criteria | 5612 | 1507 |
+| drawio | Format preference and outcome criteria | 4128 | 1703 |
+| mermaid | Format preference and outcome criteria | 3880 | 1507 |
+| ui-ux | Working preferences and acceptance criteria | 11184 | 1831 |
+| design-system | Working preferences and acceptance criteria | 5570 | 1834 |
+| solution-architecture | Working preferences and acceptance criteria | 5823 | 1671 |
+| software-architecture | Working preferences and acceptance criteria | 5159 | 1748 |
+| cloud-architecture | Working preferences and acceptance criteria | 4321 | 1610 |
+| cloud-azure | Working preferences and acceptance criteria | 4666 | 1372 |
+| network-architecture | Working preferences and acceptance criteria | 4438 | 1427 |
+| data-architecture | Working preferences and acceptance criteria | 4611 | 1572 |
+| security-architecture | Working preferences and acceptance criteria | 4648 | 1511 |
+| development | Working preferences and acceptance criteria | 5464 | 1464 |
+| technical-leadership | Working preferences and acceptance criteria | 4950 | 1413 |
+| quality-assurance | Working preferences and acceptance criteria | 3830 | 1481 |
+| sre-devops | Working preferences and acceptance criteria | 5564 | 1402 |
+| integration-architecture | Working preferences and acceptance criteria | 6275 | 1785 |
+| software-design | Working preferences and acceptance criteria | 5573 | 1503 |
+| eng-frontend | Working preferences and acceptance criteria | 6386 | 1594 |
+| eng-backend | Working preferences and acceptance criteria | 5925 | 1426 |
+| eng-frontend-typescript | Working preferences and acceptance criteria | 5963 | 1373 |
+| eng-frontend-mobile | Working preferences and acceptance criteria | 5720 | 1360 |
+| eng-backend-typescript | Working preferences and acceptance criteria | 5628 | 1229 |
+| eng-backend-dotnet | Working preferences and acceptance criteria | 5826 | 1155 |
+| structure-frontend-typescript | Working preferences and acceptance criteria | 6270 | 1318 |
+| structure-frontend-mobile | Working preferences and acceptance criteria | 6392 | 1332 |
+| structure-backend-typescript | Working preferences and acceptance criteria | 6329 | 1289 |
+| structure-backend-dotnet | Working preferences and acceptance criteria | 5971 | 1301 |
+| coding-style | Working preferences and acceptance criteria | 6327 | 1391 |
+| coding-patterns | Working preferences and acceptance criteria | 6368 | 1508 |
+| logging-tracing | Working preferences and acceptance criteria | 5895 | 1377 |
+| doc-prd | Template conventions and outcome preferences | 6476 | 4584 |
+| doc-roadmap | Template conventions and outcome preferences | 5364 | 3788 |
+| doc-brd | Template conventions and outcome preferences | 6199 | 4277 |
+| doc-adr | Template conventions and outcome preferences | 5048 | 4099 |
+| doc-test | Template conventions and outcome preferences | 5520 | 4013 |
+| doc-runbook | Template conventions and outcome preferences | 5369 | 4047 |
+| doc-hld | Template conventions and outcome preferences | 4918 | 2183 |
+| doc-lld | Template conventions and outcome preferences | 4778 | 2015 |
+| doc-api | Template conventions and outcome preferences | 4790 | 3766 |
+| doc-database | Template conventions and outcome preferences | 4191 | 2012 |
+| doc-integration | Template conventions and outcome preferences | 4236 | 2070 |

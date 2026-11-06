@@ -148,7 +148,7 @@ export const globalStyleCatalog: Array<RecordInput & {id:string}> = [
     "title": "Document writing — clear, structured and evidence-based",
     "summary": "Write documents that lead with the conclusion, separate facts from assumptions, cite evidence and respect the current decision record.",
     "useWhen": "Use when writing or revising a README, specification, design document, decision record, runbook, report, release note or product copy.",
-    "content": "SCOPE\nApplies to every written deliverable: README, specification, design document, architecture decision record (ADR), runbook, report, release note and user-facing copy. Every role uses it. It decides structure, language, evidence handling, decision precedence and format. It does not decide diagram notation (Drawing and the project's selected diagram format) or the technical substance, which comes from the domain style in use. It relies on Quality control for how verification results are stated.\n\nINPUTS\n- Audience, purpose and the decision or action the reader must take.\n- Existing documents: the binding baseline, decision records with their amendments and supersessions, and the project's designated sources of truth for boundaries, contracts and domain detail.\n- Required format: Markdown for new repository documents; an existing document keeps its format (HTML stays HTML); office formats only when requested.\n- Supplied facts and available evidence, with dates.\n\nMETHOD\n1. Before drafting, write down audience, purpose and the one-sentence conclusion. Put that conclusion in the first paragraph.\n2. Use only the sections the reader needs: purpose and scope; context; requirements and constraints; approach; decisions and alternatives; risks and assumptions; steps; verification; next actions; open questions.\n3. Write plain technical English: short paragraphs, active voice, one term per concept, acronyms defined on first use, no marketing language or filler.\n4. Use numbered steps for procedures, tables for comparisons, fenced code blocks for commands and configuration, and a diagram only when relationships are clearer visually.\n5. Make requirements observable and testable. If the project uses MUST, SHOULD and MAY, use them consistently.\n6. Label facts, assumptions, proposals and open questions. Cite source and date for external claims. Never invent owners, dates, metrics, approvals, retention periods or service objectives.\n7. Decision precedence: identify the baseline and every amendment, describe current behaviour with decision identifiers, keep superseded decisions with a pointer to what replaced them, and record a necessary departure as a new decision when you are authorised to change documentation.\n8. Every verification statement carries a date and method. Old test counts, earlier environment results and accepted targets are history or targets, not achievements.\n9. Runbooks state working directory, environment or profile, prerequisites, ordered steps, expected output, rollback, and which steps others own.\n10. When editing, preserve meaning, supplied facts and format; change only what the task requires.\n11. Multilingual copy reuses authored terms and register per language; identifiers, keys and option values are never translated.\n12. Keep secrets, real tokens and personal data out of examples.\n13. Re-read against the review criteria and validate links, tables and code samples.\n\nDELIVERABLES\nThe document in the required format: title, purpose and scope, conclusion first, the needed sections, cited evidence, decisions with rationale and consequences, open questions and next actions. Office documents are produced with your agent's document tooling when available and inspected after rendering.\n\nSKILLS\n- full-output-enforcement (when the deliverable is long or multi-part, such as a full specification, a complete runbook or several files): read its SKILL.md. Apply its scope, build and cross-check steps: count the requested sections or files, deliver each one complete, and scan for its banned patterns (elided code, \"the rest follows the same pattern\", skeletons where content was requested). If output must be split, stop at a clean section boundary and state exactly what remains. It does not override concision: completeness means every requested item, not padding. Fallback when not installed: count deliverables before and after writing per this METHOD and report the skill as missing.\n\nREQUIRED STYLES\n- Quality control: verification statements in documents use its passed, failed and not verified classification and its current-evidence rule.\n\nVERIFICATION\nCheck that the conclusion is in the first paragraph, every requested section exists, links resolve, code samples were run or are marked untested, tables render, every verification claim has a date and method, and superseded decisions are marked as such. Inspect rendered office documents for layout and pagination; if rendering was not possible, report it as Not verified.\n\nREFERENCES\nhttps://developers.google.com/style\nhttps://learn.microsoft.com/en-us/style-guide/welcome/\nhttps://www.plainlanguage.gov/guidelines/\nhttps://www.rfc-editor.org/rfc/rfc2119\nhttps://commonmark.org/",
+    "content": "SCOPE\nApplies to every written deliverable: README, specification, design document, architecture decision record (ADR), runbook, report, release note and user-facing copy. Every role uses it. It decides structure, language, evidence handling, decision precedence and format. It does not decide diagram notation (Drawing and the project's selected diagram format) or the technical substance, which comes from the domain style in use. It relies on Quality control for how verification results are stated. File-format rules come from the sub-style for the output format: Markdown (.md), HTML (.html) or Word (.docx); apply the one that matches the deliverable.\n\nINPUTS\n- Audience, purpose and the decision or action the reader must take.\n- Existing documents: the binding baseline, decision records with their amendments and supersessions, and the project's designated sources of truth for boundaries, contracts and domain detail.\n- Required format: Markdown for new repository documents; an existing document keeps its format (HTML stays HTML); office formats only when requested.\n- Supplied facts and available evidence, with dates.\n\nMETHOD\n1. Before drafting, write down audience, purpose and the one-sentence conclusion. Put that conclusion in the first paragraph.\n2. Use only the sections the reader needs: purpose and scope; context; requirements and constraints; approach; decisions and alternatives; risks and assumptions; steps; verification; next actions; open questions.\n3. Write plain technical English: short paragraphs, active voice, one term per concept, acronyms defined on first use, no marketing language or filler.\n4. Use numbered steps for procedures, tables for comparisons, fenced code blocks for commands and configuration, and a diagram only when relationships are clearer visually.\n5. Make requirements observable and testable. If the project uses MUST, SHOULD and MAY, use them consistently.\n6. Label facts, assumptions, proposals and open questions. Cite source and date for external claims. Never invent owners, dates, metrics, approvals, retention periods or service objectives.\n7. Decision precedence: identify the baseline and every amendment, describe current behaviour with decision identifiers, keep superseded decisions with a pointer to what replaced them, and record a necessary departure as a new decision when you are authorised to change documentation.\n8. Every verification statement carries a date and method. Old test counts, earlier environment results and accepted targets are history or targets, not achievements.\n9. Runbooks state working directory, environment or profile, prerequisites, ordered steps, expected output, rollback, and which steps others own.\n10. When editing, preserve meaning, supplied facts and format; change only what the task requires.\n11. Multilingual copy reuses authored terms and register per language; identifiers, keys and option values are never translated.\n12. Keep secrets, real tokens and personal data out of examples.\n13. Re-read against the review criteria and validate links, tables and code samples.\n\nDELIVERABLES\nThe document in the required format: title, purpose and scope, conclusion first, the needed sections, cited evidence, decisions with rationale and consequences, open questions and next actions. Office documents are produced with your agent's document tooling when available and inspected after rendering.\n\nSKILLS\n- full-output-enforcement (when the deliverable is long or multi-part, such as a full specification, a complete runbook or several files): read its SKILL.md. Apply its scope, build and cross-check steps: count the requested sections or files, deliver each one complete, and scan for its banned patterns (elided code, \"the rest follows the same pattern\", skeletons where content was requested). If output must be split, stop at a clean section boundary and state exactly what remains. It does not override concision: completeness means every requested item, not padding. Fallback when not installed: count deliverables before and after writing per this METHOD and report the skill as missing.\n\nREQUIRED STYLES\n- Quality control: verification statements in documents use its passed, failed and not verified classification and its current-evidence rule.\n\nVERIFICATION\nCheck that the conclusion is in the first paragraph, every requested section exists, links resolve, code samples were run or are marked untested, tables render, every verification claim has a date and method, and superseded decisions are marked as such. Inspect rendered office documents for layout and pagination; if rendering was not possible, report it as Not verified.\n\nREFERENCES\nhttps://developers.google.com/style\nhttps://learn.microsoft.com/en-us/style-guide/welcome/\nhttps://www.plainlanguage.gov/guidelines/\nhttps://www.rfc-editor.org/rfc/rfc2119\nhttps://commonmark.org/",
     "principles": [
       "Lead with the conclusion the reader needs.",
       "Write plain, consistent technical English.",
@@ -210,6 +210,219 @@ export const globalStyleCatalog: Array<RecordInput & {id:string}> = [
     "status": "active",
     "requiredIds": [
       "quality-control"
+    ],
+    "backend": null
+  },
+  {
+    "id": "doc-markdown",
+    "keyId": "doc-markdown",
+    "kind": "preference",
+    "domain": "writing-documents",
+    "title": "Markdown — repository documents as reviewable text",
+    "summary": "Markdown files that render the same in every target host: one H1, ordered headings, relative links, fenced code with languages, lint-clean source and a host render check.",
+    "useWhen": "Use when the deliverable is a .md file: README, specification, ADR, runbook, changelog or report kept in Git or rendered by a docs site or wiki.",
+    "content": "SCOPE\nFormat rules for Markdown deliverables. Applies when the project selects this style, a task asks for a .md file, or a new repository document has no other required format. The Document writing style (required) decides audience, structure, language and evidence; this style decides syntax, portability, editing and verification. Used by engineers, analysts and technical writers.\n\nINPUTS\n- The target renderer: Git hosting service, documentation site generator, wiki or plain viewer. Extensions (tables, task lists, admonitions, footnotes, Mermaid) differ between hosts.\n- The file being edited, its heading structure, anchors that other documents link to, and any front matter.\n- Repository conventions: lint configuration, line-wrap rule, file naming and docs folder layout.\n\nMETHOD\n1. Write CommonMark plus only the extensions the target host supports (GitHub Flavored Markdown tables and task lists when the host is GitHub or similar). Do not rely on raw HTML except where the host renders it and plain Markdown cannot express the content.\n2. One H1 that matches the document title. Headings descend one level at a time; never skip from H2 to H4. Heading text is short and unique within the file so anchors are stable.\n3. Keep front matter only when the site generator uses it; keep its keys and order when editing.\n4. Links: relative paths for files in the repository, descriptive link text (never 'click here'), reference-style links when the same URL repeats. Images carry alt text and live next to the document or in the repository's assets folder.\n5. Code: fenced blocks with a language tag (bash, json, yaml, ts); commands separate from their output; placeholders written as <angle-bracket-names> and explained once.\n6. Lists: '-' for unordered, '1.' for ordered procedures; a blank line around lists, tables and code blocks. Tables only for real comparisons, with a header row and short cells; move long prose out of cells.\n7. Diagrams: a fenced mermaid block or a linked .mmd or .drawio source per the project's selected drawing format; never a screenshot alone.\n8. Follow the repository line-wrap rule; if none exists, do not hard-wrap prose so diffs stay sentence-level.\n9. Editing: change only the sections the task requires; preserve anchors that other files link to, or update every inbound link in the same change.\n\nDELIVERABLES\nThe .md file at the agreed path, any images or diagram sources it references, and a short check report: lint result, link check result and host render result.\n\nSKILLS\n- creating-mermaid-diagrams: read its SKILL.md when the Markdown embeds Mermaid diagrams, and validate each block before delivery. If not installed, follow the Mermaid style or the Drawing style and report the skill as missing.\n\nREQUIRED STYLES\n- Document writing: structure, language, evidence, decision precedence and verification statements.\n\nVERIFICATION\nReport separately: source checks (markdownlint or the repository linter when available; otherwise a manual pass for heading order, fenced code languages and blank lines), link checks (every relative link and anchor resolves; external links opened or marked unchecked) and rendering (previewed in the target host or the same renderer). Mark each passed, failed or not verified with the reason.\n\nREFERENCES\nhttps://commonmark.org/\nhttps://github.github.com/gfm/\nhttps://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md\nhttps://developers.google.com/style/markdown",
+    "principles": [
+      "Write portable CommonMark plus only host-supported extensions.",
+      "One H1 and a heading hierarchy without skipped levels.",
+      "Relative links, alt text and fenced code with a language tag.",
+      "Keep diagrams as editable source, not screenshots.",
+      "Report lint, link and render checks separately."
+    ],
+    "externalSkills": [
+      "creating-mermaid-diagrams (when the Markdown embeds Mermaid diagrams)"
+    ],
+    "reviewCriteria": [
+      "The file has one H1 and headings descend without skipped levels.",
+      "Every relative link and anchor resolves; link text is descriptive; images have alt text.",
+      "Code blocks are fenced with a language tag and commands are separate from output.",
+      "Only extensions supported by the target host are used.",
+      "Edits preserve unrelated sections and anchors referenced by other files.",
+      "Lint, link and render results are reported as passed, failed or not verified."
+    ],
+    "examples": [
+      "README: H1 'Orders service', a one-paragraph purpose with the conclusion, '## Quick start' with a bash block for install and a separate block showing expected output, and a relative link to docs/runbook.md#rollback that was checked to resolve.",
+      "An ADR renames '## Status' to '## Decision status'; three files link to #status, so the same change updates those links and the link check passes.",
+      "markdownlint is not installed. The report states a manual pass for heading order and code fences, a passed relative-link check, and host rendering not verified."
+    ],
+    "requirements": [
+      {
+        "id": "req-markdown-source",
+        "label": "Markdown source file",
+        "type": "artifact",
+        "extension": ".md"
+      }
+    ],
+    "checks": [
+      {
+        "type": "not_contains",
+        "value": "lorem ipsum",
+        "label": "No placeholder text"
+      },
+      {
+        "type": "not_contains",
+        "value": "TBD",
+        "label": "No unresolved TBD markers"
+      }
+    ],
+    "tags": [
+      "markdown",
+      "md",
+      "commonmark",
+      "gfm",
+      "readme",
+      "docs-as-code",
+      "writing",
+      "documentation",
+      "technical-writer",
+      "engineer"
+    ],
+    "priority": 85,
+    "status": "active",
+    "requiredIds": [
+      "writing"
+    ],
+    "backend": null
+  },
+  {
+    "id": "doc-html",
+    "keyId": "doc-html",
+    "kind": "preference",
+    "domain": "writing-documents",
+    "title": "HTML — self-contained, accessible web documents",
+    "summary": "Single-file HTML documents with semantic structure, readable typography, light and dark support, no unapproved external resources, and a checked render at desktop and phone widths.",
+    "useWhen": "Use when the deliverable is an .html document: a report, explainer, dashboard-style summary, published page or an existing HTML document being revised.",
+    "content": "SCOPE\nFormat rules for HTML documents. Applies when the project selects this style, a task asks for HTML, or an existing HTML document is edited (it stays HTML). The Document writing style (required) decides audience, structure, language and evidence; this style decides markup, styling, assets, accessibility and verification. It does not govern application UI; the UI/UX style covers interactive product screens. Used by analysts, engineers and technical writers.\n\nINPUTS\n- Where the page is viewed: opened as a local file, hosted on a site, attached to email or embedded in another tool. This decides whether external resources and scripts are allowed.\n- The existing HTML file being edited, its stylesheet, IDs that other pages link to, and any template.\n- The project palette or design tokens, if any.\n\nMETHOD\n1. Start from a valid HTML5 skeleton: <!doctype html>, <html lang>, <meta charset=\"utf-8\">, a viewport meta tag and a <title> that matches the H1.\n2. Use semantic elements: header, nav for a table of contents when the document is long, main, section with headings, article, figure with figcaption, table with caption and th scope, footer. One h1; headings descend without skipped levels. Do not build structure from div and styling alone.\n3. Self-contained by default: inline CSS in one <style> block, images as files next to the page or inline SVG. Load external fonts, scripts or CDNs only when the hosting context allows them and pin exact versions. No tracking, analytics or remote calls without approval.\n4. Typography and layout: a readable body size (about 16px), line length near 70 characters, a single column that works at phone width without horizontal scrolling; wide tables scroll inside their own container.\n5. Colour: define colours once as CSS custom properties, support light and dark with prefers-color-scheme, keep text contrast at WCAG AA, and never rely on colour alone.\n6. Accessibility: alt text for meaningful images and empty alt for decorative ones, descriptive link text, visible focus styles, and no information that appears only on hover.\n7. Scripts only when the reader gains something (filtering, collapsing long sections); the content must still read correctly with scripts disabled.\n8. Add print styles when the page may be printed: hide navigation, avoid breaking tables and figures across pages.\n9. Editing: change only the sections the task requires; preserve IDs, anchors and the existing stylesheet unless the task is a redesign.\n\nDELIVERABLES\nThe .html file with its local assets, and a short check report: validation result, accessibility result and rendering result at desktop and phone widths in light and dark.\n\nSKILLS\n- frontend-design: read its SKILL.md when the document needs a deliberate visual design beyond the default readable layout. Its aesthetic choices never override the project palette, accessibility rules or the self-contained default. If not installed, follow this METHOD and report the skill as missing.\n\nREQUIRED STYLES\n- Document writing: structure, language, evidence, decision precedence and verification statements.\n\nVERIFICATION\nReport separately: markup validation (the W3C Nu validator or an equivalent parser; otherwise mark not verified), accessibility (automated checker such as axe when available plus a manual pass for headings, alt text, contrast and focus) and rendering (opened in a browser at about 1280px and 375px wide, in light and dark). Mark each passed, failed or not verified with the reason.\n\nREFERENCES\nhttps://html.spec.whatwg.org/multipage/\nhttps://developer.mozilla.org/en-US/docs/Web/HTML/Element\nhttps://www.w3.org/WAI/WCAG22/quickref/\nhttps://validator.w3.org/nu/",
+    "principles": [
+      "Semantic HTML5 structure with one h1 and ordered headings.",
+      "Self-contained by default; external resources only when allowed and pinned.",
+      "Readable at phone width and in light and dark.",
+      "Meet WCAG AA contrast and never rely on colour alone.",
+      "Report validation, accessibility and rendering separately."
+    ],
+    "externalSkills": [
+      "frontend-design (when the HTML document needs a deliberate visual design beyond the default readable layout)"
+    ],
+    "reviewCriteria": [
+      "The page has doctype, lang, charset, viewport and a title matching the h1.",
+      "Structure uses semantic elements; headings descend without skipped levels; tables have captions and header scopes.",
+      "No unapproved external resources, trackers or remote calls; any external resource is version-pinned.",
+      "Text contrast meets WCAG AA in light and dark; images have appropriate alt text.",
+      "The page reads correctly at phone width without horizontal page scrolling and without scripts.",
+      "Edits preserve IDs and anchors referenced elsewhere."
+    ],
+    "examples": [
+      "A release report as report.html: inline <style> with colour tokens and a dark-mode media query, a nav table of contents, a results table inside a horizontally scrolling wrapper, and a figure with an inline SVG chart and a caption.",
+      "An existing HTML runbook is revised. It stays HTML; only the rollback section changes, and the #rollback ID used by the on-call wiki is kept.",
+      "The Nu validator is not available offline. The report marks markup validation not verified, states a passed manual accessibility pass, and lists the widths and themes inspected in the browser."
+    ],
+    "requirements": [
+      {
+        "id": "req-html-source",
+        "label": "HTML document file",
+        "type": "artifact",
+        "extension": ".html"
+      }
+    ],
+    "checks": [
+      {
+        "type": "not_contains",
+        "value": "lorem ipsum",
+        "label": "No placeholder text"
+      },
+      {
+        "type": "not_contains",
+        "value": "TBD",
+        "label": "No unresolved TBD markers"
+      }
+    ],
+    "tags": [
+      "html",
+      "web-page",
+      "report",
+      "accessibility",
+      "wcag",
+      "self-contained",
+      "writing",
+      "documentation",
+      "technical-writer",
+      "analyst"
+    ],
+    "priority": 85,
+    "status": "active",
+    "requiredIds": [
+      "writing"
+    ],
+    "backend": null
+  },
+  {
+    "id": "doc-word",
+    "keyId": "doc-word",
+    "kind": "preference",
+    "domain": "writing-documents",
+    "title": "Word — editable .docx documents with real structure",
+    "summary": "Word documents built from named styles: real headings, an updatable table of contents, styled tables and captions, tracked changes when revising, and a rendered page-by-page check.",
+    "useWhen": "Use when the deliverable is a Word (.docx) file or template: a specification, proposal, report, contract-style document or form to send, sign, print or edit in Microsoft Word.",
+    "content": "SCOPE\nFormat rules for Word deliverables. Applies when the project selects this style or a task asks for Word, .docx or .dotx. The Document writing style (required) decides audience, structure, language and evidence; this style decides document structure, styles, layout, revision handling and verification. Used by analysts, consultants, engineers and technical writers.\n\nINPUTS\n- The organisation template (.dotx) or an existing .docx to follow, with its styles, headers, footers and numbering.\n- Page setup: paper size (A4 or Letter), orientation, margins and language.\n- Whether the reader expects tracked changes and comments, or a clean copy.\n- Images and diagrams to embed, with their editable sources.\n\nMETHOD\n1. Start from the supplied template or existing document; never rebuild an existing document from scratch to change part of it.\n2. Structure with named styles only: Title, Heading 1 to 3, Normal, List Bullet, List Number, Caption, Table Grid or the template's equivalents. No manual bold-and-size headings, no blank paragraphs or tabs for spacing, no manual numbering typed as text.\n3. Add an automatic table of contents field for documents longer than about five pages, and set it to update on open or update it before delivery.\n4. Front matter: title, version, date, author or owner as supplied, and a document control table when the template has one. Never invent approvers or dates.\n5. Tables: a repeating header row, consistent column widths, no merged cells unless the content requires them, and a caption. Figures: embedded at readable size with a caption and alt text; keep the diagram's editable source alongside.\n6. Headers and footers carry the document title or classification and page numbers in 'Page X of Y' form when the template does not define them.\n7. Revisions to someone else's document use tracked changes and comments when requested or when the document is under review; otherwise deliver a clean copy and a short change summary.\n8. Keep cross-references, captions and the table of contents as fields so they update; do not paste them as static text.\n9. Remove personal metadata, hidden comments and unused draft content before external delivery when appropriate.\n\nDELIVERABLES\nThe .docx (or .dotx) file, editable sources of embedded diagrams, and a short check report: structure check, rendering check and any items that could not be verified.\n\nSKILLS\n- docx: read its SKILL.md for every Word deliverable. Use its creation, editing, tracked-changes and template procedures and its render-to-image or PDF loop for inspection. Its default fonts and layout yield to the supplied template. If its rendering tools are not available, deliver the file, mark rendering not verified and stop retrying. If the skill is not installed, build the document with the available document library following this METHOD and report the skill as missing.\n\nREQUIRED STYLES\n- Document writing: structure, language, evidence, decision precedence and verification statements.\n\nVERIFICATION\nReport separately: structure (the file opens or parses; headings use heading styles; the table of contents, captions and cross-references are fields; tracked changes are present when requested), rendering (converted to PDF or images and every page inspected for overflow, broken tables, orphaned headings and image scaling) and content review against the Document writing criteria. Mark each passed, failed or not verified; file presence alone does not prove the document opens or is editable.\n\nREFERENCES\nhttps://support.microsoft.com/en-us/office/customize-or-create-new-styles-d38d6e47-f6fc-48eb-a607-1eb120dec563\nhttps://support.microsoft.com/en-us/office/insert-a-table-of-contents-882e8564-0edb-435e-84b5-1d8552ccf0c0\nhttps://support.microsoft.com/en-us/office/make-your-word-documents-accessible-to-people-with-disabilities-d9bf3683-87ac-47ea-b91a-78dcacb3c66d\nhttps://learn.microsoft.com/en-us/office/open-xml/word/overview",
+    "principles": [
+      "Follow the supplied template or existing document.",
+      "Structure with named styles, never manual formatting.",
+      "Keep the table of contents, captions and cross-references as fields.",
+      "Use tracked changes when revising a document under review.",
+      "Render and inspect every page before claiming the layout is correct."
+    ],
+    "externalSkills": [
+      "docx (when creating, editing, templating or rendering a Word document)"
+    ],
+    "reviewCriteria": [
+      "A .docx file is delivered and opens as an editable document.",
+      "Headings use heading styles and the navigation pane shows the intended outline.",
+      "The table of contents, captions and cross-references are fields and up to date.",
+      "Tables have repeating header rows and captions; figures have captions and alt text.",
+      "Revisions use tracked changes when requested; personal metadata is cleaned for external delivery.",
+      "Every page was rendered and inspected, or rendering is reported as not verified."
+    ],
+    "examples": [
+      "A solution proposal built on the customer's .dotx: Heading 1 to 3 styles, an automatic table of contents, a document control table filled only with supplied names and dates, and a cost table with a repeating header row.",
+      "Revising a partner's specification: changes are tracked, each substantive change has a comment citing the decision record, and the clean copy is not sent unless requested.",
+      "The PDF converter is unavailable in the sandbox. The .docx is delivered, the structure check passes by parsing styles and fields, and rendering is marked not verified with a request for a host-side check."
+    ],
+    "requirements": [
+      {
+        "id": "req-word-source",
+        "label": "Editable Word document",
+        "type": "artifact",
+        "extension": ".docx"
+      }
+    ],
+    "checks": [
+      {
+        "type": "not_contains",
+        "value": "lorem ipsum",
+        "label": "No placeholder text"
+      },
+      {
+        "type": "not_contains",
+        "value": "TBD",
+        "label": "No unresolved TBD markers"
+      }
+    ],
+    "tags": [
+      "word",
+      "docx",
+      "dotx",
+      "office",
+      "template",
+      "tracked-changes",
+      "writing",
+      "documentation",
+      "analyst",
+      "consultant"
+    ],
+    "priority": 85,
+    "status": "active",
+    "requiredIds": [
+      "writing"
     ],
     "backend": null
   },

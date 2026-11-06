@@ -88,7 +88,7 @@ function hook(phase, input) {
     child.stdin.end(JSON.stringify(input));
   });
 }
-export const PersonalBrain = async ({ directory }) => {
+const PersonalBrain = async ({ directory }) => {
   const sessions = new Map();
   return {
     config: async config => {
@@ -108,6 +108,30 @@ export const PersonalBrain = async ({ directory }) => {
       for (const text of [state.startup, state.prompt]) if (text) output.system.push(text);
     },
   };
+};
+// V1 uses server(); V2 uses setup() and ignores the legacy hooks.
+export default {
+  id: "personal-brain",
+  server: PersonalBrain,
+  async setup(ctx) {
+    const hooks = await PersonalBrain({ directory: ctx.location.directory });
+    await ctx.mcp.transform(editor => {
+      if (!editor.get("personal-brain")) editor.set("personal-brain", {
+        type: "local", command: [...COMMAND, "mcp", "opencode"],
+        cwd: ctx.location.directory, disabled: false, protocol: "legacy",
+      });
+    });
+    await ctx.session.hook("prompt", async event => {
+      await hooks["chat.message"]({ sessionID: event.sessionID }, {
+        parts: [{ type: "text", text: event.prompt.text || "" }],
+      });
+    });
+    await ctx.session.hook("context", async event => {
+      const output = { system: [] };
+      await hooks["experimental.chat.system.transform"]({ sessionID: event.sessionID }, output);
+      event.system.push(...output.system.map(text => ({ type: "text", text })));
+    });
+  },
 };
 `;
 }

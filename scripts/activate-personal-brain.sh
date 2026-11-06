@@ -30,19 +30,20 @@ for arg in "$@"; do
 if [[ "${1:-}" == "--apply" || "${1:-}" == "--repair" ]]; then
   echo "Registering MCP servers..."
   bash "$ROOT/scripts/connect-macos.sh" "${1}"
-  echo "Installing auto-activation hooks into ~/.claude/settings.json and ~/.codex/hooks.json..."
-  "$NODE" "$RUNNER" "$ENTRY" hooks install both
-  printf '\nDone. Restart Claude and Codex. In Codex run /hooks and trust the two Personal Brain hooks.\n'
+  echo "Installing Claude and Codex hooks and the OpenCode plugin..."
+  "$NODE" "$RUNNER" "$ENTRY" hooks install all
+  printf '\nDone. Restart Claude, Codex and OpenCode. In Codex run /hooks and trust the two Personal Brain hooks. The OpenCode plugin registers MCP when OpenCode starts.\n'
 elif [[ "${1:-}" == "--remove" ]]; then
-  "$NODE" "$RUNNER" "$ENTRY" hooks remove both
-  echo "Personal Brain hooks removed. MCP registrations were left unchanged."
+  "$NODE" "$RUNNER" "$ENTRY" hooks remove all
+  echo "Personal Brain hooks and OpenCode plugin removed. Claude and Codex MCP registrations were left unchanged. Restart OpenCode to unload its plugin and MCP connection."
 elif [[ "${1:-}" == "--status" ]]; then
-  "$NODE" "$RUNNER" "$ENTRY" hooks status both
+  "$NODE" "$RUNNER" "$ENTRY" hooks status all
 else
   echo "PREVIEW ONLY — no settings will be changed."
-  "$NODE" "$RUNNER" "$ENTRY" hooks status both
+  "$NODE" "$RUNNER" "$ENTRY" hooks status all
   bash "$ROOT/scripts/connect-macos.sh"
+  printf '\nOpenCode: installs ~/.config/opencode/plugins/personal-brain.js; the plugin registers MCP and supplies context when OpenCode starts.\n'
   printf '\nTo repair this installation’s MCP registrations and hooks: bash scripts/activate-personal-brain.sh --repair\n'
   printf '\nTo activate MCP and hooks: bash scripts/activate-personal-brain.sh --apply\n'
-  printf 'To remove only hooks: bash scripts/activate-personal-brain.sh --remove\n'
+  printf 'To remove hooks and the OpenCode plugin: bash scripts/activate-personal-brain.sh --remove\n'
 fi

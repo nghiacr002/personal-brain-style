@@ -81,7 +81,9 @@ personal-brain connect all        # all three
 
 Restart your agent and approve hooks where required (Codex: `/hooks`). The UI provides repository linking and project personalization instructions. External skills are references; they must be installed separately.
 
-`hooks install|remove|status claude|codex|opencode|both|all` still manages only the hooks or plugin; `personal-brain doctor` prints the MCP registration commands. OpenCode uses one managed plugin file, `~/.config/opencode/plugins/personal-brain.js`; it is not tested against a live OpenCode session. The Agent setup card status means the hook or plugin file is installed, not that the agent loaded it.
+From a source checkout, `bash scripts/activate-personal-brain.sh --apply` or `--repair` installs Claude/Codex hooks and the OpenCode plugin. With no arguments it previews all three; `--status` reports their installation state. `--remove` removes the hooks and OpenCode plugin but preserves Claude/Codex MCP registrations. Restart OpenCode after installing or removing its plugin. For just one agent, use `personal-brain connect opencode` (or `codex` / `claude`).
+
+`hooks install|remove|status claude|codex|opencode|both|all` still manages only the hooks or plugin; `personal-brain doctor` prints the MCP registration commands. OpenCode uses one managed plugin file, `~/.config/opencode/plugins/personal-brain.js`; the generated plugin supports the V2 setup API and retains the V1 server entry point (V1 1.18.29+). Plugin loading and MCP connection were verified with OpenCode 2.2.5; model-driven behaviour and V1 runtime remain unverified. The Agent setup card status means the hook or plugin file is installed, not that the agent loaded it.
 
 For ChatGPT, open **Agent setup → ChatGPT** and select a project. See [ChatGPT connection](docs/CHATGPT.md). OpenAI tunnel access and workspace authorization are required. The helper currently requires Bash.
 

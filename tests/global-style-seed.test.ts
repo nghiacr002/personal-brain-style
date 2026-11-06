@@ -4,7 +4,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BrainDB} from '../src/core/database.ts';
-import {seedGlobalStyles} from '../src/styles/global-style-seed.ts';
+import {seedGlobalStyles,installCatalogAdditions} from '../src/styles/global-style-seed.ts';
 import {globalStyleCatalog,catalogDomains} from '../src/styles/global-style-catalog.ts';
 import {createBrainHttpServer} from '../src/server/http.ts';
 
@@ -14,7 +14,7 @@ test('fresh startup installs the complete global catalog and remaps dependencies
   createBrainHttpServer(db).close();
   const records=db.list({limit:300});
   assert.equal(records.length,globalStyleCatalog.length);
-  assert.equal(records.filter(r=>r.kind==='preference').length,51);
+  assert.equal(records.filter(r=>r.kind==='preference').length,54);
   assert.deepEqual(db.domains().map(d=>d.id).sort(),catalogDomains.map(d=>d.id).sort());
   for(const r of records){assert.ok(r.summary&&r.useWhen&&r.principles.length&&r.reviewCriteria.length&&r.examples.length&&r.requirements.length&&r.checks.length&&r.externalSkills.length,r.title);assert.ok(r.externalSkills.every(s=>!s.includes(':')),r.title);}
   assert.deepEqual(db.projects(),[]);
@@ -44,5 +44,20 @@ test('seeding leaves an existing library untouched',()=>{
  try{
   const record=db.create({...globalStyleCatalog.find(r=>!r.requiredIds?.length)!,domain:"coding",requiredIds:[]});
   assert.equal(seedGlobalStyles(db),0);assert.equal(db.list().length,1);assert.equal(db.get(record.id)!.version,1);
+ }finally{db.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('existing libraries receive later catalog additions once, linked to their writing style',()=>{
+ const root=mkdtempSync(join(tmpdir(),'brain-seed-')),db=new BrainDB(join(root,'brain.sqlite'));
+ try{
+  seedGlobalStyles(db);
+  const keys=['doc-markdown','doc-html','doc-word'];
+  for(const r of db.list({limit:300}).filter(r=>keys.includes(r.keyId!)))db.db.prepare('DELETE FROM records WHERE id=?').run(r.id);
+  db.db.prepare("DELETE FROM meta WHERE key='global_style_catalog_writing_formats_v1'").run();
+  assert.equal(installCatalogAdditions(db),3);
+  const writing=db.list({limit:300}).find(r=>r.keyId==='writing')!;
+  for(const key of keys)assert.deepEqual(db.list({limit:300}).find(r=>r.keyId===key)!.requiredIds,[writing.id]);
+  for(const r of db.list({limit:300}).filter(r=>keys.includes(r.keyId!)))db.db.prepare('DELETE FROM records WHERE id=?').run(r.id);
+  assert.equal(installCatalogAdditions(db),0);
  }finally{db.close();rmSync(root,{recursive:true,force:true});}
 });

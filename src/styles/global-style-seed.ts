@@ -30,3 +30,23 @@ export function seedGlobalStyles(db:BrainDB):number {
   return imported.size;
  });
 }
+
+// Catalog styles released after a library was seeded. Each batch runs once, so a user's later deletion sticks.
+const catalogAdditions:Record<string,string[]>={global_style_catalog_writing_formats_v1:['doc-markdown','doc-html','doc-word']};
+
+export function installCatalogAdditions(db:BrainDB):number {
+ return db.transaction(()=>{
+  let added=0;
+  const globalId=(key:string)=>(db.db.prepare("SELECT id FROM records WHERE json_extract(snapshot,'$.keyId')=? AND json_extract(snapshot,'$.projectId') IS NULL").get(key) as {id:string}|undefined)?.id;
+  for(const [marker,ids] of Object.entries(catalogAdditions)){
+   if(db.db.prepare('SELECT 1 FROM meta WHERE key=?').get(marker))continue;
+   for(const id of ids){
+    const source=globalStyleCatalog.find(r=>r.id===id)!,required=(source.requiredIds||[]).map(globalId);
+    if(globalId(id)||!db.hasDomain(source.domain)||required.some(r=>!r))continue;
+    db.create({...source,requiredIds:required as string[]});added++;
+   }
+   db.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run(marker,'1');
+  }
+  return added;
+ });
+}

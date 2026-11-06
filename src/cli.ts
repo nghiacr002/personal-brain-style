@@ -4,7 +4,7 @@ import { chmodSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrainDB, defaultHome, dbPath } from "./core/database.ts";
-import {seedGlobalStyles} from "./styles/global-style-seed.ts";
+import {seedGlobalStyles,installCatalogAdditions} from "./styles/global-style-seed.ts";
 import { createBrainHttpServer } from "./server/http.ts";
 import { mcpMain, MCP_PROTOCOL_VERSION } from "./agents/mcp.ts";
 import { executeHook, simulateHook } from "./agents/hooks.ts";
@@ -16,6 +16,7 @@ const runnerPath=resolve(dirname(scriptPath),"../scripts/run.mjs");
 const arg=process.argv[2]||"serve";
 const db=new BrainDB();
 const seeded=seedGlobalStyles(db);
+installCatalogAdditions(db);
 if(arg==="desktop") {
   const action=process.argv[3]||'preview';const options:{file?:string;projectId?:string;dataDir:string}={dataDir:defaultHome()};
   try{

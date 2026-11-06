@@ -8,6 +8,33 @@ import {BrainDB} from "../src/core/database.ts";
 import {seed} from "../src/styles/seed.ts";
 import {formatHookOutput,simulateHook,taskContext} from "../src/agents/hooks.ts";
 import {manageHookConfig} from "../src/agents/hook-install.ts";
+import {pathToFileURL} from "node:url";
+
+test("OpenCode V2 default definition registers MCP and injects typed session context",async()=>{
+ const home=mkdtempSync(join(tmpdir(),"pb-opencode-v2-"));
+ try{
+  const entry=join(home,"fake-cli.mjs");
+  writeFileSync(entry,`let input='';for await(const chunk of process.stdin)input+=chunk;const data=JSON.parse(input);console.log(JSON.stringify({hookSpecificOutput:{additionalContext:process.argv.at(-1)+':'+data.session_id+':'+(data.prompt||'')}}));`);
+  manageHookConfig("install","opencode",{home,entry,node:process.execPath});
+  const generated=join(home,"plugin.mjs");
+  writeFileSync(generated,readFileSync(join(home,".config/opencode/plugins/personal-brain.js"),"utf8"));
+  const plugin=(await import(pathToFileURL(generated).href)).default;
+  assert.equal(plugin.id,"personal-brain");assert.equal(typeof plugin.server,"function");
+  const handlers=new Map();const servers=new Map();
+  const ctx={location:{directory:home},mcp:{async transform(edit:any){edit({get:(key:string)=>servers.get(key),set:(key:string,value:unknown)=>servers.set(key,value)});}},session:{async hook(name:string,handler:any){handlers.set(name,handler);}}};
+  await plugin.setup(ctx);
+  assert.deepEqual([...handlers.keys()],["prompt","context"]);
+  assert.equal(servers.get("personal-brain").protocol,"legacy");assert.equal(servers.get("personal-brain").cwd,home);
+  assert.deepEqual(servers.get("personal-brain").command.slice(-2),["mcp","opencode"]);
+  const event={sessionID:"one",prompt:{text:"Research architecture"}};
+  await handlers.get("prompt")(event);assert.equal(event.prompt.text,"Research architecture");
+  const output={sessionID:"one",system:[]};await handlers.get("context")(output);
+  assert.deepEqual(output.system,[{type:"text",text:"session:one:"},{type:"text",text:"prompt:one:Research architecture"}]);
+  const other={sessionID:"two",system:[]};await handlers.get("context")(other);assert.deepEqual(other.system,[]);
+  servers.set("personal-brain",{disabled:true});await plugin.setup(ctx);
+  assert.deepEqual(servers.get("personal-brain"),{disabled:true});
+ }finally{rmSync(home,{recursive:true,force:true});}
+});
 
 test("SessionStart automatically injects personal baseline for Claude and Codex",()=>{
   const dir=mkdtempSync(join(tmpdir(),"pb-auto-"));const db=new BrainDB(join(dir,"brain.sqlite"));

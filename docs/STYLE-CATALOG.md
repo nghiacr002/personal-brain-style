@@ -1,6 +1,6 @@
 # Style catalog
 
-Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`; do not edit by hand. A fresh library is seeded with these 52 records in 9 capabilities. Existing libraries are never overwritten.
+Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`; do not edit by hand. A fresh library is seeded with these 55 records in 9 capabilities. Existing libraries are never overwritten.
 
 ## How the catalog fits together
 
@@ -19,7 +19,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | UI/UX design | 2 |
 | Engineering standards | 14 |
 | Delivery & operations | 3 |
-| Writing documents | 12 |
+| Writing documents | 15 |
 
 ## Foundations
 
@@ -105,7 +105,10 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 
 | Style | Use when | Requires | Required by | Skills |
 | --- | --- | --- | --- | --- |
-| **Document writing — clear, structured and evidence-based** | Use when writing or revising a README, specification, design document, decision record, runbook, report, release note or product copy. | Quality control — evidence-based verification | Engineering thinking — framing, trade-offs and decisions; Business analysis — requirements and traceability; Drawing — clear architecture, flows and data models; Quality assurance — test strategy and acceptance; Product specification (PRD); Product roadmap; Business requirements document (BRD); Architecture decision record (ADR); Test plan and test cases; Runbook and operations guide; High-level design (HLD); Low-level design (LLD); API specification; Database design document; Integration specification | full-output-enforcement |
+| **Document writing — clear, structured and evidence-based** | Use when writing or revising a README, specification, design document, decision record, runbook, report, release note or product copy. | Quality control — evidence-based verification | Markdown — repository documents as reviewable text; HTML — self-contained, accessible web documents; Word — editable .docx documents with real structure; Engineering thinking — framing, trade-offs and decisions; Business analysis — requirements and traceability; Drawing — clear architecture, flows and data models; Quality assurance — test strategy and acceptance; Product specification (PRD); Product roadmap; Business requirements document (BRD); Architecture decision record (ADR); Test plan and test cases; Runbook and operations guide; High-level design (HLD); Low-level design (LLD); API specification; Database design document; Integration specification | full-output-enforcement |
+| **Markdown — repository documents as reviewable text** | Use when the deliverable is a .md file: README, specification, ADR, runbook, changelog or report kept in Git or rendered by a docs site or wiki. | Document writing — clear, structured and evidence-based | — | creating-mermaid-diagrams |
+| **HTML — self-contained, accessible web documents** | Use when the deliverable is an .html document: a report, explainer, dashboard-style summary, published page or an existing HTML document being revised. | Document writing — clear, structured and evidence-based | — | frontend-design |
+| **Word — editable .docx documents with real structure** | Use when the deliverable is a Word (.docx) file or template: a specification, proposal, report, contract-style document or form to send, sign, print or edit in Microsoft Word. | Document writing — clear, structured and evidence-based | — | docx |
 | **Product specification (PRD)** | Use when writing or updating a PRD for a product, epic or feature, shaping a roadmap item for delivery, or checking whether a feature specification is ready to build. | Document writing — clear, structured and evidence-based | Product ownership — outcomes, backlog and acceptance | understand-domain, full-output-enforcement |
 | **Product roadmap** | Use when creating or updating a product roadmap, preparing a roadmap review or planning increment, or explaining to stakeholders why an item moved or was dropped. | Document writing — clear, structured and evidence-based | Product ownership — outcomes, backlog and acceptance | creating-mermaid-diagrams, full-output-enforcement |
 | **Business requirements document (BRD)** | Use when writing, baselining or changing a business requirements document, preparing requirements for sign-off, or running impact analysis for a change request against a BRD. | Document writing — clear, structured and evidence-based | Business analysis — requirements and traceability | creating-mermaid-diagrams, drawio-skill, full-output-enforcement |

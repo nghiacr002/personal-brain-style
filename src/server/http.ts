@@ -1,4 +1,4 @@
-import {seedGlobalStyles,globalCatalogMarker} from "../styles/global-style-seed.ts";
+import {seedGlobalStyles,installCatalogAdditions,globalCatalogMarker} from "../styles/global-style-seed.ts";
 import {installDevelopmentStructureStyle} from '../styles/development-structure-style.ts';
 import {fusionHistory,fusionJob,startFusion,applyFusion,rejectFusion,cancelFusion} from '../instructions/fusion.ts';
 import {installResearchStyle} from '../styles/research-style.ts';
@@ -57,6 +57,7 @@ export function createBrainHttpServer(db:BrainDB) {
   const development=process.env.PB_DEV_RELOAD==="1";
   const started=Date.now();
   seedGlobalStyles(db);
+  installCatalogAdditions(db);
   if(!db.db.prepare("SELECT 1 FROM meta WHERE key=?").get(globalCatalogMarker)){
   archiveSamples(db);
   installArchitectureStyles(db);

@@ -561,3 +561,30 @@ small{font-size:max(11px,.85em)}
 
 .standard-inheritance { font-size: .85em; }
 .gaps-table th:first-child{width:34%}.gaps-table td{overflow-wrap:anywhere}.gaps-table td:first-child{min-width:180px}
+
+.configuration-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);margin-top:24px;border-top:1px solid var(--line)}
+.configuration-catalog{min-width:0;padding:24px 28px 24px 0}
+.configuration-summary{min-width:0;padding:24px 0 24px 28px;border-left:1px solid var(--line)}
+.configuration-filters{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.configuration-catalog label{display:block;font-weight:600}
+.configuration-catalog input[type=search],.configuration-catalog select{display:block;width:100%;margin-top:6px}
+.configuration-options{max-height:560px;overflow:auto;margin-top:12px;overscroll-behavior:contain}
+.configuration-option{padding:16px 8px;border-top:1px solid var(--line)}
+.configuration-option .assignment-choice{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
+.configuration-option input[type=checkbox]{flex:0 0 auto;width:18px;height:18px;margin:3px 0;accent-color:var(--accent)}
+.configuration-option p,.configuration-option details{margin-left:30px}
+.configuration-option p{margin-top:6px;font-size:13px}
+.configuration-option small,.configuration-selected small,.configuration-references small{display:block;color:var(--muted);font-size:12px;margin-top:4px;font-weight:400}
+.configuration-selected,.configuration-references{list-style:none;padding:0;margin:12px 0 24px}
+.configuration-selected li{display:flex;gap:16px;justify-content:space-between;align-items:start;padding:12px 0;border-bottom:1px solid var(--line)}
+.configuration-selected li>div{min-width:0;overflow-wrap:anywhere}
+.configuration-selected button{flex-shrink:0}
+.configuration-references li{padding:10px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.configuration-step input:focus-visible,.configuration-step select:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+@media(max-width:800px){
+  .configuration-grid{grid-template-columns:minmax(0,1fr)}
+  .configuration-catalog{padding:20px 0}
+  .configuration-summary{border-left:0;border-top:1px solid var(--line);padding:20px 0}
+  .configuration-filters{grid-template-columns:minmax(0,1fr)}
+  .configuration-options{max-height:420px}
+}

@@ -1445,7 +1445,8 @@ function projectForm() {
     const eligible = items.filter((r) => ((!r.projectId || r.projectId === selectedProject?.id) &&
         r.status === 'active' &&
         r.kind !== 'tool' &&
-        (selectedProject || r.kind === 'preference')) ||
+        (selectedProject || r.kind === 'preference' || r.kind === 'skill') &&
+        (!r.compatibility || selectedProject?.assignments.some((a) => a.recordId === r.id))) ||
         selectedProject?.assignments.some((a) => a.recordId === r.id));
     layout(selectedProject ? 'Configure project' : 'New project', selectedProject
         ? 'Choose the records for this project. Global defaults apply only when no project is specified.'
@@ -1518,7 +1519,7 @@ async function editLinkedProject(projectId) {
     projectForm();
     updateUrl();
 }
-const gapsStep = 3, reviewStep = 4;
+const discoveryStep = 1, configurationStep = 2, gapsStep = 3, reviewStep = 4;
 const gapTypeLabels = {
     dependency: 'Required style',
     skill: 'Skill',
@@ -1645,30 +1646,164 @@ function bindAiDiscovery() {
     $('onboardingAnalyze').addEventListener('click', () => void analyzeOnboarding());
     $('onboardingStop').addEventListener('click', () => onboardingAbort?.abort());
 }
+function configurationSection() {
+    const capabilities = domainRegistry().filter((domain) => items.some((record) => record.domain === domain.id &&
+        record.status === 'active' &&
+        !record.projectId &&
+        !record.compatibility &&
+        ['preference', 'skill'].includes(record.kind)));
+    return `<section data-wizard-step="${configurationStep}" class="configuration-step">
+    <h2 tabindex="-1" class="wizard-heading">Configure your project</h2>
+    <p>Browse capabilities, add preferences and Library skills, then review what your agents will use.</p>
+    <div class="configuration-grid">
+      <div class="configuration-catalog">
+        <div class="configuration-filters">
+          <label for="configurationCapability">Capability<select id="configurationCapability"><option value="">All capabilities</option>${capabilities.map((domain) => `<option value="${esc(domain.id)}">${esc(domain.name)}</option>`).join('')}</select></label>
+          <label for="configurationKind">Show<select id="configurationKind"><option value="">Preferences &amp; skills</option><option value="preference">Preferences</option><option value="skill">Library skills</option></select></label>
+        </div>
+        <label for="configurationSearch">Find preferences or skills<input id="configurationSearch" type="search" placeholder="Search by name or keyword…" /></label>
+        <p class="hint">A capability groups related styles. Choose the individual preferences and skills your project needs.</p>
+        <p id="configurationCount" class="hint" role="status"></p>
+        <div id="configurationOptions" class="configuration-options"></div>
+      </div>
+      <aside class="configuration-summary" aria-label="Project configuration">
+        <h3>Selected configuration</h3>
+        <div id="configurationSelected"></div>
+        <h3>Skill references</h3>
+        <p class="hint">Included by selected preferences and required styles. Availability is checked in Check gaps; references do not install skills.</p>
+        <div id="configurationSkills"></div>
+      </aside>
+    </div>
+  </section>`;
+}
+function configurationRecords(selectedIds) {
+    const included = new Map();
+    const visit = (id) => {
+        if (included.has(id)) {
+            return;
+        }
+        const record = items.find((item) => item.id === id);
+        if (!record) {
+            return;
+        }
+        included.set(id, record);
+        record.requiredIds?.forEach(visit);
+    };
+    selectedIds.forEach(visit);
+    return [...included.values()];
+}
+function renderConfiguration() {
+    if (!$('configurationOptions')) {
+        return;
+    }
+    const inputs = Array.from(document.querySelectorAll('input[name="assignment"]'));
+    const selected = inputs.filter((input) => input.checked).map((input) => input.value);
+    const included = configurationRecords(selected);
+    const capability = $('configurationCapability').value;
+    const kind = $('configurationKind').value;
+    const query = $('configurationSearch').value.trim().toLowerCase();
+    const options = items.filter((record) => inputs.some((input) => input.value === record.id) &&
+        !record.compatibility &&
+        (!capability || record.domain === capability) &&
+        (!kind || record.kind === kind) &&
+        [record.title, record.summary, ...(record.tags || [])]
+            .join(' ')
+            .toLowerCase()
+            .includes(query));
+    $('configurationCount').textContent = `${options.length} available · ${selected.length} selected`;
+    $('configurationOptions').innerHTML =
+        options
+            .map((record) => {
+            const input = inputs.find((candidate) => candidate.value === record.id);
+            const inherited = !input.checked && included.some((item) => item.id === record.id);
+            let selectionHint = '';
+            if (inherited) {
+                selectionHint = ' · Required by your selection';
+            }
+            else if (input.disabled) {
+                selectionHint = ' · Another style selected for this capability';
+            }
+            return `<article class="configuration-option">
+      <label class="assignment-choice"><input type="checkbox" data-configuration-select="${esc(record.id)}" ${input.checked || inherited ? 'checked' : ''} ${input.disabled || inherited ? 'disabled' : ''}/><span><strong>${esc(record.title)}</strong><small>${esc(domainName(record.domain))} · ${esc(kindLabel(record.kind))}${selectionHint}</small></span></label>
+      <p>${esc(record.summary)}</p>
+      <details class="table-details"><summary>Guidelines &amp; requirements</summary><pre>${esc(record.content)}</pre>${styleContract(record)}</details>
+      ${input.checked ? `<details class="project-override" ${$('override-' + record.id).value ? 'open' : ''}><summary>Customize for this project</summary><label for="configurationOverride-${esc(record.id)}" class="hint">Optional project-only override: replaces shared instructions for this project. Keep applicable requirements. Leave blank to inherit the global style.</label><textarea id="configurationOverride-${esc(record.id)}" data-configuration-override="${esc(record.id)}" rows="3" maxlength="100000">${esc($('override-' + record.id).value)}</textarea></details>` : ''}
+    </article>`;
+        })
+            .join('') ||
+            '<p class="selection-empty">No matching Library items. Try another capability or clear the search. Skill references appear alongside your selected preferences.</p>';
+    $('configurationSelected').innerHTML = included.length
+        ? `<ul class="configuration-selected">${included.map((record) => `<li><div><strong>${esc(record.title)}</strong><small>${esc(domainName(record.domain))} · ${selected.includes(record.id) ? 'Selected' : 'Required dependency'}</small></div>${selected.includes(record.id) ? `<button type="button" class="button ghost small" data-configuration-remove="${esc(record.id)}" aria-label="Remove ${esc(record.title)}">Remove</button>` : ''}</li>`).join('')}</ul>`
+        : '<p class="selection-empty">Nothing selected yet. Add preferences or Library skills from the list.</p>';
+    const references = new Map();
+    for (const record of included) {
+        for (const name of [
+            ...(record.externalSkills || []),
+            ...(record.skillBindings || []).map((binding) => binding.name),
+        ]) {
+            const owners = references.get(name) || new Set();
+            owners.add(record.title);
+            references.set(name, owners);
+        }
+    }
+    $('configurationSkills').innerHTML = references.size
+        ? `<ul class="configuration-references">${[...references].map(([name, owners]) => `<li><strong>${esc(name)}</strong><small>From ${esc([...owners].join(', '))}</small></li>`).join('')}</ul>`
+        : '<p class="hint">No external skill references in this selection.</p>';
+}
+function setConfigurationSelection(id, selected) {
+    const input = Array.from(document.querySelectorAll('input[name="assignment"]')).find((candidate) => candidate.value === id);
+    if (!input || (selected && input.disabled)) {
+        return;
+    }
+    input.checked = selected;
+    projectFormDirty = true;
+    syncProjectSelection();
+    const replacement = Array.from(document.querySelectorAll('[data-configuration-select]')).find((candidate) => candidate.dataset.configurationSelect === id && !candidate.disabled);
+    (replacement || $('configurationSearch')).focus();
+}
+function bindConfiguration() {
+    $('configurationOptions').addEventListener('input', (event) => {
+        const textarea = event.target;
+        const recordId = textarea.dataset.configurationOverride;
+        if (!recordId) {
+            return;
+        }
+        $('override-' + recordId).value = textarea.value;
+        projectFormDirty = true;
+        syncProjectSelection(false);
+    });
+    $('configurationSearch').addEventListener('input', renderConfiguration);
+    $('configurationCapability').addEventListener('change', renderConfiguration);
+    $('configurationKind').addEventListener('change', renderConfiguration);
+    $('configurationOptions').addEventListener('change', (event) => {
+        const input = event.target;
+        if (input.dataset.configurationSelect) {
+            setConfigurationSelection(input.dataset.configurationSelect, input.checked);
+        }
+    });
+    $('configurationSelected').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-configuration-remove]');
+        if (button) {
+            setConfigurationSelection(button.dataset.configurationRemove, false);
+        }
+    });
+}
 function setupProjectWizard() {
     const form = $('projectForm');
     form.noValidate = true;
     form.classList.add('project-wizard');
-    const steps = [
-        'Project & folder',
-        'Discover & personalize',
-        'Select styles',
-        'Check gaps',
-        'Review',
-    ];
+    const steps = ['Project & folder', 'Discover & personalize', 'Configure', 'Check gaps', 'Review'];
     form.insertAdjacentHTML('afterbegin', `<ol class="wizard-steps" aria-label="Project setup progress">${steps.map((s, i) => `<li data-wizard-label="${i}"><span>${i + 1}</span>${s}</li>`).join('')}</ol>`);
     const meta = form.querySelector('.project-meta');
     meta.dataset.wizardStep = '0';
     meta.insertAdjacentHTML('beforeend', '<div class="field wizard-folder"><label for="onboardingFolder">Repository folder</label><div class="folder-input"><input id="onboardingFolder" required placeholder="Absolute path on the computer running Personal Brain" aria-describedby="folderHint" /><button type="button" class="button ghost" id="browseOnboardingFolder">Browse folders</button></div><p id="folderHint" class="hint">Choose an existing folder. Finishing setup writes .personal-brain.json here so agents can detect this project.</p><div id="onboardingLinkChoice" class="notice" role="alert" tabindex="-1" hidden></div></div>');
     const selections = form.querySelector('.style-selector');
-    const select = document.createElement('section');
-    select.dataset.wizardStep = '2';
-    meta.after(select);
-    select.append(selections);
-    select.insertAdjacentHTML('afterbegin', '<h2 tabindex="-1" class="wizard-heading">Choose your starting styles</h2><p>Review AI suggestions or choose styles yourself.</p>');
-    meta.insertAdjacentHTML('afterend', aiDiscoverySection().replace('<section>', '<section data-wizard-step="1">'));
-    select.insertAdjacentHTML('afterend', `<section data-wizard-step="${gapsStep}"><h2 tabindex="-1" class="wizard-heading">Check gaps</h2><p>Find what your selected styles need to work: skills, required styles, tools and development tooling. Setting them up is optional; you can skip and fix gaps later from the project's Gaps tab.</p><div class="row-actions"><button type="button" class="button ghost small" id="onboardingGapScan">Scan again</button></div><div id="onboardingGaps" role="status" aria-live="polite"></div></section>` +
-        `<section data-wizard-step="${reviewStep}"><h2 tabindex="-1" class="wizard-heading">Review your project</h2><div id="onboardingReview"></div><p class="hint">Only selected styles and required dependencies apply. Shared styles remain unchanged. Accepted AI drafts are saved as project-only overrides.</p></section>`);
+    selections.hidden = true;
+    meta.insertAdjacentHTML('afterend', aiDiscoverySection().replace('<section>', `<section data-wizard-step="${discoveryStep}">`) +
+        configurationSection() +
+        `<section data-wizard-step="${gapsStep}"><h2 tabindex="-1" class="wizard-heading">Check gaps</h2><p>Find what your selected styles need to work: skills, required styles, tools and development tooling. Setting them up is optional; you can skip and fix gaps later from the project's Gaps tab.</p><div class="row-actions"><button type="button" class="button ghost small" id="onboardingGapScan">Scan again</button></div><div id="onboardingGaps" role="status" aria-live="polite"></div></section>` +
+        `<section data-wizard-step="${reviewStep}"><h2 tabindex="-1" class="wizard-heading">Review your project</h2><div id="onboardingReview"></div><p>Only selected styles and required dependencies apply. Shared styles remain unchanged. Accepted AI drafts are saved as project-only overrides.</p></section>`);
+    bindConfiguration();
     $('onboardingGapScan').addEventListener('click', () => void scanOnboardingGaps());
     form
         .querySelector('.project-save-bar .page-actions')
@@ -1692,7 +1827,7 @@ function onboardingSubmitLabel(step) {
     if (step === gapsStep) {
         return onboardingGaps?.gaps.length ? 'Skip for now' : 'Continue';
     }
-    return step === 1 ? 'Continue to styles' : 'Continue';
+    return step === discoveryStep ? 'Continue to configure' : 'Continue';
 }
 function showOnboardingStep(step, focus = true) {
     onboardingStep = step;
@@ -1711,9 +1846,12 @@ function showOnboardingStep(step, focus = true) {
     $('projectForm').querySelector('button[type="submit"]').textContent =
         onboardingSubmitLabel(step);
     $('projectForm').querySelector('button[type="submit"]').className =
-        step === 1 ? 'button ghost' : 'button primary';
+        step === discoveryStep ? 'button ghost' : 'button primary';
     $('projectError').textContent = '';
-    $('projectSelectionSummary').hidden = step !== 2;
+    $('projectSelectionSummary').hidden = step !== configurationStep;
+    if (step === configurationStep) {
+        renderConfiguration();
+    }
     if (step === gapsStep && onboardingGapsKey !== onboardingGapKey()) {
         void scanOnboardingGaps();
     }
@@ -1853,7 +1991,7 @@ function confirmLeaveProject() {
     projectFormDirty = false;
     return true;
 }
-function syncProjectSelection() {
+function syncProjectSelection(refreshConfiguration = true) {
     const rows = Array.from(document.querySelectorAll('[data-assignment-row]'));
     const selectedSlots = new Set(rows
         .filter((row) => row.querySelector('input[name="assignment"]').checked)
@@ -1910,6 +2048,9 @@ function syncProjectSelection() {
         `${selected} selected · ${overrides} overrides · Changes apply after saving`;
     if ($('assignmentSearch')) {
         filterProjectStyles();
+    }
+    if (refreshConfiguration) {
+        renderConfiguration();
     }
 }
 async function saveProject(ev) {

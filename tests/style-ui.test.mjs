@@ -596,6 +596,9 @@ test('dependency map includes transitive context, labels arrows, escapes titles 
 test('project selection keeps card positions and override drafts, and prevents slot conflicts', () => {
   const elements = new Map();
   const element = (id) => {
+    if (id === 'configurationOptions') {
+      return null;
+    }
     if (!elements.has(id)) {
       elements.set(id, {
         innerHTML: '',

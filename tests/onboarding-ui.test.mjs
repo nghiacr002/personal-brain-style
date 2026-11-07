@@ -152,7 +152,7 @@ test('wizard advances only after folder validation; back preserves fields and re
     issues: [],
   };
   context.fetch = async () => ({ok: true, json: async () => scan});
-  vm.runInContext('showOnboardingStep(3)', context);
+  vm.runInContext('showOnboardingStep(gapsStep)', context);
   await vm.runInContext('scanOnboardingGaps()', context);
   assert.deepEqual(
     panels.map((p) => p.hidden),
@@ -167,7 +167,7 @@ test('wizard advances only after folder validation; back preserves fields and re
   assert.equal(element('submit').textContent, 'Continue');
   context.fetch = async () => ({ok: true, json: async () => scan});
   await vm.runInContext('scanOnboardingGaps()', context);
-  vm.runInContext('showOnboardingStep(0);showOnboardingStep(4)', context);
+  vm.runInContext('showOnboardingStep(0);showOnboardingStep(reviewStep)', context);
   assert.match(element('onboardingReview').innerHTML, /Open gaps \(1\)/);
   assert.equal(element('projectName').value, '<script>Project</script>');
   assert.match(element('onboardingReview').innerHTML, /&lt;script&gt;/);
@@ -217,7 +217,7 @@ test('linked folder prompts to edit the existing project or replace the link', a
   vm.runInContext(`onboardingReplaceLink = ${JSON.stringify(existing)}`, context);
   await vm.runInContext('advanceOnboarding()', context);
   assert.equal(vm.runInContext('onboardingStep', context), 1, 'replace continues setup');
-  vm.runInContext('showOnboardingStep(4)', context);
+  vm.runInContext('showOnboardingStep(reviewStep)', context);
   assert.match(element('onboardingReview').innerHTML, /Replaces the link to “&lt;i&gt;Old/);
 });
 

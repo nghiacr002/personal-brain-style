@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {BrainDB} from '../src/core/database.ts';
 import {resolveInstructions} from '../src/instructions/resolve.ts';
 import {prepareInstructions,checkInstructionSet} from '../src/instructions/instruction-set.ts';
+import {commonStandard} from '../src/styles/development-standards.ts';
 import {seedGlobalStyles} from '../src/styles/global-style-seed.ts';
 import {matchSkill} from '../src/projects/skill-discovery.ts';
 import {callTool} from '../src/agents/mcp.ts';
@@ -93,11 +94,12 @@ test('PB-09 reviewed catalog update is versioned, preserves private copies, and 
  const f=fixture();try{
   const legacy=JSON.parse(readFileSync(new URL('./fixtures/legacy-coding-preference.json',import.meta.url),'utf8'));
   f.db.saveDomain('Engineering standards');
+  f.db.create(commonStandard);
   const original=f.db.create(legacy),p=f.project([original.id]);
   const privateCopy=f.db.personalizeRecord(p.id,original.id,{content:'Personal project choice'},original.version,p.version);
   const preview=catalogUpgradePreview(f.db).find(p=>p.id===original.id)!;assert.equal(preview.eligible,true);
   const upgraded=applyCatalogUpgrade(f.db,original.id,preview.version);
-  assert.equal(upgraded.version,original.version+1);assert.ok(upgraded.skillBindings?.length);
+  assert.equal(upgraded.version,original.version+1);assert.equal(upgraded.compatibility,true);assert.deepEqual(upgraded.requiredIds,[f.db.styleByKey('development')!.id]);
   assert.equal(f.db.get(privateCopy.id)!.content,'Personal project choice');assert.equal(f.db.get(privateCopy.id)!.sourceVersion,original.version);
   assert.throws(()=>applyCatalogUpgrade(f.db,original.id,preview.version),/changed/);
   f.db.restore(original.id,original.version,upgraded.version);assert.equal(f.db.get(original.id)!.content,original.content);

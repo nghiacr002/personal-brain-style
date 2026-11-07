@@ -1,4 +1,4 @@
-import {linkedIds,validatePreferenceContract} from "./preference-contract.ts";
+import {applicability,validateTaskContext,linkedIds,validatePreferenceContract} from "./preference-contract.ts";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHmac } from "node:crypto";
 import { mkdirSync, chmodSync } from "node:fs";
@@ -6,12 +6,12 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { validateRequirements } from "./requirements.ts";
 import { discoveryMetadata } from "./discovery-metadata.ts";
-import { BrainError, DOMAINS, type Project, type ProjectAssignment, type BrainRecord, type Domain, type Feedback, type Kind, type RecordInput, type Revision, type TestRule, validDomain, validKind, slug } from "./models.ts";
+import { BrainError, DOMAINS, type Project, type ProjectAssignment, type BrainRecord, type Domain, type Feedback, type Kind, type RecordInput, type Revision, type TestRule, type TaskContext, validDomain, validKind, slug } from "./models.ts";
 
 export const defaultHome = () => process.env.PB_HOME || join(homedir(), ".personal-brain-style");
 export const dbPath = () => join(defaultHome(), "brain.sqlite");
 
-function checkInput(raw: unknown): RecordInput {
+export function checkInput(raw: unknown): RecordInput {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new BrainError("Expected record object");
   const x = raw as Record<string, unknown>;
   if(x.projectId!==undefined&&(typeof x.projectId!=="string"||!x.projectId))throw new BrainError("Invalid project scope");
@@ -325,7 +325,40 @@ export class BrainDB {
       this.validateRequired(rec);this.write(rec,"restore"); return rec;
     });
   }
-  private styleByKey(keyId:string,projectId?:string):BrainRecord|undefined {
+  /** Validate the final graph so an atomic dependency reversal has no transient cycle. */
+  updateBatch(changes: Array<{id: string; expectedVersion: number; input: Partial<RecordInput>}>): BrainRecord[] {
+    return this.transaction(() => {
+      const seen = new Set<string>();
+      const records = changes.map(change => {
+        const previous = this.get(change.id);
+        if (!previous || previous.version !== change.expectedVersion || seen.has(change.id)) {
+          throw new BrainError('Batch changed or contains duplicate records', 'CONFLICT', 409);
+        }
+        seen.add(change.id);
+        const input = checkInput({...previous, ...change.input});
+        for (const key of ['keyId', 'projectId', 'sourceStyleId', 'sourceVersion'] as const) {
+          if (input[key] !== previous[key]) {
+            throw new BrainError('Batch cannot change record identity or scope');
+          }
+        }
+        if (!this.hasDomain(input.domain)) {
+          throw new BrainError('Register this domain before using it');
+        }
+        return {...previous, ...input, version: previous.version + 1, updatedAt: new Date().toISOString()};
+      });
+      for (const record of records) {
+        this.write(record, 'update');
+      }
+      for (const record of this.list({limit: 300})) {
+        this.validateRequired(record);
+      }
+      for (const project of this.projects()) {
+        this.scopedRecords(project.id);
+      }
+      return records;
+    });
+  }
+  styleByKey(keyId:string,projectId?:string):BrainRecord|undefined {
     const rows=this.db.prepare("SELECT snapshot FROM records WHERE json_extract(snapshot,'$.keyId')=? AND (json_extract(snapshot,'$.projectId') IS NULL OR json_extract(snapshot,'$.projectId')=?) ORDER BY json_extract(snapshot,'$.projectId') IS NOT NULL").all(keyId,projectId||"") as {snapshot:string}[];
     return rows.map(row=>this.parse(row.snapshot))[0];
   }
@@ -688,7 +721,7 @@ export class BrainDB {
     return [...effective.values()];
   }
   bootstrapWithRecords(maxChars=3500,projectId?:string) {
-    const items = this.scopedRecords(projectId).filter(r=>r.kind==="preference").slice(0,35);
+    const items = this.scopedRecords(projectId).filter(r=>r.kind==="preference"&&!r.compatibility).slice(0,35);
     const included:BrainRecord[]=[];
     let out = "PERSONAL BRAIN STYLE BASELINE\nIndex only; full instructions are not loaded. For substantive tasks use brain_discover, then brain_get for matching records and required links. Read their referenced external skills before applying them. Reuse an already loaded record only when its ID, version and project scope match.\n";
     for (const item of items) {
@@ -701,8 +734,9 @@ export class BrainDB {
   }
   bootstrap(maxChars=3500,projectId?:string) { return this.bootstrapWithRecords(maxChars,projectId).text; }
   projectSelectionReason(id:string,projectId?:string){return !projectId?'global':this.project(projectId).assignments.some(a=>a.recordId===id)?'selected':'dependency';}
-  discover(task:string,kinds:Kind[]=["skill","preference","tool","review","example"],limit=12,projectId?:string) {
-    return this.scopedRecords(projectId).map(r=>({r,...recordMatch(r,task)})).filter(({r,score})=>score>0&&kinds.includes(r.kind)).sort((a,b)=>b.score-a.score||b.r.priority-a.r.priority).slice(0,Math.max(1,Math.min(30,limit))).map(({r,score,matches})=>({id:r.id,keyId:r.keyId,kind:r.kind,domain:r.domain,title:r.title,summary:r.summary,useWhen:r.useWhen||"",tags:r.tags,requiredIds:r.requiredIds||[],version:r.version,priority:r.priority,matches,matchReason:matches.map(m=>m.field+": "+m.terms.join(", ")).join("; "),score,selection:this.projectSelectionReason(r.id,projectId),invokable:r.kind==="tool" && !!r.backend?.enabled}));
+  discover(task:string,kinds:Kind[]=["skill","preference","tool","review","example"],limit=12,projectId?:string,context:TaskContext={}) {
+    context=validateTaskContext(context);
+    return this.scopedRecords(projectId).filter(r=>!r.compatibility&&applicability(r.appliesWhen,context)!=="not_applicable"&&(!r.standardLanguage||!context.languages||context.languages.includes(r.standardLanguage))).map(r=>({r,...recordMatch(r,task)})).filter(({r,score})=>score>0&&kinds.includes(r.kind)).sort((a,b)=>b.score-a.score||b.r.priority-a.r.priority).slice(0,Math.max(1,Math.min(30,limit))).map(({r,score,matches})=>({id:r.id,keyId:r.keyId,kind:r.kind,domain:r.domain,title:r.title,summary:r.summary,useWhen:r.useWhen||"",tags:r.tags,requiredIds:r.requiredIds||[],version:r.version,priority:r.priority,matches,matchReason:matches.map(m=>m.field+": "+m.terms.join(", ")).join("; "),score,selection:this.projectSelectionReason(r.id,projectId),invokable:r.kind==="tool" && !!r.backend?.enabled}));
   }
   evaluate(content:string,domain:Domain="general",projectId?:string) {
     const rules = this.scopedRecords(projectId).filter(r=>r.kind==="review"||r.kind==="preference").filter(r=>r.domain==="general" || r.domain===domain);

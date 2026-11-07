@@ -72,6 +72,12 @@ input,textarea,select{max-width:100%}.panel,.trace-controls{min-width:0}h3,p{ove
 .record-table td{padding:12px 16px;border-top:1px solid var(--line);vertical-align:top}
 .record-table th:first-child{width:58%}.record-table td:first-child{min-width:240px}
 .record-table strong{display:block;color:var(--ink);font-weight:650}
+.record-identity.is-selectable{display:grid;grid-template-columns:24px minmax(0,1fr);gap:12px;align-items:start}
+.record-select{display:grid;place-items:center;width:24px;height:24px;margin:0;cursor:pointer}
+.record-select input{width:16px;height:16px;margin:0;accent-color:var(--accent);cursor:pointer}
+.record-select input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.record-copy{min-width:0;overflow-wrap:anywhere}
+.record-copy>strong{line-height:24px}
 .record-table p{margin-top:5px;font-size:13px}.record-table tbody tr:hover{background:var(--accent-tint)}
 .row-actions{display:flex;gap:8px;white-space:nowrap}.table-details{margin-top:8px}
 .table-details summary{cursor:pointer;color:var(--accent);font-size:12px}
@@ -543,3 +549,14 @@ small{font-size:max(11px,.85em)}
 #capabilityDialog .choice-card input,.choice-card input{width:auto;min-height:0;margin:3px 0 0;flex:none}
 .choice-card span{display:flex;flex-direction:column;gap:2px}.choice-card small{color:var(--muted);font-size:13px;line-height:1.4}
 .run-options{display:flex;flex-direction:column;gap:12px;margin:8px 0 0}.run-options .copy-command{margin-top:6px}
+
+.library-actions{position:relative}
+.library-actions>summary{list-style:none;min-width:44px;font-size:24px;line-height:1;cursor:pointer}
+.library-actions>summary::-webkit-details-marker{display:none}
+.library-actions[open]>summary{background:var(--accent-tint)}
+.library-actions-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:40;display:grid;gap:4px;width:260px;max-width:calc(100vw - 32px);padding:8px;background:var(--surface,#fff);border:1px solid var(--line);border-radius:var(--radius-panel);box-shadow:0 8px 24px #0002}
+.library-actions-panel .button{justify-content:flex-start;text-align:left;border-color:transparent;white-space:normal}
+.library-actions-panel .button:hover:not(:disabled){background:var(--accent-tint)}
+.library-actions>summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+.standard-inheritance { font-size: .85em; }

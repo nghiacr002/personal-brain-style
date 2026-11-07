@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {BrainDB} from '../core/database.ts';
+import {BrainDB,checkInput} from '../core/database.ts';
 import {BrainError,type BrainRecord} from '../core/models.ts';
 import {catalogBaseline,catalogBaselineLinks} from './catalog-baseline.ts';
 import {globalStyleCatalog} from './global-style-catalog.ts';
@@ -22,6 +22,6 @@ export function applyCatalogUpgrade(db:BrainDB,id:string,expectedVersion:number)
   const current=db.get(id)!,source=globalStyleCatalog.find(r=>r.keyId===current.keyId)!;
   const lookup=(key:string)=>{const row=db.list({limit:300}).find(r=>!r.projectId&&r.keyId===key&&r.status==='active');if(!row)throw new BrainError('Required catalog style missing: '+key);return row.id;};
   // Explicit update only: private copies, assignments and deleted records are never replaced.
-  return db.update(id,{content:source.content,skillBindings:source.skillBindings,externalSkills:source.externalSkills,preferences:source.preferences,supportingLinks:source.supportingLinks?.map(l=>({...l,recordId:lookup(l.recordId)})),requiredIds:source.requiredIds?.map(lookup)},expectedVersion);
+  return db.update(id,{...checkInput(source),sourceStyleId:current.sourceStyleId,sourceVersion:current.sourceVersion,projectId:current.projectId,supportingLinks:source.supportingLinks?.map(l=>({...l,recordId:lookup(l.recordId)})),requiredIds:source.requiredIds?.map(lookup)},expectedVersion);
  });
 }

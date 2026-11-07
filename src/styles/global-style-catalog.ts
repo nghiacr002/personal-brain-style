@@ -1,6 +1,7 @@
 // Release catalog: user preferences, outcome criteria and external procedure references.
+import {consolidateCatalog} from './standards-catalog.ts';
 import type {RecordInput} from "../core/models.ts";
-export const globalStyleCatalog:Array<RecordInput & {id:string}> = [
+export const previousCatalog:Array<RecordInput & {id:string}> = [
   {
     "id": "quality-control",
     "keyId": "quality-control",
@@ -4054,13 +4055,18 @@ export const globalStyleCatalog:Array<RecordInput & {id:string}> = [
     "title": "Coding style — readable, consistent code",
     "summary": "Language-independent readability rules plus naming, file and formatter conventions for TypeScript, C#, Swift, Kotlin and Dart.",
     "useWhen": "Use when writing, renaming, refactoring or reviewing code in any language, setting up a formatter or linter, or settling a naming or comment question.",
-    "content": "PERSONAL PREFERENCES\nLanguage-independent readability rules plus naming, file and formatter conventions for TypeScript, C#, Swift, Kotlin and Dart.\n\nAPPLIES WHEN\nUse when writing, renaming, refactoring or reviewing code in any language, setting up a formatter or linter, or settling a naming or comment question.\n\nPREFERRED OUTCOMES\n- Follow the repository's conventions before personal preference.\n- Let the formatter decide layout; never argue it in review.\n- Name things with domain words that reveal intent and units.\n- Return early and keep nesting shallow.\n- Comment why, delete dead and commented-out code.\n\nDELIVERABLE EXPECTATIONS\n- Changed code that passes the formatter check and the linter with no new warnings; any suppression carries a reason.\n- In review: style findings cite the rule or config line; formatter-fixable issues are fixed, not commented.\n\nACCEPTANCE\nRun the formatter in check mode and the linter on changed files. Report each as passed (command and zero findings), failed (rule and location) or not verified (tool not configured or not runnable). Naming and comment quality are review findings, never reported as a passed tool check.\n\nPROCEDURES\nUse relevant installed skills for technical steps. Their incidental defaults do not override explicit task choices or applicable personal preferences. A missing optional skill is not a reason to invent verification.",
+    "content": "PERSONAL PREFERENCES\nLanguage-independent readability rules plus naming, file and formatter conventions for TypeScript, C#, Swift, Kotlin and Dart.\n\nAPPLIES WHEN\nUse when writing, renaming, refactoring or reviewing code in any language, setting up a formatter or linter, or settling a naming or comment question.\n\nPREFERRED OUTCOMES\n- Optimize for readable, maintainable code, not fewer physical lines; minimal changes means minimal complexity.\n- Use one statement per line, braces around control-flow bodies in brace-based languages, and blank lines between logical steps. Wrap long conditions, argument lists and object literals according to the configured formatter.\n- Follow explicit repository formatter and naming rules; compressed legacy code is not a formatting convention to imitate.\n- Use the repository formatter and linter, and report each check with evidence. If either is missing, flag the gap and propose setup rather than claim a pass or silently install tooling.\n- Formatting and lint checks should be enforced in repository CI; a personal preference or agent assurance does not replace executable checks.\n- Keep broad formatting cleanup separate from behavior changes, preserve semantics, and verify the cleanup with relevant tests. Rebuild generated files from their source.\n- Name things with domain words that reveal intent and units.\n- Return early and keep nesting shallow.\n- Comment why, delete dead and commented-out code.\n- Avoid hard-coded links and parameters wherever practical. Make URLs, endpoints, paths, ports, timeouts, limits and other values that vary by environment, deployment or user configurable through the existing configuration mechanism. Use named constants for true invariants; do not introduce configuration for fixed protocol rules. Provide documented defaults where safe, validate configuration, and keep secrets out of source code.\n\nDELIVERABLE EXPECTATIONS\n- Changed code that passes the formatter check and the linter with no new warnings; any suppression carries a reason.\n- In review: style findings cite the rule or config line; formatter-fixable issues are fixed, not commented.\n\nACCEPTANCE\nRun the formatter in check mode and the linter on changed files. Report each as passed (command and zero findings), failed (rule and location) or not verified (tool not configured or not runnable). Naming and comment quality are review findings, never reported as a passed tool check.\n\nPROCEDURES\nUse relevant installed skills for technical steps. Their incidental defaults do not override explicit task choices or applicable personal preferences. A missing optional skill is not a reason to invent verification.",
     "principles": [
-      "Follow the repository's conventions before personal preference.",
-      "Let the formatter decide layout; never argue it in review.",
+      "Optimize for readable, maintainable code, not fewer physical lines; minimal changes means minimal complexity.",
+      "Use one statement per line, braces around control-flow bodies in brace-based languages, and blank lines between logical steps. Wrap long conditions, argument lists and object literals according to the configured formatter.",
+      "Follow explicit repository formatter and naming rules; compressed legacy code is not a formatting convention to imitate.",
+      "Use the repository formatter and linter, and report each check with evidence. If either is missing, flag the gap and propose setup rather than claim a pass or silently install tooling.",
+      "Formatting and lint checks should be enforced in repository CI; a personal preference or agent assurance does not replace executable checks.",
+      "Keep broad formatting cleanup separate from behavior changes, preserve semantics, and verify the cleanup with relevant tests. Rebuild generated files from their source.",
       "Name things with domain words that reveal intent and units.",
       "Return early and keep nesting shallow.",
-      "Comment why, delete dead and commented-out code."
+      "Comment why, delete dead and commented-out code.",
+      "Avoid hard-coded links and parameters wherever practical. Make URLs, endpoints, paths, ports, timeouts, limits and other values that vary by environment, deployment or user configurable through the existing configuration mechanism. Use named constants for true invariants; do not introduce configuration for fixed protocol rules. Provide documented defaults where safe, validate configuration, and keep secrets out of source code."
     ],
     "externalSkills": [],
     "reviewCriteria": [
@@ -4069,7 +4075,11 @@ export const globalStyleCatalog:Array<RecordInput & {id:string}> = [
       "Boolean names read as predicates and quantities carry units when the type does not.",
       "Changed functions stay within three levels of nesting and avoid boolean flag parameters.",
       "No commented-out code, unused imports or unreachable branches remain in the diff.",
-      "Comments state reasons or constraints rather than paraphrasing the statements below them."
+      "Comments state reasons or constraints rather than paraphrasing the statements below them.",
+      "Changed source uses readable multiline layout rather than copying compressed legacy code.",
+      "Missing formatter, linter or CI enforcement is reported with a setup proposal; unrun checks are Not verified.",
+      "Broad formatting cleanup is separate from behavior changes and has regression evidence.",
+      "Environment-, deployment- and user-dependent links and parameters use validated configuration rather than embedded literals; safe defaults are documented and true invariants are named constants."
     ],
     "examples": [
       "A C# PR adds private field 'userRepo' and method 'GetUser' returning Task. Rename to _userRepository and GetUserAsync per the C# table, run dotnet format --verify-no-changes and report it as passed.",
@@ -5339,3 +5349,5 @@ export const catalogDomains = [
     "combinable": true
   }
 ];
+
+export const globalStyleCatalog = consolidateCatalog(previousCatalog);

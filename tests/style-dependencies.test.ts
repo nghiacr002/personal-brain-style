@@ -13,12 +13,13 @@ test("audited links are idempotent, preserve alternatives and resolve starter pr
   createBrainHttpServer(db);
   const records=db.list({limit:300});const find=(tag:string)=>records.find(r=>r.tags.includes(tag)||r.keyId===tag)!;
   const dev=find("starter-implementation"),ux=find("starter-ux");
-  assert.ok(dev.supportingLinks?.some(link=>link.recordId===find("quality-assurance").id));
-  assert.ok(ux.requiredIds?.includes(find("personal-business-analysis-ba").id));
+  assert.deepEqual(dev.requiredIds,[]);
+  assert.deepEqual(dev.supportingLinks,[]);
+  assert.deepEqual(ux.requiredIds,[]);
   const azure=find("cloud-azure"),neutral=find("cloud-architecture");
-  assert.ok(azure.requiredIds?.includes(neutral.id));assert.ok(!neutral.requiredIds?.includes(azure.id));
+  assert.ok(!azure.requiredIds?.includes(neutral.id));assert.ok(!neutral.requiredIds?.includes(azure.id));
   const p=db.saveProject({name:"Starter",description:"",assignments:db.projectDefaultStyleIds().map(recordId=>({recordId,override:null}))});
-  assert.ok(db.scopedRecords(p.id).length>=5);
+  assert.ok(db.scopedRecords(p.id).some(record=>record.id===dev.id));
   const version=db.get(dev.id)!.version;installStyleDependencies(db);assert.equal(db.get(dev.id)!.version,version);
   db.update(dev.id,{...dev,requiredIds:[]},version);installStyleDependencies(db);assert.deepEqual(db.get(dev.id)!.requiredIds,[]);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}

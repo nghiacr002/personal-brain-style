@@ -4,7 +4,7 @@ export type Status = "active" | "draft" | "archived";
 export const DOMAINS = ["general", "thinking", "architecture", "diagrams", "writing", "coding", "technology", "reviews", "communication", "design", "tools"] as const;
 export type Domain = string;
 export type TestRule = { type: "contains" | "not_contains" | "max_length" | "min_length"; value: string | number; label?: string };
-export type Requirement = {id:string;label:string;type:"artifact"|"manual";extension?:string};
+export type Requirement = {id:string;label:string;type:"artifact"|"manual";extension?:string;extensions?:string[];when?:Applicability};
 export type ToolBackend = {
   command: string;
   args: string[];
@@ -12,11 +12,14 @@ export type ToolBackend = {
   enabled: boolean;
   timeoutMs?: number;
 };
-export type Applicability = { activities?: string[]; formats?: string[] };
+export type Applicability = { activities?: string[]; formats?: string[]; languages?: string[]; frameworks?: string[]; targets?: string[] };
 export type SkillBinding = { name:string; when?:Applicability; required:boolean; fallback:string };
 export type PreferenceValue = { key:string; value:string };
-export type TaskContext = { activity?:string; formats?:string[]; preferences?:PreferenceValue[] };
+export type TaskContext = { activity?:string; formats?:string[]; languages?:string[]; frameworks?:string[]; targets?:string[]; preferences?:PreferenceValue[] };
 export type BrainRecord = {
+  compatibility?: boolean;
+  standardLanguage?: string;
+  appliesWhen?: Applicability;
   supportingLinks?: Array<{recordId:string; when:Applicability}>;
   skillBindings?: SkillBinding[];
   preferences?: PreferenceValue[];

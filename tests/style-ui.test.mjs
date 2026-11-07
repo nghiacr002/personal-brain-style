@@ -3,6 +3,34 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
 
+test('library overflow actions close and restore trigger focus on Escape',()=>{
+ const events={};let focused=false;const menu={open:true,querySelector(){return {focus(){focused=true;}};}};
+ const context=vm.createContext({document:{getElementById(){return {addEventListener(){}};},addEventListener(name,fn){(events[name]||=[]).push(fn);},querySelectorAll(q){return q==='.library-actions[open]'&&menu.open?[menu]:[];}},setTimeout,clearTimeout,console});
+ const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');vm.runInContext(source,context);
+ events.keydown.forEach(fn=>fn({key:'Escape',target:{closest(){return null;}},preventDefault(){}}));
+ assert.equal(menu.open,false);assert.equal(focused,true);
+ const markup=readFileSync(new URL('../web/app.ts',import.meta.url),'utf8');
+ assert.match(markup,/<details class="library-actions"><summary[^>]*aria-label="Library actions"[^>]*>…<\/summary>/);
+ assert.match(markup,/<div class="library-actions-panel">.*data-action="library-export".*data-action="library-import".*<\/details><button class="button primary" data-action="add">/);
+});
+
+test('library multi-selection persists across visible pages and import sends only checked items',async()=>{
+ const elements=new Map(),events={},calls=[];let visible=[{dataset:{librarySelect:'a'},checked:false}],checked=[{dataset:{libraryImport:'chosen'}}];
+ const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',value:'',style:{},classList:{add(){},remove(){}},addEventListener(){},close(){}});return elements.get(id);};
+ const context=vm.createContext({document:{getElementById:element,addEventListener(name,fn){(events[name]||=[]).push(fn);},querySelectorAll(query){return query==='[data-library-select]'?visible:query==='[data-library-import]:checked'?checked:[];}},setTimeout,clearTimeout,console});
+ vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
+ await vm.runInContext('delegated({target:{closest(){return {dataset:{action:"library-select-page"}}}}})',context);
+ assert.equal(visible[0].checked,true);visible=[{dataset:{librarySelect:'b'},checked:false}];
+ await vm.runInContext('delegated({target:{closest(){return {dataset:{action:"library-select-page"}}}}})',context);
+ assert.equal(vm.runInContext('librarySelection.size',context),2);assert.equal(element('libraryExport').textContent,'Export selected (2)');
+ events.change.forEach(fn=>fn({target:{dataset:{librarySelect:'a'},checked:false}}));assert.equal(vm.runInContext('librarySelection.size',context),1);
+ context.capture=(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return Promise.resolve({created:1,kept:0});};
+ vm.runInContext('api=capture;refresh=async()=>{};libraryImportBundle={format:"test"};libraryImportPreview={fingerprint:"preview-token",items:[]}',context);
+ await vm.runInContext('delegated({target:{closest(){return {dataset:{action:"library-import-apply"}}}}})',context);
+ assert.deepEqual(calls[0].body.ids,['chosen']);assert.equal(calls[0].body.fingerprint,'preview-token');assert.equal(calls[0].path,'/api/library/import');
+ checked=[];await vm.runInContext('delegated({target:{closest(){return {dataset:{action:"library-import-apply"}}}}})',context);assert.equal(calls.length,1);assert.match(element('libraryImportError').textContent,/Select at least one/);
+});
+
 test('trace filters encode project scope in API requests and navigation URLs',()=>{
  const context=vm.createContext({URLSearchParams,document:{addEventListener(){},getElementById(){return {addEventListener(){}};},querySelectorAll(){return [];}},setTimeout,clearTimeout,console});
  vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);

@@ -39,9 +39,14 @@ export function reviewArtifacts(db:BrainDB,projectId:string,args:Record<string,u
   });
   const results=checklist.map(r=>{
     const claim=byKey.get(r.recordId+':'+r.id);
-    const matching=r.type==='artifact'?artifacts.filter(a=>a.extension===r.extension):[];
+    const accepted = r.type === 'artifact' ? (r.extensions || [r.extension]) : [];
+    const requested = accepted.filter(extension => resolved.context.formats?.includes(extension.slice(1)));
+    const matching = artifacts.filter(artifact => (requested.length ? requested : accepted).includes(artifact.extension));
+    const present = requested.length
+      ? requested.every(extension => matching.some(artifact => artifact.exists && artifact.extension === extension))
+      : matching.some(artifact => artifact.exists);
     // File metadata proves presence only; editability, meaning and visual quality stay manual.
-    const status=r.applicability==='not_applicable'?'not_applicable':r.optional?'optional':claim?.status==='fail'?'fail':r.type==='artifact'?(matching.some(a=>a.exists)?'pass':'fail'):'not_verified';
+    const status=r.applicability==='not_applicable'?'not_applicable':r.optional?'optional':claim?.status==='fail'?'fail':r.type==='artifact'?(present?'pass':'fail'):'not_verified';
     return {...r,status,verification:r.type==='artifact'&&claim?.status!=='fail'?'file-presence-only':'agent-report-only',agentReported:claim?.status??null,note:claim?.note??'',artifacts:matching.map(a=>a.path)};
   });
   const textReviews=typeof args.content==='string'?[...new Set(records.map(r=>r.domain))].map(domain=>db.evaluate(args.content as string,domain,projectId)):[];

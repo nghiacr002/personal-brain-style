@@ -18,7 +18,7 @@ function classify(task: string): Domain[] {
   if (/document|report|proposal|memo|specification|spec\b|write|writing|prd|brd|hld|lld|roadmap|adr\b|runbook|test plan|test case|openapi|api spec|database design|viết|tài liệu/.test(t)) result.push("writing-documents","writing");
   if (/research|think|plan|compare|decid|tradeoff|trade-off|strategy|phân tích/.test(t)) result.push("foundations","thinking");
   if (/review|audit|verify|validate|check|critic|quality|test plan|qa\b|qc\b|kiểm tra|đánh giá/.test(t)) result.push("quality-review","reviews");
-  if (/code|coding|implement|debug|refactor|typescript|python|\.net|c#|frontend|backend|mobile|api\b|logging|tracing|project structure/.test(t)) result.push("engineering-standards","coding");
+  if (/code|coding|implement|debug|refactor|typescript|python|java|kotlin|swift|dart|\.net|c#|frontend|backend|mobile|api\b|logging|tracing|project structure/.test(t)) result.push("engineering-standards","coding");
   if (/ux|ui|prototype|wireframe|design system|mockup|palette|screen/.test(t)) result.push("design");
   if (/technology|tech selection|azure|aws|gcp|cloud|security|threat|network|data model|integration/.test(t)) result.push("architecture","technology");
   if (/devops|sre|deploy|pipeline|ci\/cd|incident|on-call|release|lifecycle|tech lead|ai delivery/.test(t)) result.push("delivery-operations");
@@ -35,6 +35,7 @@ export function startupContext(db: BrainDB,projectId?:string): string {
     `The UserPromptSubmit hook supplies matching record references, not full instructions. `+
     `For substantive work, call brain_discover and brain_get for matching styles and required links; reuse only the same ID/version/scope already read in this conversation; `+
     `Read available external skills on demand with brain_get_installed_skill; flag missing or ambiguous references. `+
+    `For development, load the common standard and the applicable language substyle; supply known languages, frameworks and targets to preparation, using empty arrays when none apply. Do not infer every framework mentioned by a style is in use. `+
     `Do not ask the user to request skill discovery. Respect direct user instructions over style defaults. `+
     `Never claim a tool or visual validator was run unless it actually ran.\n\n${complianceReminder}`;
 }

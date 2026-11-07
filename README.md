@@ -38,6 +38,12 @@ flowchart TD
 
 **Legend:** orange = shared styles and proposals; green = project context and records; blue = agent workflow. Arrows show information flow or an explicit action. Styles and review evidence are stored locally in SQLite. Fusion sends selected instructions to the chosen agent provider; publishing updates shared styles without overwriting private copies. Recorded reviews do not prove that an agent followed every instruction.
 
+## Export and import library items
+
+In **Library → Table**, check individual items or choose **Select visible items**, then **Export selected**. Selection persists across pages and categories until cleared. The JSON download includes required and conditional linked dependencies so links can be restored on another installation.
+
+Choose **Import library**, open an exported JSON file, inspect the preview and select the items to import. New linked dependencies are included automatically. Existing keys are kept unchanged; incompatible types, capabilities or statuses are reported as conflicts. Imports are atomic and reject stale previews. Shared library records and capability metadata transfer; project-private records, assignments and revision history do not. Imported MCP tools remain disabled. Files are limited to 300 records and under 4.9 MB.
+
 ## Install
 
 Requires Node.js 22.13+; Node 24 LTS is recommended. This is a beta package; the commands below become available after publication.
@@ -168,7 +174,27 @@ Keep agent and HTTP adapters thin; place shared behavior in the relevant source 
 
 ```
 
-After editing `src/styles/global-style-catalog.ts`, regenerate the catalog document with `node scripts/run.mjs scripts/catalog-doc.mjs` (writes docs/STYLE-CATALOG.md).sh
+After editing the style catalog, regenerate its documentation with `node scripts/run.mjs scripts/catalog-doc.mjs` (writes docs/STYLE-CATALOG.md).
+
+### Common development standard and language substyles
+
+The Library has one **Global Development Standard**, inherited by TypeScript,
+C#/.NET, Python, Java, Swift, Kotlin and Dart substyles. Select the relevant language
+in your project; common rules load once. Framework rules apply only to the task.
+Explicit repository settings override personal formatting defaults.
+
+For preparation/review, pass known `context.languages`, `context.frameworks` and
+`context.targets` (for example `typescript`, `react`, `web`). Pass empty arrays when
+none apply; omit unknown context and resolve the resulting questions rather than
+guessing. Examples of other targets: `api`, `worker`, `cli`, `sdk`, `mobile`.
+
+Existing libraries can use **Library → … → Review standards consolidation**.
+The version-bound preview preserves IDs, private copies, project selections and
+history; personal edits or overrides require manual comparison. Successful batches
+offer guarded Undo. Fresh seeds already include the hierarchy. Compatibility
+records are hidden from normal Library lists/discovery but retain old references.
+Restart long-running MCP hosts after upgrading to load the extended context schema.
+See the [rule mapping and migration report](docs/research/development-standards-implementation-2026-11-07.md).
 npm install
 npm run build:package
 npm test

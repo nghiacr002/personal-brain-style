@@ -51,6 +51,8 @@
     <div id="helpContent" class="help-content"></div>
   </dialog>
   <dialog id="removalDialog" class="dialog narrow" aria-labelledby="removalTitle"><div class="modal-head"><h2 id="removalTitle">Confirm deletion</h2><button class="close" data-action="removal-cancel" aria-label="Cancel">×</button></div><div id="removalContent"></div><p id="removalError" role="alert"></p><div class="row-actions"><button class="button ghost" data-action="removal-cancel">Cancel</button><button class="button danger" data-action="removal-confirm">Confirm permanent removal</button></div></dialog>
+  <input id="libraryImportFile" type="file" accept=".json,application/json" hidden />
+  <dialog id="libraryImportDialog" class="dialog" aria-labelledby="libraryImportTitle"><div class="modal-head"><h2 id="libraryImportTitle">Import library items</h2><button class="close" data-action="library-import-close" aria-label="Close import">×</button></div><p>Select items to import. Linked dependencies are included automatically. Existing keys are kept unchanged; imported MCP tools are disabled.</p><div class="row-actions"><button class="button ghost" data-action="library-import-all">Select all</button><button class="button ghost" data-action="library-import-none">Clear selection</button></div><div id="libraryImportItems" class="editor-body"></div><p id="libraryImportError" role="alert"></p><div class="row-actions"><button class="button ghost" data-action="library-import-close">Cancel</button><button class="button primary" data-action="library-import-apply">Import selected</button></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

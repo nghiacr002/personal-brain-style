@@ -65,6 +65,8 @@ function showHelp(key) {
     $("helpDialog").showModal();
 }
 let page = 1;
+let showCompatibility = false;
+let standardsPreviewFingerprint = "";
 let libraryMode = "table";
 const pageSize = 8;
 function pageItems(rows) { page = Math.max(1, Math.min(page, Math.ceil(rows.length / pageSize) || 1)); return rows.slice((page - 1) * pageSize, page * pageSize); }
@@ -89,10 +91,42 @@ function layout(title, desc, action = "", body = "") {
     $("breadcrumb").textContent = title;
 }
 function styleContract(r) { return (r.sourceStyleId ? `<p>Private preference · based on global version ${esc(r.sourceVersion ?? 'unknown')} · global identity ${esc(r.sourceStyleId)}</p>` : '') + (r.preferences?.length ? `<h4>Preference values</h4><ul>${r.preferences.map(p => `<li>${esc(p.key)}: ${esc(p.value)}</li>`).join('')}</ul>` : '') + (r.skillBindings?.length ? `<h4>External procedures</h4><ul>${r.skillBindings.map(p => `<li>${esc(p.name)} · ${p.required ? 'Required when applicable' : 'Optional'}${p.when ? ' · ' + esc(JSON.stringify(p.when)) : ''}<br>${esc(p.fallback)}</li>`).join('')}</ul>` : '') + (r.supportingLinks?.length ? `<h4>Conditional supporting guidance</h4><ul>${r.supportingLinks.map(p => `<li>${esc(items.find(i => i.id === p.recordId)?.title || p.recordId)} · ${esc(JSON.stringify(p.when))}</li>`).join('')}</ul>` : '') + (r.useWhen ? `<h4>Use when</h4><p>${esc(r.useWhen)}</p>` : "") + [["Principles", r.principles], ["Legacy skill references", r.externalSkills], ["Worked examples", r.examples], ["Review criteria", r.reviewCriteria], ["Mandatory requirements", r.requirements?.map(x => x.label + (x.extension ? " (" + x.extension + " file required)" : ""))]].map(([title, values]) => Array.isArray(values) && values.length ? `<h4>${title}</h4><ul>${values.map(v => `<li>${esc(v)}</li>`).join("")}</ul>` : "").join(""); }
+const librarySelection = new Set();
+let libraryImportBundle = null;
+let libraryImportPreview = null;
+function syncLibrarySelection() {
+    const button = document.getElementById('libraryExport');
+    if (button) {
+        button.textContent = `Export selected (${librarySelection.size})`;
+        button.disabled = !librarySelection.size;
+    }
+    document.querySelectorAll('[data-library-select]').forEach(input => { input.checked = librarySelection.has(input.dataset.librarySelect); });
+}
+async function readLibraryFile(file) {
+    libraryImportBundle = null;
+    libraryImportPreview = null;
+    $('libraryImportError').textContent = '';
+    $('libraryImportItems').textContent = 'Reading library file…';
+    $('libraryImportDialog').showModal();
+    try {
+        if (file.size > 4_900_000)
+            throw new Error('Choose a JSON library file smaller than 4.9 MB');
+        const bundle = JSON.parse(await file.text());
+        const preview = await api('/api/library/import/preview', { method: 'POST', body: JSON.stringify({ bundle }) });
+        libraryImportBundle = bundle;
+        libraryImportPreview = preview;
+        $('libraryImportItems').innerHTML = preview.items.map(r => `<label class="dependency-choice"><input type="checkbox" data-library-import="${esc(r.id)}" ${r.action === 'create' ? 'checked' : ''} ${r.action === 'conflict' ? 'disabled' : ''}/><span><strong>${esc(r.title)}</strong><small>${esc(kindLabel(r.kind))} · ${esc(r.keyId)} · ${r.action === 'create' ? 'New item' : r.action === 'keep' ? 'Keep existing item unchanged' : 'Conflicting key — cannot import'}${r.linkedIds.length ? ` · ${r.linkedIds.length} linked items` : ''}</small></span></label><details><summary>Inspect ${esc(r.title)}</summary><p>${esc(r.summary)}</p><pre>${esc(r.content)}</pre></details>`).join('');
+    }
+    catch (e) {
+        $('libraryImportItems').textContent = '';
+        $('libraryImportError').textContent = e instanceof Error ? e.message : String(e);
+    }
+}
 function recordTable(rows) {
     if (!rows.length)
         return empty("No records yet", "Create your first record, or adjust your search.");
-    return `${rows.some(item => item.skillWarnings?.length) ? `<div class="section-heading">${skillResolutionHelp()}<button class="button ghost small" data-action="skills-rescan">Rescan skills</button></div>` : ""}<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Name &amp; details</th><th scope="col">Capability type</th><th scope="col">References</th><th scope="col">Status</th><th scope="col">Version</th><th scope="col">Actions</th></tr></thead><tbody>${rows.map(item => `<tr><td><strong>${esc(item.title)}</strong><p>${esc(item.summary)}</p>${item.skillWarnings?.length ? `<details class="skill-warning"><summary>${skillIssueLabel(item.skillWarnings)}</summary><ul>${item.skillWarnings.map(w => `<li>${skillWarningExplanation(w)}</li>`).join("")}</ul></details>` : ""}<details class="table-details"><summary>${item.kind === 'preference' ? 'View style guidelines' : 'View details'}</summary><pre>${esc(item.content)}</pre>${styleContract(item)}${item.requiredIds?.length ? `<p>Required-linked: ${item.requiredIds.map(id => esc(items.find(r => r.id === id)?.title || id)).join(", ")}</p>` : ""}</details></td><td>${esc(domainName(item.domain))}</td><td><button class="button ghost small" data-dependencies="${esc(item.id)}" aria-label="Manage dependencies for ${esc(item.title)}">${item.requiredIds?.length || 0} linked records</button><p class="reference-counts">${(item.externalSkills?.length || 0) + (item.skillBindings?.length || 0)} procedure references · ${item.reviewCriteria?.length || 0} rules · ${item.examples?.length || 0} examples</p></td><td><span class="tag">${esc(item.status)}</span></td><td>v${item.version}</td><td><div class="row-actions">${item.kind === "example" ? iconAction('copy', 'Copy template ' + item.title, `data-copy-template="${esc(item.id)}"`) : ""}${iconAction('edit', 'Edit ' + item.title, `data-edit="${esc(item.id)}"`)}${iconAction('history', 'History of ' + item.title, `data-history="${esc(item.id)}"`)}${iconAction('remove', 'Delete ' + item.title, `data-remove-kind="record" data-remove-id="${esc(item.id)}"`)}${item.projectId && active === "projects" ? `<button class="button ghost small" data-publish="${item.id}">Publish to global</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
+    const selectable = active !== "projects";
+    return `${rows.some(item => item.skillWarnings?.length) ? `<div class="section-heading">${skillResolutionHelp()}<button class="button ghost small" data-action="skills-rescan">Rescan skills</button></div>` : ""}<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Name &amp; details</th><th scope="col">Capability type</th><th scope="col">References</th><th scope="col">Status</th><th scope="col">Version</th><th scope="col">Actions</th></tr></thead><tbody>${rows.map(item => `<tr><td><div class="record-identity${selectable ? " is-selectable" : ""}">${selectable ? `<label class="record-select"><input type="checkbox" data-library-select="${esc(item.id)}" aria-label="Select ${esc(item.title)} for export" ${librarySelection.has(item.id) ? "checked" : ""}/></label>` : ""}<div class="record-copy"><strong>${esc(item.title)}</strong>${item.standardLanguage ? '<p class="standard-inheritance">↳ Inherits Global Development Standard</p>' : ""}${item.compatibility ? '<span class="tag">Compatibility</span>' : ""}<p>${esc(item.summary)}</p>${item.skillWarnings?.length ? `<details class="skill-warning"><summary>${skillIssueLabel(item.skillWarnings)}</summary><ul>${item.skillWarnings.map(w => `<li>${skillWarningExplanation(w)}</li>`).join("")}</ul></details>` : ""}<details class="table-details"><summary>${item.kind === 'preference' ? 'View style guidelines' : 'View details'}</summary><pre>${esc(item.content)}</pre>${styleContract(item)}${item.requiredIds?.length ? `<p>Required-linked: ${item.requiredIds.map(id => esc(items.find(r => r.id === id)?.title || id)).join(", ")}</p>` : ""}</details></div></div></td><td>${esc(domainName(item.domain))}</td><td><button class="button ghost small" data-dependencies="${esc(item.id)}" aria-label="Manage dependencies for ${esc(item.title)}">${item.requiredIds?.length || 0} linked records</button><p class="reference-counts">${(item.externalSkills?.length || 0) + (item.skillBindings?.length || 0)} procedure references · ${item.reviewCriteria?.length || 0} rules · ${item.examples?.length || 0} examples</p></td><td><span class="tag">${esc(item.status)}</span></td><td>v${item.version}</td><td><div class="row-actions">${item.kind === "example" ? iconAction('copy', 'Copy template ' + item.title, `data-copy-template="${esc(item.id)}"`) : ""}${iconAction('edit', 'Edit ' + item.title, `data-edit="${esc(item.id)}"`)}${iconAction('history', 'History of ' + item.title, `data-history="${esc(item.id)}"`)}${iconAction('remove', 'Delete ' + item.title, `data-remove-kind="record" data-remove-id="${esc(item.id)}"`)}${item.projectId && active === "projects" ? `<button class="button ghost small" data-publish="${item.id}">Publish to global</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
 }
 let selectedGraphNode = "";
 let graphShowContents = false;
@@ -309,6 +343,8 @@ document.addEventListener("pointermove", event => {
 document.addEventListener("pointerup", () => { graphPan = null; });
 document.addEventListener("pointercancel", () => { graphPan = null; graphDragged = false; });
 document.addEventListener("keydown", event => {
+    if (event.key === "Escape")
+        closeLibraryActions(true);
     if (event.key === "Escape" && selectedGraphNode && !event.target.closest("dialog")) {
         event.preventDefault();
         closeGraphDetails();
@@ -436,15 +472,15 @@ function overview() {
 }
 function records(kind) {
     items = items.filter(r => !r.projectId);
-    const matches = [...items].sort((a, b) => Number(b.tags.includes("style-recipe")) - Number(a.tags.includes("style-recipe"))).filter(r => r.kind === kind && (domain === "all" || r.domain === domain) && (!search || [r.title, r.summary, r.useWhen || "", r.content, ...r.tags].join(" ").toLowerCase().includes(search.toLowerCase())));
+    const matches = [...items].sort((a, b) => Number(b.tags.includes("style-recipe")) - Number(a.tags.includes("style-recipe"))).filter(r => r.kind === kind && (showCompatibility || !r.compatibility) && (domain === "all" || r.domain === domain) && (!search || [r.title, r.summary, r.useWhen || "", r.content, ...r.tags].join(" ").toLowerCase().includes(search.toLowerCase())));
     const desc = { preference: "Manage your working preferences across AI tools.", skill: "Discoverable procedures that guide how agents perform specialized tasks.", example: "Reusable templates — document outlines, code scaffolds or prompts — that you and your agents start new work from.", review: "Reusable quality rules with optional deterministic validation checks.", tool: "Discoverable MCP capabilities. External invocation is disabled until you explicitly authorize it." };
     const toolbar = `<div class="toolbar library-filters">${kind !== "tool" ? '<select id="libraryType" class="select" aria-label="Library category">' + ["preference", "example", "review"].map(k => '<option value="' + k + '" ' + (k === kind ? "selected" : "") + '>' + kindLabel(k) + 's</option>').join("") + '</select>' : ""}<input id="searchBox" aria-label="Search library" class="search" type="search" placeholder="Search ${esc(kindLabel(kind).toLowerCase())}s…" value="${esc(search)}" /><select id="domainFilter" aria-label="Filter by capability type" class="select"><option value="all">All capabilities</option>${domainOptions(domain)}</select></div>`;
     const visible = pageItems(matches);
-    layout(kind === "tool" ? labels[kind] : "Library", desc[kind], `<div class="page-actions"><div class="view-toggle" role="group" aria-label="Library view"><button class="button ghost" data-library-mode="table" aria-pressed="${libraryMode === "table"}">Table</button><button class="button ghost" data-library-mode="map" aria-pressed="${libraryMode === "map"}">Dependency map</button></div><button class="button ghost" data-action="catalog-preview">Review catalog updates</button><button class="button primary" data-action="add">＋ New ${esc(kindLabel(kind))}</button></div>`, `${toolbar}<p class="results-count">${matches.length} ${esc(kindLabel(kind).toLowerCase())}${matches.length === 1 ? "" : "s"} · ${domain === "all" ? "All capabilities" : esc(domainName(domain))}</p><section class="record-list">${libraryMode === "map" ? dependencyMap(matches) : recordTable(visible)}</section><div id="recordPagination">${libraryMode === "map" ? "" : pagination(matches.length)}</div>`);
+    layout(kind === "tool" ? labels[kind] : "Library", desc[kind], `<div class="page-actions"><div class="view-toggle" role="group" aria-label="Library view"><button class="button ghost" data-library-mode="table" aria-pressed="${libraryMode === "table"}">Table</button><button class="button ghost" data-library-mode="map" aria-pressed="${libraryMode === "map"}">Dependency map</button></div><details class="library-actions"><summary class="button ghost" aria-label="Library actions" title="Library actions">…</summary><div class="library-actions-panel"><button class="button ghost" data-action="library-select-page" ${libraryMode === "map" ? "disabled" : ""}>Select visible items</button><button class="button ghost" data-action="library-clear">Clear selection</button><button id="libraryExport" class="button ghost" data-action="library-export" ${librarySelection.size ? '' : 'disabled'}>Export selected (${librarySelection.size})</button><button class="button ghost" data-action="library-import">Import library</button><button class="button ghost" data-action="standards-preview">Review standards consolidation</button><button class="button ghost" data-action="catalog-preview">Review catalog updates</button><button class="button ghost" data-action="library-compatibility">${showCompatibility ? "Hide" : "Show"} compatibility records</button></div></details><button class="button primary" data-action="add">＋ New ${esc(kindLabel(kind))}</button></div>`, `${toolbar}<p class="results-count">${matches.length} ${esc(kindLabel(kind).toLowerCase())}${matches.length === 1 ? "" : "s"} · ${domain === "all" ? "All capabilities" : esc(domainName(domain))}</p><section class="record-list">${libraryMode === "map" ? dependencyMap(matches) : recordTable(visible)}</section><div id="recordPagination">${libraryMode === "map" ? "" : pagination(matches.length)}</div>`);
     $("libraryType")?.addEventListener("change", ev => { active = ev.target.value; page = 1; search = ""; domain = "all"; records(active); });
     const sb = $("searchBox");
     sb?.addEventListener("input", () => { search = sb.value; page = 1; updateUrl(true); const container = document.querySelector(".record-list"); if (container) {
-        const found = items.filter(r => r.kind === kind && (domain === "all" || r.domain === domain) && [r.title, r.summary, r.useWhen || "", r.content, ...r.tags].join(" ").toLowerCase().includes(search.toLowerCase()));
+        const found = items.filter(r => r.kind === kind && (showCompatibility || !r.compatibility) && (domain === "all" || r.domain === domain) && [r.title, r.summary, r.useWhen || "", r.content, ...r.tags].join(" ").toLowerCase().includes(search.toLowerCase()));
         const count = document.querySelector(".results-count");
         if (count)
             count.textContent = String(found.length) + " " + kindLabel(kind).toLowerCase() + (found.length === 1 ? "" : "s") + " · " + (domain === "all" ? "All capabilities" : domainName(domain));
@@ -899,7 +935,7 @@ async function activation() {
         { key: "codex", name: "Codex CLI", status: statuses.codex, does: "Startup and prompt hooks add your style index to each session.", command: cli + " connect codex", sub: "connect codex", after: `Installs the hooks and registers the MCP server with the codex CLI. Then restart Codex, open <code>/hooks</code> and trust the Personal Brain hooks.` },
         { key: "opencode", name: "OpenCode", status: statuses.opencode, does: "One plugin registers the MCP server and adds your style index to each session. Your <code>opencode.json</code> is not edited.", command: cli + " connect opencode", sub: "connect opencode", after: `Installs the plugin. Then restart OpenCode.` }
     ];
-    layout("Agent setup", "Connect your coding agents and ChatGPT to your styles.", "", `${info && !info.onPath ? `<div class="notice" role="note"><p><strong>The <code>personal-brain</code> command is not installed on this computer.</strong> Install it once, then the commands below work as shown. To run without installing, open <b>Other ways to run it</b> on a card.</p>${copyLine("npm install -g personal-brain-style@beta", "install command")}</div>` : ""}<section class="agent-grid">${agents.map(a => `<article class="card panel agent-card" data-agent="${a.key}"><div class="spread-row"><h2>${esc(a.name)}</h2><span class="chip ${a.status.installed ? "ok" : "bad"}">${a.status.installed ? okIcon + " Connected" : warnIcon + " Not connected"}</span></div><p>${a.does}</p><div class="copy-command"><pre class="setup-command">${esc(a.command)}</pre><button type="button" class="button ghost small" data-copy-command="${esc(a.command)}" aria-label="Copy ${esc(a.name)} install command">Copy</button></div><p class="hint">${a.after} To undo, run <code>${esc(a.command.replace(" connect ", " disconnect "))}</code>.</p>${otherWays(a.sub)}<p class="hint">Installed file: <code>${esc(a.status.file)}</code></p></article>`).join("")}</section>
+    layout("Agent setup", "Connect your coding agents and ChatGPT to your styles.", "", `<section class="agent-grid">${agents.map(a => `<article class="card panel agent-card" data-agent="${a.key}"><div class="spread-row"><h2>${esc(a.name)}</h2><span class="chip ${a.status.installed ? "ok" : "bad"}">${a.status.installed ? okIcon + " Connected" : warnIcon + " Not connected"}</span></div><p>${a.does}</p><div class="copy-command"><pre class="setup-command">${esc(a.command)}</pre><button type="button" class="button ghost small" data-copy-command="${esc(a.command)}" aria-label="Copy ${esc(a.name)} install command">Copy</button></div><p class="hint">${a.after} To undo, run <code>${esc(a.command.replace(" connect ", " disconnect "))}</code>.</p>${otherWays(a.sub)}<p class="hint">Installed file: <code>${esc(a.status.file)}</code></p></article>`).join("")}</section>
     <p class="hint space-top-12">Connected means the Personal Brain hook or plugin file is installed. It does not prove the agent has loaded or trusted it; Trace Explorer shows real activity. Connect every agent at once with <code>${esc(cli)} connect all</code>.</p>${info?.mode === "npx" ? `<div class="notice" role="note"><strong>You are running Personal Brain through npx.</strong> Hooks and plugins point to the npx cache, which npm can clear. For connections that keep working, install it once with <code>npm install -g personal-brain-style</code>, then use <code>personal-brain</code> in place of <code>npx --yes personal-brain-style</code> and reinstall the hooks.</div>` : ""}
     <section class="card panel chat-setup" aria-labelledby="chatTitle">
       <div class="spread-row"><h2 id="chatTitle">ChatGPT</h2><span id="chatStatus" class="chip bad">Not connected</span></div>
@@ -1263,7 +1299,7 @@ function openEditor(record = null) {
     }
     $("editorTitle").textContent = projectEdit ? record.projectId ? "Edit project-only style" : "Customize project style" : record ? "Edit style" : active === "projects" && selectedProject ? "Create project-private style" : "Create knowledge record";
     $("editDomain").innerHTML = domainOptions(record?.domain || "general");
-    const fields = { editContract: JSON.stringify({ preferences: record?.preferences || [], supportingLinks: record?.supportingLinks || [], skillBindings: record?.skillBindings || [] }, null, 2), editKeyId: record?.keyId || "", editKind: (record?.kind === "skill" ? "preference" : record?.kind) || (["preference", "example", "review", "tool"].includes(active) ? active : "preference"), editDomain: record?.domain || "general", editTitle: record?.title || "", editSummary: record?.summary || "", editUseWhen: record?.useWhen || "", editExamples: record?.examples?.join("\n") || "", editPrinciples: record?.principles?.join("\n") || "", editExternalSkills: record?.externalSkills?.join("\n") || "", editReviewCriteria: record?.reviewCriteria?.join("\n") || "", editContent: record?.content || "", editTags: record?.tags.join(", ") || "", editPriority: String(record?.priority ?? 70), editStatus: record?.status || "active", editRequirements: record?.requirements?.length ? JSON.stringify(record.requirements, null, 2) : "", editChecks: record?.checks.length ? JSON.stringify(record.checks, null, 2) : "", editBackend: record?.backend ? JSON.stringify(record.backend, null, 2) : "" };
+    const fields = { editContract: JSON.stringify({ compatibility: record?.compatibility, standardLanguage: record?.standardLanguage, appliesWhen: record?.appliesWhen, preferences: record?.preferences || [], supportingLinks: record?.supportingLinks || [], skillBindings: record?.skillBindings || [] }, null, 2), editKeyId: record?.keyId || "", editKind: (record?.kind === "skill" ? "preference" : record?.kind) || (["preference", "example", "review", "tool"].includes(active) ? active : "preference"), editDomain: record?.domain || "general", editTitle: record?.title || "", editSummary: record?.summary || "", editUseWhen: record?.useWhen || "", editExamples: record?.examples?.join("\n") || "", editPrinciples: record?.principles?.join("\n") || "", editExternalSkills: record?.externalSkills?.join("\n") || "", editReviewCriteria: record?.reviewCriteria?.join("\n") || "", editContent: record?.content || "", editTags: record?.tags.join(", ") || "", editPriority: String(record?.priority ?? 70), editStatus: record?.status || "active", editRequirements: record?.requirements?.length ? JSON.stringify(record.requirements, null, 2) : "", editChecks: record?.checks.length ? JSON.stringify(record.checks, null, 2) : "", editBackend: record?.backend ? JSON.stringify(record.backend, null, 2) : "" };
     for (const [id, value] of Object.entries(fields))
         $(id).value = value;
     $("editKeyId").readOnly = !!record;
@@ -1372,6 +1408,114 @@ async function delegated(ev) {
         return;
     }
     try {
+        if (button.dataset.action === 'library-select-page') {
+            document.querySelectorAll('[data-library-select]').forEach(input => librarySelection.add(input.dataset.librarySelect));
+            syncLibrarySelection();
+            return;
+        }
+        if (button.dataset.action === 'library-clear') {
+            librarySelection.clear();
+            syncLibrarySelection();
+            return;
+        }
+        if (button.dataset.action === 'library-import') {
+            const input = $('libraryImportFile');
+            input.value = '';
+            input.click();
+            return;
+        }
+        if (button.dataset.action === 'library-import-close') {
+            $('libraryImportDialog').close();
+            return;
+        }
+        if (button.dataset.action === 'library-import-all') {
+            document.querySelectorAll('[data-library-import]:not(:disabled)').forEach(input => input.checked = true);
+            return;
+        }
+        if (button.dataset.action === 'library-import-none') {
+            document.querySelectorAll('[data-library-import]').forEach(input => input.checked = false);
+            return;
+        }
+        if (button.dataset.action === 'library-export') {
+            button.disabled = true;
+            try {
+                const bundle = await api('/api/library/export', { method: 'POST', body: JSON.stringify({ ids: [...librarySelection] }) });
+                const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'personal-brain-library.json';
+                link.click();
+                URL.revokeObjectURL(url);
+                toast(`Exported ${bundle.records.length} items, including linked dependencies`);
+            }
+            finally {
+                syncLibrarySelection();
+            }
+            return;
+        }
+        if (button.dataset.action === 'library-import-apply') {
+            if (!libraryImportPreview)
+                return;
+            const ids = Array.from(document.querySelectorAll('[data-library-import]:checked')).map(input => input.dataset.libraryImport);
+            if (!ids.length) {
+                $('libraryImportError').textContent = 'Select at least one item to import';
+                return;
+            }
+            button.disabled = true;
+            $('libraryImportError').textContent = '';
+            try {
+                const result = await api('/api/library/import', { method: 'POST', body: JSON.stringify({ bundle: libraryImportBundle, ids, fingerprint: libraryImportPreview.fingerprint }) });
+                $('libraryImportDialog').close();
+                await refresh();
+                toast(`Imported ${result.created} items; kept ${result.kept} existing items`);
+            }
+            catch (e) {
+                $('libraryImportError').textContent = e instanceof Error ? e.message : String(e);
+            }
+            finally {
+                button.disabled = false;
+            }
+            return;
+        }
+        if (button.dataset.action === 'library-compatibility') {
+            showCompatibility = !showCompatibility;
+            page = 1;
+            records(active);
+            return;
+        }
+        if (button.dataset.action === 'standards-preview') {
+            const preview = await api('/api/standards-migration');
+            standardsPreviewFingerprint = preview.fingerprint;
+            $('historyTitle').textContent = 'Review development standards consolidation';
+            const changed = preview.items.filter(item => item.action !== 'keep');
+            $('historyContent').innerHTML = `<p>One common standard and seven language substyles. Existing IDs and project selections are preserved. Personal edits require review.</p>` +
+                changed.map(item => `<article><h3>${esc(item.title)} · ${esc(item.action)}</h3><p>${esc(item.reason)}</p><details><summary>Compare proposed changes</summary><h4>Current</h4><pre>${esc(JSON.stringify(item.before, null, 2))}</pre><h4>Proposed</h4><pre>${esc(JSON.stringify(item.after, null, 2))}</pre></details></article>`).join('') +
+                (changed.length ? `<button class="button primary" data-action="standards-apply" ${preview.conflicts.length ? 'disabled' : ''}>Apply reviewed consolidation</button>` : '<p>The standards are up to date.</p>');
+            revisions.showModal();
+            return;
+        }
+        if (button.dataset.action === 'standards-apply' || button.dataset.standardsRollback) {
+            button.disabled = true;
+            try {
+                if (button.dataset.standardsRollback) {
+                    await api('/api/standards-migration/rollback', { method: 'POST', body: JSON.stringify({ migrationId: button.dataset.standardsRollback }) });
+                    $('historyContent').textContent = 'Previous records restored through new revisions; new profiles archived.';
+                }
+                else {
+                    const result = await api('/api/standards-migration', { method: 'POST', body: JSON.stringify({ fingerprint: standardsPreviewFingerprint }) });
+                    $('historyContent').innerHTML = `<p>Updated ${result.changed} records and added ${result.created} language profiles. Project selections are unchanged.</p>${result.migrationId ? `<button class="button ghost" data-standards-rollback="${esc(result.migrationId)}">Undo this consolidation</button>` : ''}`;
+                }
+                await refresh();
+            }
+            catch (error) {
+                button.disabled = false;
+                const message = document.createElement('p');
+                message.setAttribute('role', 'alert');
+                message.textContent = error instanceof Error ? error.message : String(error);
+                button.after(message);
+            }
+            return;
+        }
         if (button.dataset.action === 'catalog-preview') {
             const candidates = await api('/api/catalog-upgrade');
             $('historyTitle').textContent = 'Review preference catalog updates';
@@ -1727,7 +1871,24 @@ async function delegated(ev) {
         toast(e instanceof Error ? e.message : String(e));
     }
 }
+function closeLibraryActions(returnFocus = false) {
+    document.querySelectorAll('.library-actions[open]').forEach(menu => { menu.open = false; if (returnFocus)
+        menu.querySelector('summary')?.focus(); });
+}
+document.addEventListener('click', ev => {
+    const target = ev.target;
+    if (!target.closest?.('.library-actions') || target.closest?.('.library-actions button'))
+        closeLibraryActions(!!target.closest?.('.library-actions button'));
+});
 document.addEventListener("click", delegated);
+document.addEventListener('change', ev => { const input = ev.target; if (input.dataset.librarySelect) {
+    if (input.checked)
+        librarySelection.add(input.dataset.librarySelect);
+    else
+        librarySelection.delete(input.dataset.librarySelect);
+    syncLibrarySelection();
+} if (input.id === 'libraryImportFile' && input.files?.[0])
+    void readLibraryFile(input.files[0]); });
 let about = null;
 const aboutReady = api("/api/about").then(a => { about = a; const el = document.getElementById("buildInfo"); if (el)
     el.innerHTML = `<strong>Personal Brain v${esc(a.version)}</strong><br>Built ${a.builtAt ? esc(new Date(a.builtAt).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })) : "unknown"}`; return a; }).catch(() => null);
@@ -1759,6 +1920,11 @@ $("editForm").addEventListener('invalid', event => { const panel = event.target.
     showEditorTab(Number(panel.id.replace('editPanel', ''))); }, true);
 editor.addEventListener("cancel", ev => { ev.preventDefault(); closeEditor(); });
 $("closeRevisions").addEventListener("click", () => revisions.close());
+revisions.addEventListener('close', () => {
+    if ($('historyTitle').textContent === 'Review development standards consolidation') {
+        document.querySelector('.library-actions > summary')?.focus();
+    }
+});
 $("closeHelp").addEventListener("click", () => $("helpDialog").close());
 $("domainName").addEventListener("input", () => { newDomainDraft = $("domainName").value; });
 $("domainCreate").addEventListener("submit", ev => { ev.preventDefault(); void saveDomainName(); });

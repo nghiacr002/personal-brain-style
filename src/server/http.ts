@@ -1,3 +1,5 @@
+import {previewStandardsMigration,applyStandardsMigration,rollbackStandardsMigration} from '../styles/standards-migration.ts';
+import {exportLibrary,previewLibraryImport,importLibrary,libraryTransferLimit} from "../core/library-transfer.ts";
 import {catalogUpgradePreview,applyCatalogUpgrade} from "../styles/catalog-upgrade.ts";
 import {resolveInstructions} from "../instructions/resolve.ts";
 import {seedGlobalStyles,installCatalogAdditions,globalCatalogMarker} from "../styles/global-style-seed.ts";
@@ -33,9 +35,10 @@ import { BrainError, KINDS, type Domain, type Kind } from "../core/models.ts";
 
 const publicDir=resolve(dirname(fileURLToPath(import.meta.url)),"../../public");
 function json(res:ServerResponse,status:number,payload:unknown) { const data=JSON.stringify(payload);res.writeHead(status,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});res.end(data); }
-async function body(req:IncomingMessage):Promise<any> {
-  let data="";
-  for await (const chunk of req) {data+=chunk;if(data.length>180000)throw new BrainError("Request too large","TOO_LARGE",413);}
+async function body(req:IncomingMessage,maxBytes=180000):Promise<any> {
+  const chunks:Buffer[]=[];let size=0;
+  for await (const chunk of req) {const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=bytes.length;if(size>maxBytes)throw new BrainError("Request too large","TOO_LARGE",413);chunks.push(bytes);}
+  const data=Buffer.concat(chunks).toString("utf8");
   if(!data.trim())return {};
   try {return JSON.parse(data);}catch{throw new BrainError("Invalid JSON");}
 }
@@ -200,6 +203,12 @@ export function createBrainHttpServer(db:BrainDB) {
             status:url.searchParams.get("status")||undefined,query:url.searchParams.get("q")||undefined,limit:300}).map(record=>({...record,skillWarnings:skillReferences([record],inventory.skills).filter(ref=>ref.status!=="available").map(ref=>ref.reference+": "+ref.status)})));
         }
         if(path==="/api/preferences/resolve"&&method==="POST"){const x=await body(req);if(typeof x.projectId!=="string")throw new BrainError("Project required");return json(res,200,resolveInstructions(db,x.projectId,x));}
+        if(path==="/api/library/export"&&method==="POST"){const x=await body(req);return json(res,200,exportLibrary(db,x.ids));}
+        if(path==="/api/library/import/preview"&&method==="POST"){const x=await body(req,libraryTransferLimit);return json(res,200,previewLibraryImport(db,x.bundle));}
+        if(path==="/api/library/import"&&method==="POST"){const x=await body(req,libraryTransferLimit);return json(res,200,importLibrary(db,x.bundle,x.ids,x.fingerprint));}
+        if(path==="/api/standards-migration"&&method==="GET")return json(res,200,previewStandardsMigration(db));
+        if(path==="/api/standards-migration"&&method==="POST"){const x=await body(req);return json(res,200,applyStandardsMigration(db,x.fingerprint));}
+        if(path==="/api/standards-migration/rollback"&&method==="POST"){const x=await body(req);return json(res,200,rollbackStandardsMigration(db,x.migrationId));}
         if(path==="/api/catalog-upgrade"&&method==="GET")return json(res,200,catalogUpgradePreview(db));
         if(path==="/api/catalog-upgrade"&&method==="POST"){const x=await body(req);return json(res,200,applyCatalogUpgrade(db,x.id,x.expectedVersion));}
         if(path==="/api/items"&&method==="POST")return json(res,201,db.create(await body(req)));

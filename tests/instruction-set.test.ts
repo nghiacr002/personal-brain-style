@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BrainDB} from '../src/core/database.ts';
 import {callTool} from '../src/agents/mcp.ts';
+import {complianceInstructions, instructionRecovery} from '../src/instructions/compliance.ts';
 
 test('prepared instructions bind review to task, project, effective overrides and dependency versions',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'pb-instructions-')),db=new BrainDB(join(dir,'db'));
@@ -30,4 +31,43 @@ test('prepared instructions bind review to task, project, effective overrides an
   const preview=db.deletionPreview('record',dependency.id);db.deleteWithPreview('record',dependency.id,preview.fingerprint);
   assert.equal(db.db.prepare("SELECT count(*) n FROM meta WHERE key LIKE 'instruction-set:%'").get()!.n,0);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('REC-01 unavailable IDs identify project and give bounded recovery without changing selections', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-recovery-'));
+  const db = new BrainDB(join(dir, 'db'));
+  try {
+    const style = db.create({
+      kind: 'preference', domain: 'coding', title: 'Code', summary: 'Code',
+      content: 'Code', tags: [], priority: 90, status: 'active', checks: [], backend: null,
+    });
+    const project = db.saveProject({
+      name: 'Recovery', description: '', assignments: [{recordId: style.id, override: null}],
+    });
+    const args = {projectId: project.id, task: 'Code', recordIds: ['stale-record-id']};
+    for (const tool of ['brain_prepare', 'brain_resolve']) {
+      const result = await callTool(db, tool, args);
+      assert.equal((result as any).isError, true);
+      const message = result.content[0].text;
+      assert.ok(message.includes('stale-record-id'));
+      assert.ok(message.includes(project.id));
+      assert.ok(message.includes(instructionRecovery));
+    }
+    assert.match(instructionRecovery, /at most two recovery retries per task/);
+    assert.match(instructionRecovery, /stop retrying and continue the user task/);
+    assert.match(instructionRecovery, /same project scope/);
+    assert.match(instructionRecovery, /Not verified/);
+    assert.ok(complianceInstructions.includes(instructionRecovery));
+    assert.deepEqual(db.project(project.id), project);
+    assert.equal(db.db.prepare("SELECT count(*) n FROM meta WHERE key LIKE 'instruction-set:%'").get()!.n, 0);
+
+    const discovery = await callTool(db, 'brain_discover', {projectId: project.id, task: 'Code'});
+    const matches = JSON.parse(discovery.content[0].text);
+    const recovered = await callTool(db, 'brain_prepare', {...args, recordIds: matches.map((r: any) => r.id)});
+    assert.ok(!('isError' in recovered));
+    assert.ok(JSON.parse(recovered.content[0].text).instructionSetId);
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
 });

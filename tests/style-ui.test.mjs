@@ -516,7 +516,7 @@ test('project configuration saves assignments and displays effective source', as
   element('projectName').value = 'Portal';
   element('projectDescription').value = 'Customer portal';
   element('override-r1').value = 'Navy';
-  await vm.runInContext('onboardingStep=3;saveProject({preventDefault(){}})', context);
+  await vm.runInContext('onboardingStep=reviewStep;saveProject({preventDefault(){}})', context);
   assert.deepEqual(saved.assignments, [{recordId: 'r1', override: 'Navy'}]);
   assert.match(element('main').innerHTML, /Project override/);
   assert.match(element('main').innerHTML, /Project styles/);

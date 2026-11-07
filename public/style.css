@@ -560,3 +560,4 @@ small{font-size:max(11px,.85em)}
 .library-actions>summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 .standard-inheritance { font-size: .85em; }
+.gaps-table th:first-child{width:34%}.gaps-table td{overflow-wrap:anywhere}.gaps-table td:first-child{min-width:180px}

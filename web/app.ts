@@ -1436,7 +1436,7 @@ type ProjectConfig = {
 };
 let selectedProject: ProjectConfig | null = null;
 let projectEditing = false;
-let projectTab: 'styles' | 'map' | 'personal' | 'activity' | 'setup' = 'styles';
+let projectTab: 'styles' | 'map' | 'personal' | 'gaps' | 'activity' | 'setup' = 'styles';
 async function repositoryRequest(projectId: string, folder: string, action: 'link' | 'test') {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -1731,6 +1731,7 @@ async function projectScreen() {
       [
         ['styles', 'Styles'],
         ['map', 'Dependency map'],
+        ['gaps', 'Gaps'],
         ['activity', 'Agent activity'],
         ['setup', 'Repository setup'],
       ] as const
@@ -1775,6 +1776,8 @@ async function projectScreen() {
       content = scopeError ? `<p role="alert">${esc(scopeError)}</p>` : dependencyMap(resolved);
     } else if (projectTab === 'personal' || projectTab === 'styles') {
       content = styles;
+    } else if (projectTab === 'gaps') {
+      content = `<div class="section-heading"><div><h2>Gaps — required information</h2><p class="hint">What the selected styles and their required styles need to work: skills, required styles, tools and development tooling. Setting them up is optional.</p></div><button class="button ghost small" id="projectGapScan">Scan again</button></div><div id="projectGaps" role="status" aria-live="polite"><p>Checking selected styles…</p></div>`;
     } else if (projectTab === 'activity') {
       content = projectActivityPanel(activity, activityError);
     } else {
@@ -1788,6 +1791,26 @@ async function projectScreen() {
       `<div class="page-actions"><button class="button primary" data-action="project-edit">Configure project</button><details class="page-overflow"><summary class="button ghost">More</summary><div><button class="button ghost small" data-remove-kind="reset" data-remove-id="${esc(selectedProject.id)}">Reset styles</button><button class="button ghost small" data-remove-kind="project" data-remove-id="${esc(selectedProject.id)}">Delete project</button></div></details></div>`,
       status + tabs + content,
     );
+    if (projectTab === 'gaps') {
+      const project = selectedProject;
+      const scan = async () => {
+        $('projectGaps').innerHTML = '<p>Checking selected styles…</p>';
+        try {
+          const result = await api<GapScan>(`/api/projects/${project.id}/gaps`);
+          if (selectedProject?.id === project.id && $('projectGaps')) {
+            $('projectGaps').innerHTML = gapsPanel(result);
+          }
+        } catch (e) {
+          if ($('projectGaps')) {
+            $('projectGaps').innerHTML =
+              `<p role="alert">Gap check failed: ${esc(e instanceof Error ? e.message : String(e))}</p>`;
+          }
+        }
+      };
+      $('projectGapScan').addEventListener('click', () => void scan());
+      await scan();
+      return;
+    }
     if (projectTab === 'setup') {
       const agents = [...new Set((activity?.sessions || []).map((s) => s.agent))];
       $('repositoryResult').textContent = agents.length
@@ -1869,6 +1892,8 @@ function projectForm() {
   onboardingAbort?.abort();
   onboardingAbort = null;
   onboardingStep = 0;
+  onboardingGaps = null;
+  onboardingGapsKey = '';
   const eligible = items.filter(
     (r) =>
       ((!r.projectId || r.projectId === selectedProject?.id) &&
@@ -1915,7 +1940,100 @@ function projectForm() {
   }
 }
 let onboardingStep = 0,
-  onboardingAbort: AbortController | null = null;
+  onboardingAbort: AbortController | null = null,
+  onboardingGaps: GapScan | null = null,
+  onboardingGapsKey = '';
+const gapsStep = 3,
+  reviewStep = 4;
+type Gap = {
+  type: 'dependency' | 'skill' | 'tool' | 'dev-tool';
+  required: boolean;
+  recordId: string;
+  recordTitle: string;
+  name: string;
+  status: string;
+  message: string;
+  setup: string;
+};
+type GapScan = {
+  folder: string | null;
+  scannedStyles: Array<{id: string; title: string}>;
+  gaps: Gap[];
+  issues: Array<{message: string}>;
+};
+const gapTypeLabels: Record<Gap['type'], string> = {
+  dependency: 'Required style',
+  skill: 'Skill',
+  tool: 'Tool',
+  'dev-tool': 'Development tooling',
+};
+function gapsPanel(scan: GapScan) {
+  if (!scan.scannedStyles.length) {
+    return '<div class="selection-empty"><h2>No styles to check</h2><p>Select styles first; gaps are detected from what the selected styles need.</p></div>';
+  }
+  // One row per distinct gap; several styles often need the same skill or tool.
+  const groups = new Map<string, {gap: Gap; neededBy: string[]}>();
+  for (const gap of scan.gaps) {
+    const key = [gap.type, gap.name, gap.status].join('\u0000');
+    const group = groups.get(key);
+    if (group) {
+      group.neededBy.push(gap.recordTitle);
+      group.gap = {...group.gap, required: group.gap.required || gap.required};
+    } else {
+      groups.set(key, {gap, neededBy: [gap.recordTitle]});
+    }
+  }
+  const rows = [...groups.values()];
+  const required = rows.filter((row) => row.gap.required).length;
+  const optional = rows.length - required;
+  const scope = `Checked ${scan.scannedStyles.length} styles${scan.folder ? ' against ' + esc(scan.folder) : '. No repository folder is linked, so repository checks were skipped'}.`;
+  if (!rows.length) {
+    return `<div class="selection-empty"><h2>No gaps found</h2><p>Every selected style has what it needs. ${scope}</p></div>`;
+  }
+  const tableRows = rows
+    .map(
+      ({gap, neededBy}) =>
+        `<tr><td><strong>${esc(gap.name)}</strong><p><span class="tag">${esc(gapTypeLabels[gap.type])}</span> <span class="tag">${gap.required ? 'Required' : 'Recommended'}</span> ${esc(gap.status)}</p>${neededBy.length === 1 ? `<p class="hint">${esc(gap.message)}</p>` : ''}</td><td><ul class="plain-list">${neededBy.map((title) => `<li>${esc(title)}</li>`).join('')}</ul></td><td>${esc(gap.setup)}</td></tr>`,
+    )
+    .join('');
+  return `<p><strong>${required}</strong> required · <strong>${optional}</strong> recommended. ${scope}</p><div class="table-scroll"><table class="record-table gaps-table"><thead><tr><th scope="col">Gap</th><th scope="col">Needed by</th><th scope="col">How to set it up</th></tr></thead><tbody>${tableRows}</tbody></table></div>${scan.issues.length ? `<details><summary>${scan.issues.length} scan notes</summary><ul>${scan.issues.map((i) => `<li>${esc(i.message)}</li>`).join('')}</ul></details>` : ''}`;
+}
+function onboardingGapKey() {
+  const chosen = Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[name="assignment"]:checked'),
+  ).map((input) => input.value);
+  return JSON.stringify([chosen, ($('onboardingFolder') as HTMLInputElement).value]);
+}
+async function scanOnboardingGaps() {
+  const form = $('projectForm');
+  const key = onboardingGapKey();
+  const [recordIds, folder] = JSON.parse(key) as [string[], string];
+  $('onboardingGaps').innerHTML = '<p>Checking selected styles…</p>';
+  try {
+    const scan = await api<GapScan>('/api/gaps/scan', {
+      method: 'POST',
+      body: JSON.stringify({recordIds, folder}),
+    });
+    if ($('projectForm') !== form) {
+      return;
+    }
+    onboardingGaps = scan;
+    onboardingGapsKey = key;
+    $('onboardingGaps').innerHTML = gapsPanel(scan);
+  } catch (e) {
+    if ($('projectForm') !== form) {
+      return;
+    }
+    onboardingGaps = null;
+    onboardingGapsKey = '';
+    $('onboardingGaps').innerHTML =
+      `<p role="alert">Gap check failed: ${esc(e instanceof Error ? e.message : String(e))}. Scan again, or continue without it.</p>`;
+  }
+  if (onboardingStep === gapsStep) {
+    $('projectForm').querySelector('button[type="submit"]')!.textContent =
+      onboardingSubmitLabel(gapsStep);
+  }
+}
 async function openFolderBrowser(
   inputId: string,
   buttonId = 'browseOnboardingFolder',
@@ -1980,7 +2098,13 @@ function setupProjectWizard() {
   const form = $('projectForm') as HTMLFormElement;
   form.noValidate = true;
   form.classList.add('project-wizard');
-  const steps = ['Project & folder', 'Discover & personalize', 'Select styles', 'Review'];
+  const steps = [
+    'Project & folder',
+    'Discover & personalize',
+    'Select styles',
+    'Check gaps',
+    'Review',
+  ];
   form.insertAdjacentHTML(
     'afterbegin',
     `<ol class="wizard-steps" aria-label="Project setup progress">${steps.map((s, i) => `<li data-wizard-label="${i}"><span>${i + 1}</span>${s}</li>`).join('')}</ol>`,
@@ -2006,8 +2130,10 @@ function setupProjectWizard() {
   );
   select.insertAdjacentHTML(
     'afterend',
-    '<section data-wizard-step="3"><h2 tabindex="-1" class="wizard-heading">Review your project</h2><div id="onboardingReview"></div><p class="hint">Only selected styles and required dependencies apply. Shared styles remain unchanged. Accepted AI drafts are saved as project-only overrides.</p></section>',
+    `<section data-wizard-step="${gapsStep}"><h2 tabindex="-1" class="wizard-heading">Check gaps</h2><p>Find what your selected styles need to work: skills, required styles, tools and development tooling. Setting them up is optional; you can skip and fix gaps later from the project's Gaps tab.</p><div class="row-actions"><button type="button" class="button ghost small" id="onboardingGapScan">Scan again</button></div><div id="onboardingGaps" role="status" aria-live="polite"></div></section>` +
+      `<section data-wizard-step="${reviewStep}"><h2 tabindex="-1" class="wizard-heading">Review your project</h2><div id="onboardingReview"></div><p class="hint">Only selected styles and required dependencies apply. Shared styles remain unchanged. Accepted AI drafts are saved as project-only overrides.</p></section>`,
   );
+  $('onboardingGapScan').addEventListener('click', () => void scanOnboardingGaps());
   form
     .querySelector('.project-save-bar .page-actions')!
     .insertAdjacentHTML(
@@ -2027,8 +2153,11 @@ function setupProjectWizard() {
   showOnboardingStep(0, false);
 }
 function onboardingSubmitLabel(step: number) {
-  if (step === 3) {
+  if (step === reviewStep) {
     return 'Create project';
+  }
+  if (step === gapsStep) {
+    return onboardingGaps?.gaps.length ? 'Skip for now' : 'Continue';
   }
   return step === 1 ? 'Continue to styles' : 'Continue';
 }
@@ -2051,12 +2180,15 @@ function showOnboardingStep(step: number, focus = true) {
     step === 1 ? 'button ghost' : 'button primary';
   $('projectError').textContent = '';
   $('projectSelectionSummary').hidden = step !== 2;
-  if (step === 3) {
+  if (step === gapsStep && onboardingGapsKey !== onboardingGapKey()) {
+    void scanOnboardingGaps();
+  }
+  if (step === reviewStep) {
     const chosen = Array.from(
       document.querySelectorAll<HTMLInputElement>('input[name="assignment"]:checked'),
     );
     $('onboardingReview').innerHTML =
-      `<dl class="wizard-review"><dt>Project</dt><dd>${esc(($('projectName') as HTMLInputElement).value)}</dd><dt>Repository</dt><dd>${esc(($('onboardingFolder') as HTMLInputElement).value)}</dd><dt>Selected styles (${chosen.length})</dt><dd>${chosen.length ? `<ul>${chosen.map((input) => `<li>${esc(items.find((r) => r.id === input.value)!.title)}</li>`).join('')}</ul>` : 'No styles selected. Agents will receive no project styles.'}</dd></dl>`;
+      `<dl class="wizard-review"><dt>Project</dt><dd>${esc(($('projectName') as HTMLInputElement).value)}</dd><dt>Repository</dt><dd>${esc(($('onboardingFolder') as HTMLInputElement).value)}</dd><dt>Selected styles (${chosen.length})</dt><dd>${chosen.length ? `<ul>${chosen.map((input) => `<li>${esc(items.find((r) => r.id === input.value)!.title)}</li>`).join('')}</ul>` : 'No styles selected. Agents will receive no project styles.'}</dd>${onboardingGaps?.gaps.length ? `<dt>Open gaps (${onboardingGaps.gaps.length})</dt><dd>Skipped for now. Fix them later from the project's Gaps tab.</dd>` : ''}</dl>`;
   }
   if (focus) {
     document
@@ -2261,7 +2393,7 @@ function syncProjectSelection() {
 }
 async function saveProject(ev: Event) {
   ev.preventDefault();
-  if (!selectedProject && onboardingStep < 3) {
+  if (!selectedProject && onboardingStep < reviewStep) {
     await advanceOnboarding();
     return;
   }
@@ -4282,7 +4414,7 @@ async function readRoute() {
   libraryMode = params.get('mode') === 'map' ? 'map' : 'table';
   page = Math.max(1, Math.min(10000, Number(params.get('page')) || 1));
   const tab = params.get('tab') || '';
-  projectTab = ['map', 'personal', 'activity', 'setup'].includes(tab)
+  projectTab = ['map', 'personal', 'gaps', 'activity', 'setup'].includes(tab)
     ? (tab as typeof projectTab)
     : 'styles';
   if (active === 'trace') {

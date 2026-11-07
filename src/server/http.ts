@@ -37,6 +37,7 @@ import {
   recommendProjectStyles,
 } from '../projects/onboarding.ts';
 import {selectFolder} from '../projects/folder-browser.ts';
+import {scanGaps, scanProjectGaps} from '../projects/gaps.ts';
 import {
   discoverProject,
   installedSkills,
@@ -304,6 +305,15 @@ export function createBrainHttpServer(db: BrainDB) {
         }
         if (discoveryMatch && method === 'POST') {
           return json(res, 200, discoverProject(db, discoveryMatch[1], true));
+        }
+        const gapsMatch = path.match(/^\/api\/projects\/([a-f0-9-]{36})\/gaps$/);
+        if (gapsMatch && method === 'GET') {
+          return json(res, 200, scanProjectGaps(db, gapsMatch[1]));
+        }
+        if (path === '/api/gaps/scan' && method === 'POST') {
+          const x = await body(req);
+          const folder = x.folder ? onboardingFolder(x.folder) : undefined;
+          return json(res, 200, scanGaps(db, x.recordIds, folder));
         }
         const repositoryMatch = path.match(/^\/api\/projects\/([a-f0-9-]{36})\/repository$/);
         if (repositoryMatch && method === 'GET') {

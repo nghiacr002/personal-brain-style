@@ -105,7 +105,7 @@ test('style search and selected-only filter preserve selections and override dra
 });
 test('wizard advances only after folder validation; back preserves fields and review escapes text', async () => {
   const {context, element, panels, labels} = setup();
-  for (let n = 0; n < 4; n++) {
+  for (let n = 0; n < 5; n++) {
     panels.push({dataset: {wizardStep: String(n)}, hidden: false});
     labels.push({
       dataset: {wizardLabel: String(n)},
@@ -123,7 +123,7 @@ test('wizard advances only after folder validation; back preserves fields and re
   vm.runInContext('showOnboardingStep(0)', context);
   assert.deepEqual(
     panels.map((p) => p.hidden),
-    [false, true, true, true],
+    [false, true, true, true, true],
   );
   context.fetch = async () => ({ok: false, json: async () => ({message: 'Folder already linked'})});
   await vm.runInContext('advanceOnboarding()', context);
@@ -134,7 +134,41 @@ test('wizard advances only after folder validation; back preserves fields and re
   assert.equal(vm.runInContext('onboardingStep', context), 1);
   assert.equal(element('onboardingFolder').value, '/canonical/repo');
   assert.equal(labels[1]['aria-current'], 'step');
-  vm.runInContext('showOnboardingStep(0);showOnboardingStep(3)', context);
+  const scan = {
+    folder: '/canonical/repo',
+    scannedStyles: [{id: 'a', title: 'Style'}],
+    gaps: [
+      {
+        type: 'skill',
+        required: true,
+        recordId: 'a',
+        recordTitle: 'Style',
+        name: '<b>missing-skill</b>',
+        status: 'missing',
+        message: 'Style uses the skill missing-skill, which is not installed.',
+        setup: 'Install it.',
+      },
+    ],
+    issues: [],
+  };
+  context.fetch = async () => ({ok: true, json: async () => scan});
+  vm.runInContext('showOnboardingStep(3)', context);
+  await vm.runInContext('scanOnboardingGaps()', context);
+  assert.deepEqual(
+    panels.map((p) => p.hidden),
+    [true, true, true, false, true],
+  );
+  assert.match(element('onboardingGaps').innerHTML, /&lt;b&gt;missing-skill/);
+  assert.match(element('onboardingGaps').innerHTML, /<strong>1<\/strong> required/);
+  assert.equal(element('submit').textContent, 'Skip for now');
+  context.fetch = async () => ({ok: false, json: async () => ({message: 'Scan failed'})});
+  await vm.runInContext('scanOnboardingGaps()', context);
+  assert.match(element('onboardingGaps').innerHTML, /role="alert"/);
+  assert.equal(element('submit').textContent, 'Continue');
+  context.fetch = async () => ({ok: true, json: async () => scan});
+  await vm.runInContext('scanOnboardingGaps()', context);
+  vm.runInContext('showOnboardingStep(0);showOnboardingStep(4)', context);
+  assert.match(element('onboardingReview').innerHTML, /Open gaps \(1\)/);
   assert.equal(element('projectName').value, '<script>Project</script>');
   assert.match(element('onboardingReview').innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(element('onboardingReview').innerHTML, /<script>/);

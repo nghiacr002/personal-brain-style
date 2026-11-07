@@ -198,16 +198,18 @@ export function scanGaps(
   const records = collectRecords(db, recordIds, projectId, gaps);
 
   const inventory = installedSkills(folder, home);
-  const skillHome = folder ? join(folder, '.claude', 'skills') : '~/.claude/skills';
   for (const ref of skillReferences(records, inventory.skills)) {
     if (ref.status === 'available') {
       continue;
     }
     // "plugin:skill (when …)" installs as a folder named after the skill.
-    const name = ref.reference.split(' ')[0].split(':').at(-1);
+    const name = ref.reference.split(' ')[0].split(':').at(-1) || ref.reference;
     // Skill bindings carry required/fallback; plain externalSkills references are required.
     const binding = 'fallback' in ref ? (ref as typeof ref & SkillBinding) : undefined;
     const copies = ref.skills.map((skill) => skill.file).join(', ');
+    const projectSkill = folder
+      ? join(folder, '.claude', 'skills', name, 'SKILL.md')
+      : `~/.claude/skills/${name}/SKILL.md`;
     gaps.push({
       type: 'skill',
       required: binding ? binding.required : true,
@@ -221,8 +223,8 @@ export function scanGaps(
           : `${ref.title} uses the skill ${ref.reference}, but different copies are installed: ${copies}.`,
       setup:
         (ref.status === 'missing'
-          ? `Install it at ${skillHome}/${name}/SKILL.md for this project, or ~/.agents/skills/${name}/SKILL.md for every project.`
-          : `Keep one copy, or install a project copy at ${skillHome}/${name}/SKILL.md (project copies take precedence).`) +
+          ? `Install it at ${projectSkill} for this project, or ~/.agents/skills/${name}/SKILL.md for every project.`
+          : `Keep one copy, or install a project copy at ${projectSkill} (project copies take precedence).`) +
         (binding?.fallback ? ` Until then: ${binding.fallback}` : ''),
     });
   }

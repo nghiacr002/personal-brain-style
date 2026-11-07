@@ -67,7 +67,10 @@ test('gap scan reports missing skills, unavailable dependencies, unusable tools 
 
     assert.equal(byName.has('installed-skill'), false);
     assert.equal(byName.get('missing-skill')?.required, true);
-    assert.match(byName.get('missing-skill')!.setup, /\.claude\/skills\/missing-skill\/SKILL\.md/);
+    assert.match(
+      byName.get('missing-skill')!.setup,
+      /\.claude[\\/]skills[\\/]missing-skill[\\/]SKILL\.md/,
+    );
     assert.equal(byName.get('optional-skill')?.required, false);
     assert.match(byName.get('optional-skill')!.setup, /Review manually\./);
     assert.equal(byName.get('Archived dependency')?.type, 'dependency');

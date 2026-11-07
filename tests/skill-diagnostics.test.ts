@@ -6,8 +6,8 @@ import {createBrainHttpServer} from '../src/server/http.ts';
 test('skill diagnostics validates project scope and excludes repository evidence', async () => {
   const db = new BrainDB(':memory:');
   const server = createBrainHttpServer(db);
-  const request = (url: string) =>
-    new Promise<{status: number; data: any}>((resolve) => {
+  const request = <T = unknown>(url: string) =>
+    new Promise<{status: number; data: T}>((resolve) => {
       let status = 200;
       server.emit(
         'request',
@@ -25,7 +25,9 @@ test('skill diagnostics validates project scope and excludes repository evidence
     });
   try {
     const p = db.saveProject({name: 'Skills', description: '', assignments: []});
-    const result = await request('/api/skills?projectId=' + p.id);
+    const result = await request<{skills: unknown; references: unknown}>(
+      '/api/skills?projectId=' + p.id,
+    );
     assert.equal(result.status, 200);
     assert.ok(Array.isArray(result.data.skills));
     assert.deepEqual(result.data.references, []);

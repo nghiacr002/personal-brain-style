@@ -59,7 +59,11 @@ test('wizard creates project and repository link together; failed and conflictin
       p.id,
     );
     assert.equal(
-      (db.db.prepare('SELECT value FROM meta WHERE key=?').get('repository:' + p.id) as any).value,
+      (
+        db.db.prepare('SELECT value FROM meta WHERE key=?').get('repository:' + p.id) as {
+          value: string;
+        }
+      ).value,
       realpathSync(folder),
     );
     assert.throws(
@@ -74,7 +78,12 @@ test('wizard creates project and repository link together; failed and conflictin
 });
 
 test('AI recommendations reject invented, private, duplicate or conflicting styles', () => {
-  const style = {id: 's', domain: 'coding', kind: 'preference', status: 'active'} as any;
+  const style = {
+    id: 's',
+    domain: 'coding',
+    kind: 'preference',
+    status: 'active',
+  } as import('../src/core/models.ts').BrainRecord;
   assert.deepEqual(
     validateRecommendations(
       {recommendations: [{id: 's', reason: 'package.json defines TypeScript'}]},
@@ -140,8 +149,8 @@ test('wizard HTTP routes validate folders and create scoped projects without soc
   mkdirSync(folder);
   const db = new BrainDB(join(root, 'test.sqlite')),
     server = createBrainHttpServer(db);
-  const request = (url: string, payload: unknown) =>
-    new Promise<{status: number; data: any}>((resolve) => {
+  const request = <T = unknown>(url: string, payload: unknown) =>
+    new Promise<{status: number; data: T}>((resolve) => {
       let status = 0;
       const res = Object.assign(new EventEmitter(), {
         setHeader() {},
@@ -171,7 +180,7 @@ test('wizard HTTP routes validate folders and create scoped projects without soc
       (await request('/api/onboarding/analyze', {folder, agent: 'invalid'})).status,
       400,
     );
-    const result = await request('/api/onboarding/create', {
+    const result = await request<{id: string}>('/api/onboarding/create', {
       folder,
       project: {name: 'HTTP wizard', description: '', assignments: []},
     });
@@ -262,7 +271,7 @@ test('personalization validates project guidelines and private scope', () => {
     kind: 'preference',
     status: 'active',
     projectId: 'p',
-  } as import('../src/core/types.ts').BrainRecord;
+  } as import('../src/core/models.ts').BrainRecord;
   const recommendations = [
     {id: 's', reason: 'README.md', projectGuidelines: 'Use the existing test command (README.md).'},
   ];

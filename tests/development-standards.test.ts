@@ -232,9 +232,12 @@ test('STD-10/12/13/14 overrides retain common rules; multiple formats and Word t
       artifacts: ['template.dotx'],
     });
     const parsed = JSON.parse(report.content[0].text);
-    assert.equal(parsed.results.find((r: any) => r.id === 'req-word-source').status, 'pass');
     assert.equal(
-      parsed.results.find((r: any) => r.id === 'req-word-source').verification,
+      parsed.results.find((r: {id: string}) => r.id === 'req-word-source').status,
+      'pass',
+    );
+    assert.equal(
+      parsed.results.find((r: {id: string}) => r.id === 'req-word-source').verification,
       'file-presence-only',
     );
     const wrongFormat = await callTool(f.db, 'brain_review', {
@@ -245,8 +248,9 @@ test('STD-10/12/13/14 overrides retain common rules; multiple formats and Word t
       artifacts: ['template.dotx'],
     });
     assert.equal(
-      JSON.parse(wrongFormat.content[0].text).results.find((r: any) => r.id === 'req-word-source')
-        .status,
+      JSON.parse(wrongFormat.content[0].text).results.find(
+        (r: {id: string}) => r.id === 'req-word-source',
+      ).status,
       'fail',
     );
   } finally {
@@ -362,8 +366,9 @@ test('STD-19/21 discovery, MCP schemas and transfer preserve the new contract', 
       context: {...context, languages: ['python'], targets: ['cli']},
     });
     assert.ok(!('isError' in prepared));
-    const schema = tools().find((tool) => tool.name === 'brain_prepare')!.inputSchema as any;
-    assert.ok(schema.properties.context.properties.languages);
+    const schema = tools().find((tool) => tool.name === 'brain_prepare')!.inputSchema;
+    const contextSchema = schema.properties.context as {properties: Record<string, unknown>};
+    assert.ok(contextSchema.properties.languages);
     const bundle = exportLibrary(f.db, [f.record('coding-typescript').id]);
     const record = bundle.records.find((record) => record.standardLanguage === 'typescript')!;
     assert.ok(

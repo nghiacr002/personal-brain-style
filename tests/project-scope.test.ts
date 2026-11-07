@@ -83,8 +83,8 @@ test('repository HTTP actions link safely and verify the selected project', asyn
   const root = mkdtempSync(join(tmpdir(), 'pb-repository-api-'));
   const db = new BrainDB(join(root, 'brain.sqlite'));
   const server = createBrainHttpServer(db);
-  const request = (id: string, payload: unknown, method = 'POST') =>
-    new Promise<{status: number; data: any}>((resolve) => {
+  const request = <T = unknown>(id: string, payload: unknown, method = 'POST') =>
+    new Promise<{status: number; data: T}>((resolve) => {
       let status = 0;
       server.emit(
         'request',
@@ -109,10 +109,16 @@ test('repository HTTP actions link safely and verify the selected project', asyn
     });
   try {
     const p = db.saveProject({name: 'Repo', description: '', assignments: []});
-    assert.equal((await request(p.id, {folder: root, action: 'test'})).data.matches, false);
+    assert.equal(
+      (await request<{matches: boolean}>(p.id, {folder: root, action: 'test'})).data.matches,
+      false,
+    );
     assert.equal((await request(p.id, {folder: root, action: 'link'})).status, 200);
-    assert.equal((await request(p.id, {folder: root, action: 'test'})).data.matches, true);
-    const state = await request(p.id, {}, 'GET');
+    assert.equal(
+      (await request<{matches: boolean}>(p.id, {folder: root, action: 'test'})).data.matches,
+      true,
+    );
+    const state = await request<{linked: boolean; folder: string}>(p.id, {}, 'GET');
     assert.equal(state.data.linked, true);
     assert.equal(state.data.folder, root);
     const q = db.saveProject({name: 'Other', description: '', assignments: []});

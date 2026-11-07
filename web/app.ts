@@ -94,13 +94,6 @@ const labels: Record<string, string> = {
   activation: 'Agent setup',
   trace: 'Trace Explorer',
 };
-const icons: Record<string, string> = {
-  preference: '✦',
-  skill: '▦',
-  example: '◈',
-  review: '✓',
-  tool: '⛓',
-};
 let active: View = 'overview',
   items: RecordItem[] = [],
   editing: RecordItem | null = null,
@@ -575,7 +568,9 @@ async function api<T = unknown>(url: string, options: RequestInit = {}): Promise
     let data: {message?: string} = {};
     try {
       data = await result.json();
-    } catch {}
+    } catch {
+      // Non-JSON error body: fall back to the status-based message below.
+    }
     throw new Error(data.message || `Request failed ${result.status}`);
   }
   return result.json() as Promise<T>;
@@ -636,6 +631,15 @@ type LibraryImportPreview = {
   }>;
 };
 let libraryImportPreview: LibraryImportPreview | null = null;
+function libraryActionLabel(action: string) {
+  if (action === 'create') {
+    return 'New item';
+  }
+  if (action === 'keep') {
+    return 'Keep existing item unchanged';
+  }
+  return 'Conflicting key — cannot import';
+}
 function syncLibrarySelection() {
   const button = document.getElementById('libraryExport') as HTMLButtonElement | null;
   if (button) {
@@ -666,7 +670,7 @@ async function readLibraryFile(file: File) {
     $('libraryImportItems').innerHTML = preview.items
       .map(
         (r) =>
-          `<label class="dependency-choice"><input type="checkbox" data-library-import="${esc(r.id)}" ${r.action === 'create' ? 'checked' : ''} ${r.action === 'conflict' ? 'disabled' : ''}/><span><strong>${esc(r.title)}</strong><small>${esc(kindLabel(r.kind))} · ${esc(r.keyId)} · ${r.action === 'create' ? 'New item' : r.action === 'keep' ? 'Keep existing item unchanged' : 'Conflicting key — cannot import'}${r.linkedIds.length ? ` · ${r.linkedIds.length} linked items` : ''}</small></span></label><details><summary>Inspect ${esc(r.title)}</summary><p>${esc(r.summary)}</p><pre>${esc(r.content)}</pre></details>`,
+          `<label class="dependency-choice"><input type="checkbox" data-library-import="${esc(r.id)}" ${r.action === 'create' ? 'checked' : ''} ${r.action === 'conflict' ? 'disabled' : ''}/><span><strong>${esc(r.title)}</strong><small>${esc(kindLabel(r.kind))} · ${esc(r.keyId)} · ${libraryActionLabel(r.action)}${r.linkedIds.length ? ` · ${r.linkedIds.length} linked items` : ''}</small></span></label><details><summary>Inspect ${esc(r.title)}</summary><p>${esc(r.summary)}</p><pre>${esc(r.content)}</pre></details>`,
       )
       .join('');
   } catch (e) {
@@ -1061,6 +1065,12 @@ document.addEventListener('pointercancel', () => {
   graphPan = null;
   graphDragged = false;
 });
+const graphArrowOffsets: Record<string, [number, number]> = {
+  ArrowLeft: [-20, 0],
+  ArrowRight: [20, 0],
+  ArrowUp: [0, -20],
+  ArrowDown: [0, 20],
+};
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeLibraryActions(true);
@@ -1079,8 +1089,7 @@ document.addEventListener('keydown', (event) => {
   }
   event.preventDefault();
   const id = (target.closest('[data-graph-node]') as HTMLElement)?.dataset.graphNode;
-  const dx = event.key === 'ArrowLeft' ? -20 : event.key === 'ArrowRight' ? 20 : 0,
-    dy = event.key === 'ArrowUp' ? -20 : event.key === 'ArrowDown' ? 20 : 0;
+  const [dx, dy] = graphArrowOffsets[event.key] ?? [0, 0];
   if (id) {
     const point = graphPoints.get(id);
     if (point) {
@@ -1447,6 +1456,7 @@ async function repositoryRequest(projectId: string, folder: string, action: 'lin
       if (attempt === 3) {
         throw new Error(
           'Cannot reach the local server. Check that npm start is running, wait for the server URL in Terminal, then retry. Your folder path has been kept.',
+          {cause: e},
         );
       }
       $('repositoryResult').textContent = 'Waiting for the local server to restart…';
@@ -1546,6 +1556,14 @@ async function showProjectDiscovery(recordId?: string) {
   active = 'skills';
   await render();
 }
+const skillStatusDisplays: Record<string, {tone: string; label: string}> = {
+  missing: {tone: 'bad', label: 'Missing'},
+  ambiguous: {tone: 'warn', label: 'Conflicting copies'},
+  available: {tone: 'ok', label: 'Ready'},
+};
+function skillStatusDisplay(status: string) {
+  return skillStatusDisplays[status] ?? {tone: '', label: 'Installed'};
+}
 function renderSkillResults() {
   const query = skillQuery.toLowerCase();
   const refs = skillScan.references.filter((ref) => !skillRecord || ref.recordId === skillRecord);
@@ -1607,7 +1625,7 @@ function renderSkillResults() {
         .slice(skillPage * 20, (skillPage + 1) * 20)
         .map(
           (g) =>
-            `<tr><td><strong>${esc(g.name)}</strong></td><td><span class="tag ${g.status === 'missing' ? 'bad' : g.status === 'ambiguous' ? 'warn' : g.status === 'available' ? 'ok' : ''}">${g.status === 'missing' ? 'Missing' : g.status === 'ambiguous' ? 'Conflicting copies' : g.status === 'available' ? 'Ready' : 'Installed'}</span></td><td>${[...g.styles].map((t) => `<div>${esc(t)}</div>`).join('') || '—'}</td><td>${g.skills.length ? `<details><summary>${g.skills.length} ${g.skills.length === 1 ? 'installation' : 'installations'}</summary>${g.skills.map((s) => `<p>${esc(s.scope)} · ${esc(s.agent)}<code>${esc(s.file)}</code></p>`).join('')}</details>` : 'No matching installation'}</td></tr>`,
+            `<tr><td><strong>${esc(g.name)}</strong></td><td><span class="tag ${skillStatusDisplay(g.status).tone}">${skillStatusDisplay(g.status).label}</span></td><td>${[...g.styles].map((t) => `<div>${esc(t)}</div>`).join('') || '—'}</td><td>${g.skills.length ? `<details><summary>${g.skills.length} ${g.skills.length === 1 ? 'installation' : 'installations'}</summary>${g.skills.map((s) => `<p>${esc(s.scope)} · ${esc(s.agent)}<code>${esc(s.file)}</code></p>`).join('')}</details>` : 'No matching installation'}</td></tr>`,
         )
         .join('') || '<tr><td colspan="4">No skills match these filters.</td></tr>'
     }</tbody></table></div><div class="pagination"><span>Page ${skillPage + 1} of ${Math.max(1, Math.ceil(rows.length / 20))}</span><button class="button ghost small" data-action="skill-prev" ${skillPage === 0 ? 'disabled' : ''}>Previous</button><button class="button ghost small" data-action="skill-next" ${(skillPage + 1) * 20 >= rows.length ? 'disabled' : ''}>Next</button></div>`;
@@ -1752,16 +1770,16 @@ async function projectScreen() {
               .join('')}</tbody></table></div>${pagination(styleRows.length)}`
           : `<div class="selection-empty"><h2>${projectTab === 'personal' ? 'No project-only styles yet' : 'No styles selected'}</h2><p>Select shared styles in Configure project, or create a personalized style. Editing a shared selection creates a private copy.</p><div class="row-actions"><button class="button ghost small" data-action="project-edit">Configure project</button><button class="button ghost small" data-action="private-style">New personalized style</button></div></div>`
       }`;
-    const content =
-      projectTab === 'map'
-        ? scopeError
-          ? `<p role="alert">${esc(scopeError)}</p>`
-          : dependencyMap(resolved)
-        : projectTab === 'personal' || projectTab === 'styles'
-          ? styles
-          : projectTab === 'activity'
-            ? projectActivityPanel(activity, activityError)
-            : `<div class="project-scope"><div class="project-id"><span class="chip">Project ID</span><code>${esc(selectedProject.id)}</code></div>${projectAgentGuide(selectedProject.id)}</div>`;
+    let content: string;
+    if (projectTab === 'map') {
+      content = scopeError ? `<p role="alert">${esc(scopeError)}</p>` : dependencyMap(resolved);
+    } else if (projectTab === 'personal' || projectTab === 'styles') {
+      content = styles;
+    } else if (projectTab === 'activity') {
+      content = projectActivityPanel(activity, activityError);
+    } else {
+      content = `<div class="project-scope"><div class="project-id"><span class="chip">Project ID</span><code>${esc(selectedProject.id)}</code></div>${projectAgentGuide(selectedProject.id)}</div>`;
+    }
     layout(
       selectedProject.name,
       selectedProject.description && selectedProject.description !== selectedProject.name
@@ -1869,11 +1887,12 @@ function projectForm() {
     <div class="style-selector"><div class="field style-search-field"><label for="assignmentSearch">Search styles</label><input id="assignmentSearch" type="search" placeholder="Search by name, capability or keyword…" /><p id="assignmentSearchResult" class="hint" aria-live="polite"></p></div><div class="style-selection-toolbar"><label class="inline-field"><input id="selectedOnly" type="checkbox" /> Selected only <span id="selectedCount" class="tag" aria-live="polite"></span></label><span id="availableCount" class="hint"></span></div><div id="availableAssignments" class="assignment-list">${
       eligible
         .map((r) => {
-          const a = selectedProject
-            ? selectedProject.assignments.find((a) => a.recordId === r.id)
-            : summary?.projectDefaultStyleIds?.includes(r.id)
-              ? {recordId: r.id, override: null}
-              : undefined;
+          let a;
+          if (selectedProject) {
+            a = selectedProject.assignments.find((a) => a.recordId === r.id);
+          } else if (summary?.projectDefaultStyleIds?.includes(r.id)) {
+            a = {recordId: r.id, override: null};
+          }
           return `<article class="assignment-row" data-assignment-row="${esc(r.id)}" data-slot="${esc(r.kind + ':' + r.domain + (domainRegistry().find((d) => d.id === r.domain)?.combinable ? ':' + r.id : ''))}"><label class="assignment-choice"><input type="checkbox" name="assignment" value="${esc(r.id)}" ${a ? 'checked' : ''} /><span><strong>${esc(r.title)}</strong><small>${esc(domainName(r.domain))} · ${esc(kindLabel(r.kind))} · ${r.projectId ? 'Project-private' : 'Shared library'}</small></span><span class="assignment-state tag"></span></label><p class="hint">${esc(r.summary)}</p>${r.requiredIds?.length ? `<details class="assignment-dependencies"><summary>${r.requiredIds.length} required dependencies</summary><ul>${r.requiredIds.map((id) => `<li>${esc(items.find((i) => i.id === id)?.title || 'Unavailable record')}</li>`).join('')}</ul></details>` : ''}<details class="shared-instructions"><summary>Style guidelines &amp; requirements</summary><pre>${esc(r.content)}</pre>${styleContract(r)}</details><details class="project-override" ${a?.override ? 'open' : ''} ${a ? '' : 'hidden'}><summary>Customize for this project</summary><label for="override-${esc(r.id)}" class="hint">Optional project-only override: replaces the shared instruction text in this project. Keep applicable shared requirements in your text. Leave blank to inherit the global style; global records and other projects are unchanged.</label><textarea id="override-${esc(r.id)}" rows="3" maxlength="100000" ${a ? '' : 'disabled'}>${esc(a?.override || '')}</textarea></details></article>`;
         })
         .join('') ||
@@ -2007,6 +2026,12 @@ function setupProjectWizard() {
   });
   showOnboardingStep(0, false);
 }
+function onboardingSubmitLabel(step: number) {
+  if (step === 3) {
+    return 'Create project';
+  }
+  return step === 1 ? 'Continue to styles' : 'Continue';
+}
 function showOnboardingStep(step: number, focus = true) {
   onboardingStep = step;
   document
@@ -2021,7 +2046,7 @@ function showOnboardingStep(step: number, focus = true) {
   });
   $('onboardingBack').hidden = step === 0;
   $('projectForm').querySelector('button[type="submit"]')!.textContent =
-    step === 3 ? 'Create project' : step === 1 ? 'Continue to styles' : 'Continue';
+    onboardingSubmitLabel(step);
   $('projectForm').querySelector('button[type="submit"]')!.className =
     step === 1 ? 'button ghost' : 'button primary';
   $('projectError').textContent = '';
@@ -2211,17 +2236,18 @@ function syncProjectSelection() {
     input.disabled = !chosen && selectedSlots.has(row.dataset.slot);
     field.disabled = !chosen;
     row.querySelector<HTMLElement>('.project-override')!.hidden = !chosen;
-    row.querySelector<HTMLElement>('.assignment-state')!.textContent = chosen
-      ? custom
-        ? 'Project override'
-        : items.find((r) => r.id === row.dataset.assignmentRow)?.projectId
-          ? 'Selected · project-private'
-          : 'Selected · shared'
-      : required.has(input.value)
-        ? 'Required dependency'
-        : input.disabled
-          ? 'Another record selected'
-          : 'Not selected';
+    let state: string;
+    if (chosen && custom) {
+      state = 'Project override';
+    } else if (chosen) {
+      const ownerProjectId = items.find((r) => r.id === row.dataset.assignmentRow)?.projectId;
+      state = ownerProjectId ? 'Selected · project-private' : 'Selected · shared';
+    } else if (required.has(input.value)) {
+      state = 'Required dependency';
+    } else {
+      state = input.disabled ? 'Another record selected' : 'Not selected';
+    }
+    row.querySelector<HTMLElement>('.assignment-state')!.textContent = state;
     row.classList.toggle('is-selected', chosen);
   }
   $('selectedCount').textContent = String(selected) + ' selected';
@@ -2392,14 +2418,18 @@ async function activation() {
         last = seen.find(
           (e) => e.eventType !== 'mcp.initialize' && e.eventType !== 'mcp.tools.list',
         );
-      const done = (n: string) =>
-        n === '1'
-          ? setup.tunnelClient && ticks.has('1')
-          : n === '2'
-            ? ticks.has('2')
-            : n === '3'
-              ? ticks.has('3') || !!last
-              : !!last;
+      const done = (n: string) => {
+        if (n === '1') {
+          return setup.tunnelClient && ticks.has('1');
+        }
+        if (n === '2') {
+          return ticks.has('2');
+        }
+        if (n === '3') {
+          return ticks.has('3') || !!last;
+        }
+        return !!last;
+      };
       const status = $('chatStatus');
       status.className = 'chip ' + (last ? 'ok' : 'bad');
       status.textContent = last
@@ -2585,6 +2615,62 @@ type FusionRun = {
   proposals?: number;
   decided?: number;
 };
+type FusionGuidanceKey =
+  'summary' | 'useWhen' | 'tags' | 'principles' | 'examples' | 'externalSkills' | 'reviewCriteria';
+type FusionProposal = Pick<RecordItem, FusionGuidanceKey> & {
+  targetId: string;
+  title: string;
+  content: string;
+  rationale: string;
+  conflicts: string[];
+  sourceIds: string[];
+};
+type FusionJob = {
+  id: string;
+  agent: string;
+  status: string;
+  createdAt: string;
+  projectIds?: string[];
+  sources: Array<RecordItem & {contextProjectId?: string}>;
+  targets: RecordItem[];
+  proposals: FusionProposal[];
+  applied?: string[];
+  rejected?: string[];
+  error?: string;
+};
+type FusionDecision = 'published' | 'rejected' | 'open';
+const fusionGuidanceLabels: Array<[FusionGuidanceKey, string]> = [
+  ['summary', 'Summary'],
+  ['useWhen', 'Use when'],
+  ['tags', 'Discovery keywords'],
+  ['principles', 'Principles'],
+  ['examples', 'Examples'],
+  ['externalSkills', 'Required skills'],
+  ['reviewCriteria', 'Review criteria'],
+];
+const fusionApplyLabels: Record<FusionDecision, string> = {
+  published: 'Published',
+  rejected: 'Rejected',
+  open: 'Publish update',
+};
+const fusionRunTones: Record<string, string> = {ready: 'ok', failed: 'bad'};
+function fusionProposalBadge(decision: FusionDecision, proposal: FusionProposal) {
+  if (decision === 'published') {
+    return {label: 'Published', tone: 'ok'};
+  }
+  if (decision === 'rejected') {
+    return {label: 'Rejected', tone: ''};
+  }
+  return proposal.conflicts.length
+    ? {label: 'Has conflicts', tone: 'bad'}
+    : {label: 'To review', tone: 'warn'};
+}
+function fusionStepClass(stepNumber: number, currentStep: number) {
+  if (stepNumber < currentStep) {
+    return 'done';
+  }
+  return stepNumber === currentStep ? 'current' : '';
+}
 const fusionAgentName = (a: string) => (a === 'claude' ? 'Claude' : 'Codex');
 const fusionStatus: Record<string, string> = {
   running: 'Analyzing',
@@ -2606,31 +2692,36 @@ async function fusionScreen() {
     fusionCurrent = '';
   }
   const job = fusionCurrent
-    ? await api<any>('/api/fusion/' + encodeURIComponent(fusionCurrent))
+    ? await api<FusionJob>('/api/fusion/' + encodeURIComponent(fusionCurrent))
     : null;
   if (active !== 'fusion') {
     return;
   }
-  const decision = (id: string) =>
-    (job.applied || []).includes(id)
-      ? 'published'
-      : (job.rejected || []).includes(id)
-        ? 'rejected'
-        : 'open';
-  if (job?.proposals.length && !job.proposals.some((p: any) => p.targetId === fusionSelected)) {
+  const decision = (id: string): FusionDecision => {
+    if ((job?.applied || []).includes(id)) {
+      return 'published';
+    }
+    return (job?.rejected || []).includes(id) ? 'rejected' : 'open';
+  };
+  if (job?.proposals.length && !job.proposals.some((p) => p.targetId === fusionSelected)) {
     fusionSelected =
-      job.proposals.find((p: any) => decision(p.targetId) === 'open')?.targetId ||
+      job.proposals.find((p) => decision(p.targetId) === 'open')?.targetId ||
       job.proposals[0].targetId;
   }
   const chosen = fusionProjects ?? projects.map((p) => p.id);
   const chosenStyles = projects
     .filter((p) => chosen.includes(p.id))
     .reduce((n, p) => n + (p.assignments || []).length, 0);
-  const step = !job || fusionStarting ? 1 : job.status === 'running' ? 2 : 3;
+  let step = 3;
+  if (!job || fusionStarting) {
+    step = 1;
+  } else if (job.status === 'running') {
+    step = 2;
+  }
   const steps = ['Choose projects', 'Agent compares styles', 'Review and publish']
     .map(
       (label, i) =>
-        `<li class="${i + 1 < step ? 'done' : i + 1 === step ? 'current' : ''}" ${i + 1 === step ? 'aria-current="step"' : ''}><span>${i + 1}</span>${label}</li>`,
+        `<li class="${fusionStepClass(i + 1, step)}" ${i + 1 === step ? 'aria-current="step"' : ''}><span>${i + 1}</span>${label}</li>`,
     )
     .join('');
   const picker = `<form id="fusionForm" class="fusion-start">
@@ -2646,7 +2737,7 @@ async function fusionScreen() {
  </form>`;
   let runPanel = '';
   if (job && !fusionStarting) {
-    const open = job.proposals.filter((p: any) => decision(p.targetId) === 'open').length;
+    const open = job.proposals.filter((p) => decision(p.targetId) === 'open').length;
     const head = `<div class="spread-row"><div><h2>${esc(fusionStatus[job.status] || job.status)}</h2><p class="hint">${esc(fusionAgentName(job.agent))} · ${esc(
       projects
         .filter((p) => (job.projectIds || []).includes(p.id))
@@ -2661,56 +2752,41 @@ async function fusionScreen() {
       runPanel = `${head}${empty('No changes proposed', 'Your shared styles already cover what these projects do. Try again after projects add or personalize styles.')}`;
     } else {
       const list = job.proposals
-        .map((p: any) => {
-          const d = decision(p.targetId);
-          const label =
-            d === 'published'
-              ? 'Published'
-              : d === 'rejected'
-                ? 'Rejected'
-                : p.conflicts.length
-                  ? 'Has conflicts'
-                  : 'To review';
-          return `<button type="button" data-fusion-proposal="${esc(p.targetId)}" aria-pressed="${p.targetId === fusionSelected}"><strong>${esc(p.title)}</strong><span class="tag ${d === 'published' ? 'ok' : d === 'rejected' ? '' : p.conflicts.length ? 'bad' : 'warn'}">${label}</span></button>`;
+        .map((p) => {
+          const badge = fusionProposalBadge(decision(p.targetId), p);
+          return `<button type="button" data-fusion-proposal="${esc(p.targetId)}" aria-pressed="${p.targetId === fusionSelected}"><strong>${esc(p.title)}</strong><span class="tag ${badge.tone}">${badge.label}</span></button>`;
         })
         .join('');
       const detail = job.proposals
-        .filter((p: any) => p.targetId === fusionSelected)
-        .map((p: any) => {
-          const old = job.targets.find((r: any) => r.id === p.targetId);
+        .filter((p) => p.targetId === fusionSelected)
+        .map((p) => {
+          const old = job.targets.find((r) => r.id === p.targetId);
           const d = decision(p.targetId);
-          const supporting = [
-            'summary',
-            'useWhen',
-            'tags',
-            'principles',
-            'examples',
-            'externalSkills',
-            'reviewCriteria',
-          ]
-            .map(
-              (k) =>
-                `<h4>${esc(({summary: 'Summary', useWhen: 'Use when', tags: 'Discovery keywords', principles: 'Principles', examples: 'Examples', externalSkills: 'Required skills', reviewCriteria: 'Review criteria'} as Record<string, string>)[k])}</h4><pre>${esc(typeof (p[k] ?? old?.[k]) === 'string' ? (p[k] ?? old?.[k]) : (p[k] ?? old?.[k] ?? []).join('\n'))}</pre>`,
-            )
+          const supporting = fusionGuidanceLabels
+            .map(([k, heading]) => {
+              const value = p[k] ?? old?.[k];
+              const text = typeof value === 'string' ? value : (value ?? []).join('\n');
+              return `<h4>${esc(heading)}</h4><pre>${esc(text)}</pre>`;
+            })
             .join('');
           return `<article class="fusion-proposal"><p class="eyebrow">Updates ${esc(old?.title)} · v${esc(old?.version)} → v${Number(old?.version) + 1}</p><h3>${esc(p.title)}</h3><p class="fusion-rationale">${esc(p.rationale)}</p>
      ${p.conflicts.length ? `<div class="notice" role="alert"><strong>Resolve these conflicts in the source styles, then analyze again:</strong><ul>${p.conflicts.map((c: string) => `<li>${esc(c)}</li>`).join('')}</ul></div>` : ''}
      <div class="fusion-compare"><section><h4>Current guidelines</h4><pre>${esc(old?.content)}</pre></section><section><h4>Proposed guidelines</h4><pre>${esc(p.content)}</pre></section></div>
      <details><summary>Learned from ${p.sourceIds.length} source style${p.sourceIds.length === 1 ? '' : 's'}</summary><ul>${p.sourceIds
        .map((id: string) => {
-         const r = job.sources.find((r: any) => r.id === id);
+         const r = job.sources.find((r) => r.id === id);
          return `<li>${esc(r?.title)} · v${esc(r?.version)} · ${esc(projects.find((x) => x.id === (r?.contextProjectId || r?.projectId))?.name || 'Shared')}</li>`;
        })
        .join('')}</ul></details>
      <details><summary>Proposed summary, keywords, principles and criteria</summary>${supporting}<p class="hint">Mandatory requirements, automated checks, required links and skills stay as they are.</p></details>
-     <footer class="fusion-decision"><p class="hint">Publishing creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p><div class="row-actions"><button class="button ghost" data-fusion-reject="${esc(p.targetId)}" ${d !== 'open' ? 'disabled' : ''}>Reject</button><button class="button primary" data-fusion-apply="${esc(p.targetId)}" ${p.conflicts.length || d !== 'open' ? 'disabled' : ''}>${d === 'published' ? 'Published' : d === 'rejected' ? 'Rejected' : 'Publish update'}</button></div></footer></article>`;
+     <footer class="fusion-decision"><p class="hint">Publishing creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p><div class="row-actions"><button class="button ghost" data-fusion-reject="${esc(p.targetId)}" ${d !== 'open' ? 'disabled' : ''}>Reject</button><button class="button primary" data-fusion-apply="${esc(p.targetId)}" ${p.conflicts.length || d !== 'open' ? 'disabled' : ''}>${fusionApplyLabels[d]}</button></div></footer></article>`;
         })
         .join('');
       runPanel = `${head}<p class="fusion-counts" role="status">${job.proposals.length} proposal${job.proposals.length === 1 ? '' : 's'} · ${open} to review · ${(job.applied || []).length} published · ${(job.rejected || []).length} rejected</p><div class="fusion-workbench"><nav class="fusion-proposal-list" aria-label="Proposals">${list}</nav><div class="fusion-detail">${detail}</div></div>`;
     }
   }
   const history = runs.length
-    ? `<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Started</th><th scope="col">Projects</th><th scope="col">Agent</th><th scope="col">Result</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead><tbody>${runs.map((r) => `<tr ${r.id === fusionCurrent ? 'class="is-selected"' : ''}><td>${esc(formatTime(r.createdAt))}</td><td>${esc((r.projectIds || []).map((id) => projects.find((p) => p.id === id)?.name || 'Removed project').join(', '))}</td><td>${esc(fusionAgentName(r.agent))}</td><td><span class="tag ${r.status === 'ready' ? 'ok' : r.status === 'failed' ? 'bad' : ''}">${esc(fusionStatus[r.status] || r.status)}</span>${r.status === 'ready' ? ` <small>${r.proposals ?? 0} proposals · ${r.decided ?? 0} decided</small>` : ''}</td><td><button class="button ghost small" data-fusion-run="${esc(r.id)}" aria-pressed="${r.id === fusionCurrent}">${r.id === fusionCurrent ? 'Viewing' : 'Open'}</button></td></tr>`).join('')}</tbody></table></div>`
+    ? `<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Started</th><th scope="col">Projects</th><th scope="col">Agent</th><th scope="col">Result</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead><tbody>${runs.map((r) => `<tr ${r.id === fusionCurrent ? 'class="is-selected"' : ''}><td>${esc(formatTime(r.createdAt))}</td><td>${esc((r.projectIds || []).map((id) => projects.find((p) => p.id === id)?.name || 'Removed project').join(', '))}</td><td>${esc(fusionAgentName(r.agent))}</td><td><span class="tag ${fusionRunTones[r.status] ?? ''}">${esc(fusionStatus[r.status] || r.status)}</span>${r.status === 'ready' ? ` <small>${r.proposals ?? 0} proposals · ${r.decided ?? 0} decided</small>` : ''}</td><td><button class="button ghost small" data-fusion-run="${esc(r.id)}" aria-pressed="${r.id === fusionCurrent}">${r.id === fusionCurrent ? 'Viewing' : 'Open'}</button></td></tr>`).join('')}</tbody></table></div>`
     : '<p class="hint">Your analyses will appear here.</p>';
   layout(
     'Fusion',
@@ -2776,8 +2852,8 @@ async function fusionScreen() {
   );
   main.querySelectorAll<HTMLButtonElement>('[data-fusion-retry]').forEach((b) =>
     b.addEventListener('click', async () => {
-      fusionProjects = job.projectIds || null;
-      fusionAgent = job.agent || 'codex';
+      fusionProjects = job?.projectIds || null;
+      fusionAgent = job?.agent || 'codex';
       fusionStarting = true;
       await fusionScreen();
     }),
@@ -2789,7 +2865,7 @@ async function fusionScreen() {
         return;
       }
       try {
-        const current = await api<any>('/api/fusion/' + encodeURIComponent(id));
+        const current = await api<FusionJob>('/api/fusion/' + encodeURIComponent(id));
         if (active !== 'fusion' || fusionCurrent !== id) {
           return;
         }
@@ -2819,9 +2895,8 @@ async function fusionScreen() {
   );
   const next = () => {
     fusionSelected =
-      job.proposals.find(
-        (p: any) => p.targetId !== fusionSelected && decision(p.targetId) === 'open',
-      )?.targetId || fusionSelected;
+      job?.proposals.find((p) => p.targetId !== fusionSelected && decision(p.targetId) === 'open')
+        ?.targetId || fusionSelected;
   };
   main.querySelectorAll<HTMLButtonElement>('[data-fusion-reject]').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -3116,15 +3191,18 @@ function openEditor(record: RecordItem | null = null) {
       record = {...record, content: override};
     }
   }
-  $('editorTitle').textContent = projectEdit
-    ? record!.projectId
-      ? 'Edit project-only style'
-      : 'Customize project style'
-    : record
-      ? 'Edit style'
-      : active === 'projects' && selectedProject
+  let editorTitle: string;
+  if (projectEdit) {
+    editorTitle = record!.projectId ? 'Edit project-only style' : 'Customize project style';
+  } else if (record) {
+    editorTitle = 'Edit style';
+  } else {
+    editorTitle =
+      active === 'projects' && selectedProject
         ? 'Create project-private style'
         : 'Create knowledge record';
+  }
+  $('editorTitle').textContent = editorTitle;
   $('editDomain').innerHTML = domainOptions(record?.domain || 'general');
   const fields: Record<string, string> = {
     editContract: JSON.stringify(
@@ -3826,11 +3904,13 @@ async function delegated(ev: MouseEvent) {
         try {
           const link = button.dataset.action === 'repository-link';
           const data = await repositoryRequest(selectedProject.id, folder, link ? 'link' : 'test');
-          result.textContent = link
-            ? `Linked: ${data.file}. Start a new agent session in this repository.`
-            : data.matches
-              ? `Configuration ready: ${data.records?.length || 0} records resolved for this project. Confirm agent calls in Agent conversations.`
-              : `This folder resolves to ${data.projectId || 'global defaults'}, not this project.`;
+          if (link) {
+            result.textContent = `Linked: ${data.file}. Start a new agent session in this repository.`;
+          } else if (data.matches) {
+            result.textContent = `Configuration ready: ${data.records?.length || 0} records resolved for this project. Confirm agent calls in Agent conversations.`;
+          } else {
+            result.textContent = `This folder resolves to ${data.projectId || 'global defaults'}, not this project.`;
+          }
         } catch (e) {
           result.textContent = e instanceof Error ? e.message : String(e);
         } finally {
@@ -4003,10 +4083,8 @@ type About = {
   npx: string;
   raw: string;
 };
-let about: About | null = null;
 const aboutReady = api<About>('/api/about')
   .then((a) => {
-    about = a;
     const el = document.getElementById('buildInfo');
     if (el) {
       el.innerHTML = `<strong>Personal Brain v${esc(a.version)}</strong><br>Built ${a.builtAt ? esc(new Date(a.builtAt).toLocaleString(undefined, {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})) : 'unknown'}`;
@@ -4060,16 +4138,13 @@ document
   .forEach((button, index) => {
     button.addEventListener('click', () => showEditorTab(index));
     button.addEventListener('keydown', (event) => {
-      const next =
-        event.key === 'ArrowRight'
-          ? (index + 1) % 4
-          : event.key === 'ArrowLeft'
-            ? (index + 3) % 4
-            : event.key === 'Home'
-              ? 0
-              : event.key === 'End'
-                ? 3
-                : null;
+      const tabTargets: Record<string, number> = {
+        ArrowRight: (index + 1) % 4,
+        ArrowLeft: (index + 3) % 4,
+        Home: 0,
+        End: 3,
+      };
+      const next = Object.hasOwn(tabTargets, event.key) ? tabTargets[event.key] : null;
       if (next !== null) {
         event.preventDefault();
         showEditorTab(next, true);
@@ -4116,12 +4191,10 @@ function currentRoute() {
       params.set('type', active);
     }
   }
-  if (active === 'projects') {
-    path += selectedProject
-      ? '/' + encodeURIComponent(selectedProject.id) + (projectEditing ? '/configure' : '')
-      : projectEditing
-        ? '/new'
-        : '';
+  if (active === 'projects' && selectedProject) {
+    path += '/' + encodeURIComponent(selectedProject.id) + (projectEditing ? '/configure' : '');
+  } else if (active === 'projects' && projectEditing) {
+    path += '/new';
   }
   if (['preference', 'skill', 'example', 'review', 'tool'].includes(active)) {
     if (search) {
@@ -4195,14 +4268,12 @@ async function readRoute() {
   const [path, query = ''] = raw.split('?');
   const parts = path.split('/');
   const params = new URLSearchParams(query);
-  active =
-    parts[0] === 'library'
-      ? ['preference', 'example', 'review'].includes(params.get('type') || '')
-        ? (params.get('type') as Kind)
-        : 'preference'
-      : Object.hasOwn(labels, parts[0])
-        ? (parts[0] as View)
-        : 'overview';
+  if (parts[0] === 'library') {
+    const type = params.get('type') || '';
+    active = ['preference', 'example', 'review'].includes(type) ? (type as Kind) : 'preference';
+  } else {
+    active = Object.hasOwn(labels, parts[0]) ? (parts[0] as View) : 'overview';
+  }
   if (active === 'skill') {
     active = 'preference';
   }
@@ -4210,16 +4281,10 @@ async function readRoute() {
   domain = params.get('domain') || 'all';
   libraryMode = params.get('mode') === 'map' ? 'map' : 'table';
   page = Math.max(1, Math.min(10000, Number(params.get('page')) || 1));
-  projectTab =
-    params.get('tab') === 'map'
-      ? 'map'
-      : params.get('tab') === 'personal'
-        ? 'personal'
-        : params.get('tab') === 'activity'
-          ? 'activity'
-          : params.get('tab') === 'setup'
-            ? 'setup'
-            : 'styles';
+  const tab = params.get('tab') || '';
+  projectTab = ['map', 'personal', 'activity', 'setup'].includes(tab)
+    ? (tab as typeof projectTab)
+    : 'styles';
   if (active === 'trace') {
     traceRun = params.get('runId') || '';
     traceProject = params.get('projectId') || 'all';

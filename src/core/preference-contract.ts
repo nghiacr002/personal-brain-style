@@ -1,10 +1,10 @@
 import {BrainError, type Applicability, type TaskContext, type BrainRecord} from './models.ts';
 
-const object = (value: unknown): Record<string, any> => {
+const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new BrainError('Expected preference contract object');
   }
-  return value as Record<string, any>;
+  return value as Record<string, unknown>;
 };
 const text = (value: unknown, max = 2000) => {
   if (typeof value !== 'string' || !value.trim() || value.length > max) {
@@ -12,7 +12,7 @@ const text = (value: unknown, max = 2000) => {
   }
   return value.trim();
 };
-const list = (value: unknown, max = 30): any[] => {
+const list = (value: unknown, max = 30): unknown[] => {
   if (!Array.isArray(value) || value.length > max) {
     throw new BrainError('Invalid preference list');
   }
@@ -72,6 +72,14 @@ export function validateTaskContext(value: unknown): TaskContext {
     ...(v.preferences !== undefined ? {preferences: validatePreferences(v.preferences)} : {}),
   };
 }
+type ApplicabilityKey = keyof Applicability;
+
+function contextValues(context: TaskContext, key: ApplicabilityKey): string[] | undefined {
+  if (key === 'activities') {
+    return context.activity ? [context.activity] : undefined;
+  }
+  return context[key];
+}
 export function applicability(when: Applicability | undefined, context: TaskContext) {
   if (!when) {
     return 'applicable';
@@ -82,8 +90,7 @@ export function applicability(when: Applicability | undefined, context: TaskCont
     if (!expected) {
       continue;
     }
-    const actual =
-      key === 'activities' ? (context.activity ? [context.activity] : undefined) : context[key];
+    const actual = contextValues(context, key);
     if (actual === undefined) {
       unresolved = true;
     } else if (!expected.some((value) => actual.includes(value))) {

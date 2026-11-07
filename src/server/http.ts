@@ -28,7 +28,7 @@ import {
 import {installResearchStyle} from '../styles/research-style.ts';
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import {readFileSync, existsSync, statSync} from 'node:fs';
-import {dirname, join, extname, resolve, delimiter, sep} from 'node:path';
+import {dirname, join, extname, resolve, delimiter} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {resolveProjectScope, linkRepository} from '../projects/project-scope.ts';
 import {
@@ -41,7 +41,6 @@ import {
   discoverProject,
   installedSkills,
   projectFolder,
-  matchSkill,
   skillReferences,
 } from '../projects/skill-discovery.ts';
 import {BrainDB} from '../core/database.ts';
@@ -80,6 +79,9 @@ function json(res: ServerResponse, status: number, payload: unknown) {
   });
   res.end(data);
 }
+// Parsed request JSON is handed to handlers whose services validate their own fields.
+// TODO: replace with per-endpoint request validation, then return unknown.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function body(req: IncomingMessage, maxBytes = 180000): Promise<any> {
   const chunks: Buffer[] = [];
   let size = 0;

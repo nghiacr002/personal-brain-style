@@ -140,7 +140,7 @@ test('Fusion rejects fabricated sources/conflicts/stale sources and publishes on
     assert.throws(() => applyFusion(db, 'test', r.id));
     job.targets = [updated];
     job.applied = [];
-    job.proposals = [{...proposal, conflicts: ['Conflict']} as any];
+    job.proposals = [{...proposals[0], conflicts: ['Conflict']}];
     save();
     assert.throws(() => applyFusion(db, 'test', r.id));
     job.proposals = proposals;
@@ -176,7 +176,7 @@ test('Research installs once and is required by architecture without selecting a
     });
     installResearchStyle(db);
     const research = db.list().find((s) => s.domain === 'research')!;
-    assert.ok(db.get(r.id)!.requiredIds.includes(research.id));
+    assert.ok(db.get(r.id)!.requiredIds!.includes(research.id));
     assert.ok(db.scopedRecords(p.id).some((s) => s.id === research.id));
     const version = db.project(p.id).version;
     installResearchStyle(db);
@@ -193,7 +193,10 @@ test('Fusion reports missing CLI as a persisted failure without changing styles'
     path = process.env.PATH;
   try {
     const p = db.saveProject({name: 'A', description: '', assignments: []});
-    assert.throws(() => startFusion(db, null as any), /Choose Codex or Claude/);
+    assert.throws(
+      () => startFusion(db, null as unknown as Parameters<typeof startFusion>[1]),
+      /Choose Codex or Claude/,
+    );
     process.env.PATH = dir;
     const run = startFusion(db, {agent: 'codex', projectIds: [p.id]});
     for (let i = 0; i < 100 && fusionJob(db, run.id).status === 'running'; i++) {
@@ -347,7 +350,8 @@ test('Fusion CLI completes, cancels and does not recreate deleted project histor
   const wait = async (id: string) => {
     for (let i = 0; i < 500; i++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      const row = db.db.prepare('SELECT value FROM meta WHERE key=?').get('fusion:' + id) as any;
+      const row = db.db.prepare('SELECT value FROM meta WHERE key=?').get('fusion:' + id) as
+        {value: string} | undefined;
       if (!row || JSON.parse(row.value).status !== 'running') {
         return;
       }

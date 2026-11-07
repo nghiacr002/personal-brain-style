@@ -85,11 +85,11 @@ test('library multi-selection persists across visible pages and import sends onl
         (events[name] ||= []).push(fn);
       },
       querySelectorAll(query) {
-        return query === '[data-library-select]'
-          ? visible
-          : query === '[data-library-import]:checked'
-            ? checked
-            : [];
+        const matches = {
+          '[data-library-select]': visible,
+          '[data-library-import]:checked': checked,
+        };
+        return matches[query] ?? [];
       },
     },
     setTimeout,
@@ -482,16 +482,21 @@ test('project configuration saves assignments and displays effective source', as
       }
       return {
         ok: true,
-        json: async () =>
-          url === '/api/projects/p1'
-            ? saved
-            : url.endsWith('/resolved')
-              ? [{...record, content: 'Navy', source: 'Project override'}]
-              : url.startsWith('/api/items')
-                ? [record]
-                : url === '/api/projects'
-                  ? []
-                  : {counts: {preference: 1}, revisions: 1},
+        json: async () => {
+          if (url === '/api/projects/p1') {
+            return saved;
+          }
+          if (url.endsWith('/resolved')) {
+            return [{...record, content: 'Navy', source: 'Project override'}];
+          }
+          if (url.startsWith('/api/items')) {
+            return [record];
+          }
+          if (url === '/api/projects') {
+            return [];
+          }
+          return {counts: {preference: 1}, revisions: 1};
+        },
       };
     },
   });
@@ -619,13 +624,13 @@ test('project selection keeps card positions and override drafts, and prevents s
       details,
       badge,
       querySelector(q) {
-        return q.startsWith('input')
-          ? checkbox
-          : q === 'textarea'
-            ? textarea
-            : q === '.project-override'
-              ? details
-              : badge;
+        if (q.startsWith('input')) {
+          return checkbox;
+        }
+        if (q === 'textarea') {
+          return textarea;
+        }
+        return q === '.project-override' ? details : badge;
       },
     };
   };
@@ -833,16 +838,15 @@ test('URL navigation restores views, library filters and project configuration',
     console,
     fetch: async (url) => ({
       ok: true,
-      json: async () =>
-        url.startsWith('/api/items')
-          ? []
-          : url === '/api/projects'
-            ? []
-            : url.endsWith('/resolved')
-              ? []
-              : url.startsWith('/api/projects/')
-                ? project
-                : {counts: {preference: 0, skill: 0, review: 0}, revisions: 0},
+      json: async () => {
+        if (url.startsWith('/api/items') || url === '/api/projects' || url.endsWith('/resolved')) {
+          return [];
+        }
+        if (url.startsWith('/api/projects/')) {
+          return project;
+        }
+        return {counts: {preference: 0, skill: 0, review: 0}, revisions: 0};
+      },
     }),
   });
   vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
@@ -911,7 +915,11 @@ test('graph node selection highlights only incident arrows without opening the e
     classes: new Set(),
     classList: {
       toggle(name, on) {
-        on ? this.owner.classes.add(name) : this.owner.classes.delete(name);
+        if (on) {
+          this.owner.classes.add(name);
+        } else {
+          this.owner.classes.delete(name);
+        }
       },
     },
     parentElement: {appendChild() {}},
@@ -923,7 +931,11 @@ test('graph node selection highlights only incident arrows without opening the e
     classes: new Set(),
     classList: {
       toggle(name, on) {
-        on ? this.owner.classes.add(name) : this.owner.classes.delete(name);
+        if (on) {
+          this.owner.classes.add(name);
+        } else {
+          this.owner.classes.delete(name);
+        }
       },
     },
     setAttribute(key, value) {
@@ -936,7 +948,8 @@ test('graph node selection highlights only incident arrows without opening the e
       getElementById: element,
       addEventListener() {},
       querySelectorAll(q) {
-        return q === '.dependency-edge' ? edges : q === '[data-graph-node]' ? nodes : [];
+        const matches = {'.dependency-edge': edges, '[data-graph-node]': nodes};
+        return matches[q] ?? [];
       },
     },
     setTimeout,
@@ -991,16 +1004,15 @@ test('project rows navigate to details and render conversation counts', async ()
     console,
     fetch: async (url) => ({
       ok: true,
-      json: async () =>
-        url.startsWith('/api/items')
-          ? []
-          : url === '/api/projects'
-            ? [p]
-            : url.endsWith('/activity')
-              ? p.activity
-              : url.endsWith('/resolved')
-                ? []
-                : p,
+      json: async () => {
+        if (url.startsWith('/api/items') || url.endsWith('/resolved')) {
+          return [];
+        }
+        if (url === '/api/projects') {
+          return [p];
+        }
+        return url.endsWith('/activity') ? p.activity : p;
+      },
     }),
   });
   vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
@@ -1716,12 +1728,15 @@ test('Fusion polling preserves the form while running and stops after leaving th
       requests++;
       return {
         ok: true,
-        json: async () =>
-          url === '/api/projects'
-            ? [{id: 'p', name: 'Project'}]
-            : url === '/api/fusion'
-              ? [{id: 'run', agent: 'codex', status, createdAt: '2026-11-04'}]
-              : {id: 'run', status, proposals: []},
+        json: async () => {
+          if (url === '/api/projects') {
+            return [{id: 'p', name: 'Project'}];
+          }
+          if (url === '/api/fusion') {
+            return [{id: 'run', agent: 'codex', status, createdAt: '2026-11-04'}];
+          }
+          return {id: 'run', status, proposals: []};
+        },
       };
     },
   });
@@ -1798,12 +1813,15 @@ test('Fusion renders history as rows and shows one proposal with grouped decisio
     console,
     fetch: async (url) => ({
       ok: true,
-      json: async () =>
-        url === '/api/projects'
-          ? []
-          : url === '/api/fusion'
-            ? [{id: 'run', agent: 'codex', status: 'ready', createdAt: '2026-11-04'}]
-            : job,
+      json: async () => {
+        if (url === '/api/projects') {
+          return [];
+        }
+        if (url === '/api/fusion') {
+          return [{id: 'run', agent: 'codex', status: 'ready', createdAt: '2026-11-04'}];
+        }
+        return job;
+      },
     }),
   });
   vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
@@ -1924,7 +1942,10 @@ test('editor tabs preserve drafts and linked-style search preserves checked sele
       getElementById: element,
       addEventListener() {},
       querySelectorAll(q) {
-        return q.includes('data-editor-tab') ? tabs : q.includes('dependency-choice') ? rows : [];
+        if (q.includes('data-editor-tab')) {
+          return tabs;
+        }
+        return q.includes('dependency-choice') ? rows : [];
       },
     },
     console,

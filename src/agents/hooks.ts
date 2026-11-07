@@ -196,11 +196,7 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
       db.project(projectId);
     }
     const sessionId =
-      typeof obj.session_id === 'string'
-        ? obj.session_id
-        : typeof obj.thread_id === 'string'
-          ? obj.thread_id
-          : null;
+      [obj.session_id, obj.thread_id].find((id): id is string => typeof id === 'string') ?? null;
     const runId = sessionId ? `${agent}:${sessionId.slice(0, 100)}` : `${agent}:hook:unlinked`;
     if (phase === 'session') {
       let discoveryNote = '';

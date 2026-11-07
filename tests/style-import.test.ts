@@ -4,6 +4,7 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BrainDB} from '../src/core/database.ts';
+import type {BrainRecord} from '../src/core/models.ts';
 import {seed} from '../src/styles/seed.ts';
 import {createBrainHttpServer} from '../src/server/http.ts';
 
@@ -11,8 +12,8 @@ test('server installs requested architecture styles without generic samples; exp
   const dir = mkdtempSync(join(tmpdir(), 'pb-style-api-'));
   const db = new BrainDB(join(dir, 'brain.sqlite'));
   const server = createBrainHttpServer(db);
-  const request = (url: string, authorization = '', method = 'GET', origin?: string) =>
-    new Promise<{status: number; data: any}>((resolve) => {
+  const request = <T = unknown>(url: string, authorization = '', method = 'GET', origin?: string) =>
+    new Promise<{status: number; data: T}>((resolve) => {
       let status = 0;
       const response = {
         setHeader() {},
@@ -35,23 +36,27 @@ test('server installs requested architecture styles without generic samples; exp
     assert.equal(blocked.status, 403);
     const denied = await request('/api/items', '');
     assert.equal(denied.status, 200);
-    const all = await request('/api/items');
+    const all = await request<BrainRecord[]>('/api/items');
     assert.equal(all.status, 200);
     assert.equal(all.data.length, installed.length + seeded);
     for (const kind of ['preference', 'skill', 'example', 'review', 'tool']) {
-      assert.ok(all.data.some((r: any) => r.kind === kind));
+      assert.ok(all.data.some((r) => r.kind === kind));
     }
     assert.equal(db.listTrace({includeDemo: true}).length, 0);
     assert.equal(
-      all.data.filter((r: any) => r.tags.includes('style-recipe') && r.status === 'draft').length,
+      all.data.filter((r) => r.tags.includes('style-recipe') && r.status === 'draft').length,
       11,
     );
-    const thinking = await request('/api/items?kind=preference&domain=thinking');
-    assert.ok(thinking.data.some((r: any) => r.title === 'Evidence-led thinking'));
-    const repeated = await request('/api/styles/seed', 'Bearer test-token', 'POST');
+    const thinking = await request<BrainRecord[]>('/api/items?kind=preference&domain=thinking');
+    assert.ok(thinking.data.some((r) => r.title === 'Evidence-led thinking'));
+    const repeated = await request<{created: number}>(
+      '/api/styles/seed',
+      'Bearer test-token',
+      'POST',
+    );
     assert.equal(repeated.data.created, 0);
-    assert.ok(all.data.some((r: any) => r.domain === 'coding'));
-    assert.ok(all.data.some((r: any) => r.title === 'Constraint-led technology selection'));
+    assert.ok(all.data.some((r) => r.domain === 'coding'));
+    assert.ok(all.data.some((r) => r.title === 'Constraint-led technology selection'));
   } finally {
     server.close();
     db.close();

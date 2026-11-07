@@ -42,22 +42,25 @@ test('prepared instructions bind review to task, project, effective overrides an
     assert.ok(!('isError' in prepared));
     const set = JSON.parse(prepared.content[0].text);
     assert.equal(set.records.length, 2);
-    assert.equal(set.records.find((r: any) => r.id === style.id).content, 'Project instructions');
+    assert.equal(
+      set.records.find((r: {id: string}) => r.id === style.id).content,
+      'Project instructions',
+    );
     const args = {projectId: project.id, instructionSetId: set.instructionSetId};
     const review = await callTool(db, 'brain_review', args);
     assert.ok(!('isError' in review));
     assert.equal(JSON.parse(review.content[0].text).status, 'not_verified');
     assert.equal(
-      ((await callTool(db, 'brain_review', {...args, projectId: other.id})) as any).isError,
+      (await callTool(db, 'brain_review', {...args, projectId: other.id})).isError,
       true,
     );
     assert.equal(
-      ((await callTool(db, 'brain_review', {...args, recordIds: [dependency.id]})) as any).isError,
+      (await callTool(db, 'brain_review', {...args, recordIds: [dependency.id]})).isError,
       true,
     );
     db.update(dependency.id, {content: 'New requirement'}, dependency.version);
     const stale = await callTool(db, 'brain_review', args);
-    assert.equal((stale as any).isError, true);
+    assert.equal(stale.isError, true);
     assert.match(stale.content[0].text, /changed/);
     const fresh = JSON.parse(
       (
@@ -75,10 +78,10 @@ test('prepared instructions bind review to task, project, effective overrides an
     );
     assert.equal(
       (
-        (await callTool(db, 'brain_review', {
+        await callTool(db, 'brain_review', {
           ...args,
           instructionSetId: fresh.instructionSetId,
-        })) as any
+        })
       ).isError,
       true,
     );
@@ -118,7 +121,7 @@ test('REC-01 unavailable IDs identify project and give bounded recovery without 
     const args = {projectId: project.id, task: 'Code', recordIds: ['stale-record-id']};
     for (const tool of ['brain_prepare', 'brain_resolve']) {
       const result = await callTool(db, tool, args);
-      assert.equal((result as any).isError, true);
+      assert.equal(result.isError, true);
       const message = result.content[0].text;
       assert.ok(message.includes('stale-record-id'));
       assert.ok(message.includes(project.id));
@@ -139,7 +142,7 @@ test('REC-01 unavailable IDs identify project and give bounded recovery without 
     const matches = JSON.parse(discovery.content[0].text);
     const recovered = await callTool(db, 'brain_prepare', {
       ...args,
-      recordIds: matches.map((r: any) => r.id),
+      recordIds: matches.map((r: {id: string}) => r.id),
     });
     assert.ok(!('isError' in recovered));
     assert.ok(JSON.parse(recovered.content[0].text).instructionSetId);

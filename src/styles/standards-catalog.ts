@@ -62,14 +62,15 @@ export function consolidateCatalog(previous: Entry[]): Entry[] {
     }
     // Specialized references are selected for their own task, not inherited by ordinary coding.
     record.supportingLinks = [];
-    record.requiredIds =
-      templateKeys.has(record.keyId!) || formatChoices[record.keyId!]
-        ? [record.keyId === 'drawio' || record.keyId === 'mermaid' ? 'drawing' : 'writing']
-        : record.keyId === 'writing' ||
-            record.keyId === 'review-standard' ||
-            record.keyId === 'research'
-          ? ['quality-control']
-          : [];
+    if (templateKeys.has(record.keyId!) || formatChoices[record.keyId!]) {
+      record.requiredIds = [
+        record.keyId === 'drawio' || record.keyId === 'mermaid' ? 'drawing' : 'writing',
+      ];
+    } else if (['writing', 'review-standard', 'research'].includes(record.keyId!)) {
+      record.requiredIds = ['quality-control'];
+    } else {
+      record.requiredIds = [];
+    }
     if (record.keyId === 'review-standard') {
       record.requiredIds.push('review-checklist');
     }

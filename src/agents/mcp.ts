@@ -17,7 +17,7 @@ import {
   skillReferences,
 } from '../projects/skill-discovery.ts';
 import {BrainDB} from '../core/database.ts';
-import {BrainError, KINDS, type Kind, type Domain} from '../core/models.ts';
+import {BrainError, KINDS, type Kind, type Domain, type TaskContext} from '../core/models.ts';
 import {invokeBackend, inspectBackend} from './bridge.ts';
 import {packageVersion} from './launcher.ts';
 
@@ -30,12 +30,14 @@ const schemaObject = (properties: Record<string, unknown>, required: string[] = 
   required,
   additionalProperties: false,
 });
-const text = (value: unknown) => ({
+type ToolResult = {isError?: boolean; content: Array<{type: string; text: string}>};
+
+const text = (value: unknown): ToolResult => ({
   content: [
     {type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2)},
   ],
 });
-const errorText = (error: unknown) => ({
+const errorText = (error: unknown): ToolResult => ({
   isError: true,
   content: [{type: 'text', text: error instanceof Error ? error.message : String(error)}],
 });
@@ -336,7 +338,7 @@ export async function callTool(
   name: string,
   args: Record<string, unknown> = {},
   workingDirectory?: string,
-) {
+): Promise<ToolResult> {
   try {
     if (
       args.host !== undefined &&
@@ -556,7 +558,7 @@ export async function callTool(
             kinds as Kind[] | undefined,
             Number(args.limit) || 12,
             projectId,
-            args.context as any,
+            args.context as TaskContext | undefined,
           ),
         );
       }
@@ -719,22 +721,29 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
     : tools();
   // stdout is exclusively used for MCP JSON-RPC; never write log text here.
   const readline = createInterface({input: process.stdin, crlfDelay: Infinity});
-  let clientName = 'unknown';
-  let agent: 'claude' | 'codex' | 'opencode' | 'chatgpt' | 'unknown' = chatProjectId
+  // Parsed JSON: only the top-level envelope is validated below; nested fields are read defensively.
+  type JsonRpcRequest = {
+    jsonrpc?: unknown;
+    id?: unknown;
+    method?: unknown;
+    params?: {
+      protocolVersion?: unknown;
+      clientInfo?: {name?: unknown};
+      name?: unknown;
+      uri?: unknown;
+      arguments?: {task?: unknown};
+    };
+  };
+  const knownAgents = ['claude', 'codex', 'opencode'] as const;
+  let agent: (typeof knownAgents)[number] | 'chatgpt' | 'unknown' = chatProjectId
     ? 'chatgpt'
-    : process.env.PB_AGENT === 'claude'
-      ? 'claude'
-      : process.env.PB_AGENT === 'codex'
-        ? 'codex'
-        : process.env.PB_AGENT === 'opencode'
-          ? 'opencode'
-          : 'unknown';
+    : (knownAgents.find((name) => name === process.env.PB_AGENT) ?? 'unknown');
   const mcpRunId = () => `${agent}:mcp:${process.pid}`;
   for await (const line of readline) {
     if (!line.trim()) {
       continue;
     }
-    let request: Record<string, any>;
+    let request: JsonRpcRequest;
     try {
       request = JSON.parse(line);
     } catch {
@@ -774,16 +783,10 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
           ) {
             throw new BrainError('initialize requires a protocolVersion string');
           }
-          clientName = String(request.params?.clientInfo?.name || 'unknown').slice(0, 80);
+          const clientName = String(request.params?.clientInfo?.name || 'unknown').slice(0, 80);
           if (agent === 'unknown') {
             const n = clientName.toLowerCase();
-            agent = n.includes('claude')
-              ? 'claude'
-              : n.includes('codex')
-                ? 'codex'
-                : n.includes('opencode')
-                  ? 'opencode'
-                  : 'unknown';
+            agent = knownAgents.find((name) => n.includes(name)) ?? 'unknown';
           }
           result = {
             protocolVersion: MCP_PROTOCOL_VERSION,
@@ -963,8 +966,9 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
               if (name === 'brain_review') {
                 checkCount = Number(
                   info.automated ??
-                    info.results?.filter((r: any) => r.verification === 'file-presence-only')
-                      .length ??
+                    info.results?.filter(
+                      (r: {verification?: unknown}) => r.verification === 'file-presence-only',
+                    ).length ??
                     0,
                 );
                 passed = info.reviewId ? info.status === 'pass' : info.passed === true;
@@ -981,6 +985,27 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
               }
             }
           }
+          let tracedProjectId: string | null = null;
+          if (
+            [
+              'brain_discover_project',
+              'brain_get_installed_skill',
+              'brain_create_project_style',
+              'brain_update_project_style',
+              'brain_bootstrap',
+              'brain_discover',
+              'brain_get',
+              'brain_style',
+              'brain_prepare',
+              'brain_resolve',
+              'brain_review',
+            ].includes(name)
+          ) {
+            tracedProjectId =
+              typeof args.projectId === 'string'
+                ? args.projectId
+                : process.env.PB_PROJECT_ID || null;
+          }
           db.trace({
             agent,
             channel: 'mcp',
@@ -990,23 +1015,7 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
             recordIds,
             recordVersions,
             metadata: {
-              projectId: [
-                'brain_discover_project',
-                'brain_get_installed_skill',
-                'brain_create_project_style',
-                'brain_update_project_style',
-                'brain_bootstrap',
-                'brain_discover',
-                'brain_get',
-                'brain_style',
-                'brain_prepare',
-                'brain_resolve',
-                'brain_review',
-              ].includes(name)
-                ? typeof args.projectId === 'string'
-                  ? args.projectId
-                  : process.env.PB_PROJECT_ID || null
-                : null,
+              projectId: tracedProjectId,
               sessionLinked: typeof args.threadId === 'string',
               tool: name,
               resultCount,

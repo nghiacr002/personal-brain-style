@@ -60,15 +60,20 @@ export function previewStandardsMigration(db: BrainDB) {
           (assignment) => assignment.recordId === existing.id && assignment.override !== null,
         ),
       );
-    const action = !existing
-      ? 'create'
-      : currentHash === standardsFingerprint(proposed)
-        ? 'keep'
-        : overridden ||
-            existing.status !== 'active' ||
-            !knownStandardsBaselines[source.keyId!]?.includes(currentHash)
-          ? 'conflict'
-          : 'update';
+    let action: 'create' | 'keep' | 'conflict' | 'update';
+    if (!existing) {
+      action = 'create';
+    } else if (currentHash === standardsFingerprint(proposed)) {
+      action = 'keep';
+    } else if (
+      overridden ||
+      existing.status !== 'active' ||
+      !knownStandardsBaselines[source.keyId!]?.includes(currentHash)
+    ) {
+      action = 'conflict';
+    } else {
+      action = 'update';
+    }
     return {
       key: source.keyId!,
       id: existing?.id,

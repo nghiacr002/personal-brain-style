@@ -138,8 +138,8 @@ test('capability metadata survives renamed domains; tool imports are disabled', 
 test('HTTP transfer endpoints preview without writes and enforce origin checks', async () => {
   const f = fixture(),
     server = createBrainHttpServer(f.db);
-  const request = (url: string, data: unknown, origin?: string) =>
-    new Promise<{status: number; data: any}>((resolve) => {
+  const request = <T = unknown>(url: string, data: unknown, origin?: string) =>
+    new Promise<{status: number; data: T}>((resolve) => {
       let status = 0;
       server.emit(
         'request',
@@ -172,7 +172,10 @@ test('HTTP transfer endpoints preview without writes and enforce origin checks',
     const exported = await request('/api/library/export', {ids: [item.id]});
     assert.equal(exported.status, 200);
     const count = f.db.list({limit: 300}).length;
-    const preview = await request('/api/library/import/preview', {bundle: exported.data});
+    const preview = await request<{items: Array<{content: string}>; fingerprint: string}>(
+      '/api/library/import/preview',
+      {bundle: exported.data},
+    );
     assert.equal(preview.status, 200);
     assert.equal(preview.data.items[0].content, 'こんにちは🙂');
     assert.equal(f.db.list({limit: 300}).length, count);
@@ -182,7 +185,7 @@ test('HTTP transfer endpoints preview without writes and enforce origin checks',
       'https://other.example',
     );
     assert.equal(denied.status, 403);
-    const kept = await request('/api/library/import', {
+    const kept = await request<{kept: number}>('/api/library/import', {
       bundle: exported.data,
       ids: [item.id],
       fingerprint: preview.data.fingerprint,

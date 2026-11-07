@@ -41,10 +41,7 @@ test('MCP creates and selects private styles atomically with duplicate and scope
         style: {...style, projectId: other.id},
       },
     ]) {
-      assert.equal(
-        ((await callTool(db, 'brain_create_project_style', input)) as any).isError,
-        true,
-      );
+      assert.equal((await callTool(db, 'brain_create_project_style', input)).isError, true);
       assert.equal(db.list({projectId: p.id}).length, count);
     }
     const alternative = await callTool(db, 'brain_create_project_style', {

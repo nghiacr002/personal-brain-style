@@ -43,7 +43,11 @@ test('domain registry persists names without breaking records, revisions or proj
     assert.ok(!result.isError);
     assert.match(result.content[0].text, /Validate schemas/);
     assert.equal(
-      (tools().find((t) => t.name === 'brain_style')!.inputSchema.properties.domain as any).enum,
+      (
+        tools().find((t) => t.name === 'brain_style')!.inputSchema.properties.domain as {
+          enum?: unknown;
+        }
+      ).enum,
       undefined,
     );
     db.saveDomain('UI/UX', 'design', 'UI/UX Design');

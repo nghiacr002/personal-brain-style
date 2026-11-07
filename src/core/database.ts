@@ -357,7 +357,7 @@ export class BrainDB {
       {combinable: number} | undefined;
     return record.kind + ':' + record.domain + (row?.combinable ? ':' + record.id : '');
   }
-  hasDomain(id: unknown): id is Domain {
+  hasDomain(id: unknown): boolean {
     return validDomain(id) && !!this.db.prepare('SELECT 1 FROM domains WHERE id=?').get(id);
   }
   saveDomain(name: unknown, id?: string, expectedName?: unknown, combinable?: unknown) {
@@ -664,9 +664,15 @@ export class BrainDB {
     if (kind === 'project' || kind === 'reset') {
       title = this.project(id).name;
     }
-    const records = all.filter((r) =>
-      kind === 'record' ? r.id === id : kind === 'domain' ? r.domain === id : r.projectId === id,
-    );
+    const records = all.filter((r) => {
+      if (kind === 'record') {
+        return r.id === id;
+      }
+      if (kind === 'domain') {
+        return r.domain === id;
+      }
+      return r.projectId === id;
+    });
     const ids = new Set(records.map((r) => r.id));
     const links = all.filter(
       (r) =>
@@ -803,17 +809,29 @@ export class BrainDB {
           "SELECT key,value FROM meta WHERE key LIKE 'fusion:%' OR key LIKE 'instruction-set:%'",
         )
         .all() as {key: string; value: string}[]) {
-        const snapshot = JSON.parse(row.value);
+        const snapshot: {
+          projectId?: string;
+          projectIds?: string[];
+          resolvedIds?: string[];
+          recordIds?: string[];
+          sources?: {
+            contextProjectId?: string;
+            projectId?: string;
+            recordId?: string;
+            id?: string;
+          }[];
+          targets?: {id?: string}[];
+        } = JSON.parse(row.value);
         const projectAffected =
           (kind === 'project' || kind === 'reset') &&
           (snapshot.projectId === id ||
             snapshot.projectIds?.includes(id) ||
-            snapshot.sources?.some((r: any) => r.contextProjectId === id || r.projectId === id));
+            snapshot.sources?.some((r) => r.contextProjectId === id || r.projectId === id));
         const recordAffected = [
           ...(snapshot.resolvedIds || snapshot.recordIds || []),
-          ...(snapshot.sources || []).map((r: any) => r.recordId || r.id),
-          ...(snapshot.targets || []).map((r: any) => r.id),
-        ].some((recordId: string) => ids.has(recordId));
+          ...(snapshot.sources || []).map((r) => r.recordId || r.id),
+          ...(snapshot.targets || []).map((r) => r.id),
+        ].some((recordId) => recordId !== undefined && ids.has(recordId));
         if (projectAffected || recordAffected) {
           this.db.prepare('DELETE FROM meta WHERE key=?').run(row.key);
         }
@@ -1293,6 +1311,13 @@ export class BrainDB {
         `SELECT id,occurred_at AS occurredAt,run_id AS runId,agent,channel,event_type AS eventType,outcome,record_ids AS recordIds,record_versions AS recordVersions,metadata,demo FROM trace_events${where} ORDER BY occurred_at DESC,rowid DESC LIMIT ?`,
       )
       .all(...args) as Array<{
+      id: string;
+      occurredAt: string;
+      runId: string;
+      agent: string;
+      channel: string;
+      eventType: string;
+      outcome: string;
       recordIds: string;
       recordVersions: string;
       metadata: string;
@@ -1480,15 +1505,17 @@ export class BrainDB {
     let count = 0;
     for (const run of runs) {
       for (const [channel, eventType, outcome, ids, note] of run.stages) {
+        const stageIds: readonly (string | undefined)[] = ids;
+        const recordIds = stageIds.filter((x): x is string => !!x);
         this.trace({
           agent: run.agent,
           runId: run.runId,
           channel,
           eventType,
           outcome,
-          recordIds: ids.filter((x): x is string => !!x),
+          recordIds,
           recordVersions: Object.fromEntries(
-            ids.filter((x): x is string => !!x).map((id) => [id, this.get(id)?.version || 1]),
+            recordIds.map((id) => [id, this.get(id)?.version || 1]),
           ),
           metadata: {note, origin: 'demonstration'},
           demo: true,
@@ -2043,11 +2070,12 @@ export class BrainDB {
     return this.bootstrapWithRecords(maxChars, projectId).text;
   }
   projectSelectionReason(id: string, projectId?: string) {
-    return !projectId
-      ? 'global'
-      : this.project(projectId).assignments.some((a) => a.recordId === id)
-        ? 'selected'
-        : 'dependency';
+    if (!projectId) {
+      return 'global';
+    }
+    return this.project(projectId).assignments.some((a) => a.recordId === id)
+      ? 'selected'
+      : 'dependency';
   }
   discover(
     task: string,
@@ -2102,11 +2130,12 @@ export class BrainDB {
       status: string;
     }> = [];
     for (const rule of rules) {
-      const criteria = rule.reviewCriteria?.length
-        ? rule.reviewCriteria
-        : rule.kind === 'review'
-          ? [rule.content]
-          : [];
+      let criteria: string[] = [];
+      if (rule.reviewCriteria?.length) {
+        criteria = rule.reviewCriteria;
+      } else if (rule.kind === 'review') {
+        criteria = [rule.content];
+      }
       if (criteria.length) {
         manual++;
         manualReviews.push({recordId: rule.id, title: rule.title, criteria, status: 'pending'});
@@ -2137,17 +2166,20 @@ export class BrainDB {
         });
       }
     }
+    let compliance: 'manual-review-required' | 'automated-checks-only' | 'not-evaluated' =
+      'not-evaluated';
+    if (manual) {
+      compliance = 'manual-review-required';
+    } else if (findings.length) {
+      compliance = 'automated-checks-only';
+    }
     return {
       passed: findings.every((x) => x.passed),
       automated: findings.length,
       manualReviewRules: manual,
       manualReviews,
       findings,
-      compliance: manual
-        ? 'manual-review-required'
-        : findings.length
-          ? 'automated-checks-only'
-          : 'not-evaluated',
+      compliance,
       note: 'Text checks are deterministic. Visual layout and architectural correctness still require separate validation.',
     };
   }

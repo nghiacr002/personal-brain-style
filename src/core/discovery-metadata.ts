@@ -57,6 +57,11 @@ const capabilities: Record<string, [string, string[]]> = {
   ],
 };
 
+const purposePrefixes: Partial<Record<RecordInput['kind'], string>> = {
+  example: 'Consult this example when ',
+  skill: 'Follow this procedure when ',
+  review: 'Apply these review criteria when ',
+};
 // Suggested metadata only: never rewrite instructions or activate draft records.
 export function discoveryMetadata(
   record: Pick<RecordInput, 'kind' | 'domain' | 'title' | 'summary' | 'tags' | 'useWhen'>,
@@ -65,14 +70,7 @@ export function discoveryMetadata(
     `working on ${record.title}`,
     [record.domain],
   ];
-  const purpose =
-    record.kind === 'example'
-      ? 'Consult this example when '
-      : record.kind === 'skill'
-        ? 'Follow this procedure when '
-        : record.kind === 'review'
-          ? 'Apply these review criteria when '
-          : 'Use when ';
+  const purpose = purposePrefixes[record.kind] ?? 'Use when ';
   return {
     useWhen: record.useWhen?.trim() || `${purpose}${when}.`,
     tags: [...new Set([...record.tags, ...keywords])].slice(0, 24),

@@ -92,7 +92,7 @@ test('trace persistence, version evidence, reverse lookup and separate demos', (
     assert.equal(event.recordVersions[rule.id], 1);
     assert.equal(f.db.listTrace({runId: 'claude:session-a'}).length, 1);
     assert.equal(f.db.listTrace({runId: 'claude:other'}).length, 0);
-    assert.equal(f.db.listTrace({runId: "\' OR 1=1 --"}).length, 0);
+    assert.equal(f.db.listTrace({runId: "' OR 1=1 --"}).length, 0);
     const newer = f.db.update(
       rule.id,
       {
@@ -195,7 +195,8 @@ test(
     );
     let buffer = '',
       stderr = '';
-    const waiting = new Map<number, (msg: any) => void>();
+    type RpcResponse = {id: number; result: {isError?: boolean}};
+    const waiting = new Map<number, (msg: RpcResponse) => void>();
     let seq = 0;
     child.stderr.on('data', (c) => (stderr += c.toString()));
     child.stdout.on('data', (c) => {
@@ -207,14 +208,14 @@ test(
         if (!line.trim()) {
           continue;
         }
-        const result = JSON.parse(line);
+        const result = JSON.parse(line) as RpcResponse;
         waiting.get(result.id)?.(result);
         waiting.delete(result.id);
       }
     });
-    async function call(method: string, params: any = {}) {
+    async function call(method: string, params: Record<string, unknown> = {}) {
       const id = ++seq;
-      return await new Promise<any>((yes, no) => {
+      return await new Promise<RpcResponse>((yes, no) => {
         const timer = setTimeout(() => no(new Error(`Timeout ${method} ${stderr}`)), 6000);
         waiting.set(id, (r) => {
           clearTimeout(timer);

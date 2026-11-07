@@ -37,13 +37,12 @@ function setup() {
       return element('focus');
     },
     querySelectorAll(q) {
-      return q === '[data-assignment-row]'
-        ? rows
-        : q === '[data-wizard-step]'
-          ? panels
-          : q === '[data-wizard-label]'
-            ? labels
-            : [];
+      const matches = {
+        '[data-assignment-row]': rows,
+        '[data-wizard-step]': panels,
+        '[data-wizard-label]': labels,
+      };
+      return matches[q] ?? [];
     },
   };
   const context = vm.createContext({
@@ -210,7 +209,10 @@ test('unified AI analysis offers a scoped draft and preserves customization unti
   const row = {
     dataset: {assignmentRow: 's'},
     querySelector(q) {
-      return q === '.assignment-choice' ? {after() {}} : q === 'textarea' ? field : checkbox;
+      if (q === '.assignment-choice') {
+        return {after() {}};
+      }
+      return q === 'textarea' ? field : checkbox;
     },
   };
   element('projectForm').querySelectorAll = (q) => (q === '[data-assignment-row]' ? [row] : []);

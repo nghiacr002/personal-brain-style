@@ -5,7 +5,6 @@ import {isAbsolute, relative, resolve, extname, sep} from 'node:path';
 import {BrainDB} from '../core/database.ts';
 import {BrainError} from '../core/models.ts';
 import {projectFolder} from '../projects/skill-discovery.ts';
-import {requirementChecklist} from '../core/requirements.ts';
 
 export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<string, unknown>) {
   db.project(projectId);
@@ -104,7 +103,10 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
   });
   const results = checklist.map((r) => {
     const claim = byKey.get(r.recordId + ':' + r.id);
-    const accepted = r.type === 'artifact' ? r.extensions || [r.extension] : [];
+    const accepted =
+      r.type === 'artifact'
+        ? (r.extensions || [r.extension]).filter((extension): extension is string => !!extension)
+        : [];
     const requested = accepted.filter((extension) =>
       resolved.context.formats?.includes(extension.slice(1)),
     );
@@ -117,18 +119,18 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
         )
       : matching.some((artifact) => artifact.exists);
     // File metadata proves presence only; editability, meaning and visual quality stay manual.
-    const status =
-      r.applicability === 'not_applicable'
-        ? 'not_applicable'
-        : r.optional
-          ? 'optional'
-          : claim?.status === 'fail'
-            ? 'fail'
-            : r.type === 'artifact'
-              ? present
-                ? 'pass'
-                : 'fail'
-              : 'not_verified';
+    let status: 'not_applicable' | 'optional' | 'fail' | 'pass' | 'not_verified';
+    if (r.applicability === 'not_applicable') {
+      status = 'not_applicable';
+    } else if (r.optional) {
+      status = 'optional';
+    } else if (claim?.status === 'fail') {
+      status = 'fail';
+    } else if (r.type === 'artifact') {
+      status = present ? 'pass' : 'fail';
+    } else {
+      status = 'not_verified';
+    }
     return {
       ...r,
       status,
@@ -158,15 +160,17 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
         .map((f) => [JSON.stringify(f), f]),
     ).values(),
   ];
-  const status =
-    results.some((r) => r.status === 'fail') || textFindings.some((f) => !f.passed)
-      ? 'fail'
-      : resolved.unresolved.length ||
-          (!results.length && !textFindings.length) ||
-          pendingTextChecks > 0 ||
-          results.some((r) => r.status === 'not_verified')
-        ? 'not_verified'
-        : 'pass';
+  let status: 'fail' | 'not_verified' | 'pass' = 'pass';
+  if (results.some((r) => r.status === 'fail') || textFindings.some((f) => !f.passed)) {
+    status = 'fail';
+  } else if (
+    resolved.unresolved.length ||
+    (!results.length && !textFindings.length) ||
+    pendingTextChecks > 0 ||
+    results.some((r) => r.status === 'not_verified')
+  ) {
+    status = 'not_verified';
+  }
   const report = {
     instructionSetId: args.instructionSetId ?? null,
     task: args.task,

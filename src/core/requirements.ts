@@ -46,15 +46,15 @@ export function validateRequirements(value: unknown): Requirement[] {
       throw new BrainError('Manual requirements cannot specify an extension');
     }
     ids.add(r.id);
+    let extensionFields: Pick<Requirement, 'extension' | 'extensions'> = {};
+    if (r.type === 'artifact') {
+      extensionFields = r.extensions ? {extensions: r.extensions} : {extension: r.extension};
+    }
     return {
       id: r.id,
       label: r.label.trim(),
       type: r.type,
-      ...(r.type === 'artifact'
-        ? r.extensions
-          ? {extensions: r.extensions}
-          : {extension: r.extension}
-        : {}),
+      ...extensionFields,
       ...(r.when !== undefined ? {when: validateApplicability(r.when)} : {}),
     };
   });

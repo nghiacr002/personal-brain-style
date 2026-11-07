@@ -6,9 +6,11 @@ import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {BrainDB} from '../src/core/database.ts';
 import {seed} from '../src/styles/seed.ts';
-import {formatHookOutput, simulateHook, taskContext} from '../src/agents/hooks.ts';
+import {simulateHook, taskContext} from '../src/agents/hooks.ts';
 import {manageHookConfig} from '../src/agents/hook-install.ts';
 import {pathToFileURL} from 'node:url';
+
+type HookGroup = {hooks: Array<{statusMessage?: string; command?: string}>};
 
 test('OpenCode V2 default definition registers MCP and injects typed session context', async () => {
   const home = mkdtempSync(join(tmpdir(), 'pb-opencode-v2-'));
@@ -32,7 +34,12 @@ test('OpenCode V2 default definition registers MCP and injects typed session con
     const ctx = {
       location: {directory: home},
       mcp: {
-        async transform(edit: any) {
+        async transform(
+          edit: (store: {
+            get(key: string): unknown;
+            set(key: string, value: unknown): unknown;
+          }) => void,
+        ) {
           edit({
             get: (key: string) => servers.get(key),
             set: (key: string, value: unknown) => servers.set(key, value),
@@ -40,7 +47,7 @@ test('OpenCode V2 default definition registers MCP and injects typed session con
         },
       },
       session: {
-        async hook(name: string, handler: any) {
+        async hook(name: string, handler: unknown) {
           handlers.set(name, handler);
         },
       },
@@ -129,26 +136,26 @@ test('hook installer preserves other settings, is idempotent, and removes only i
       const file = agent === 'claude' ? claude : join(dir, '.codex', 'hooks.json');
       const data = JSON.parse(readFileSync(file, 'utf8'));
       assert.equal(
-        data.hooks.SessionStart.filter((group: any) =>
-          group.hooks.some((h: any) => h.statusMessage === 'personal-brain-style'),
+        data.hooks.SessionStart.filter((group: HookGroup) =>
+          group.hooks.some((h) => h.statusMessage === 'personal-brain-style'),
         ).length,
         1,
       );
       assert.equal(data.hooks.UserPromptSubmit.length, 1);
-      const handler = data.hooks.SessionStart.find((g: any) =>
-        g.hooks.some((h: any) => h.statusMessage === 'personal-brain-style'),
+      const handler = data.hooks.SessionStart.find((g: HookGroup) =>
+        g.hooks.some((h) => h.statusMessage === 'personal-brain-style'),
       ).hooks[0];
-      const invocation =
-        agent === 'claude'
-          ? handler.args[0]
-          : process.platform === 'win32'
-            ? Buffer.from(handler.command.split(' ').at(-1), 'base64').toString('utf16le')
-            : handler.command;
+      let invocation = handler.command;
+      if (agent === 'claude') {
+        invocation = handler.args[0];
+      } else if (process.platform === 'win32') {
+        invocation = Buffer.from(handler.command.split(' ').at(-1), 'base64').toString('utf16le');
+      }
       assert.match(invocation, /scripts[\\/]run\.mjs/);
       if (agent === 'claude') {
         assert.deepEqual(data.permissions, original.permissions);
         assert.ok(
-          data.hooks.SessionStart.some((g: any) => g.hooks[0]?.command === 'echo existing'),
+          data.hooks.SessionStart.some((g: HookGroup) => g.hooks[0]?.command === 'echo existing'),
         );
       }
       assert.equal(manageHookConfig('remove', agent, opts).installed, false);
@@ -156,7 +163,7 @@ test('hook installer preserves other settings, is idempotent, and removes only i
       assert.ok(!after.hooks?.UserPromptSubmit);
       if (agent === 'claude') {
         assert.ok(
-          after.hooks.SessionStart.some((g: any) => g.hooks[0]?.command === 'echo existing'),
+          after.hooks.SessionStart.some((g: HookGroup) => g.hooks[0]?.command === 'echo existing'),
         );
       }
     }

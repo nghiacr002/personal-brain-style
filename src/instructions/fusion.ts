@@ -278,7 +278,7 @@ export function parseFusionOutput(text: string): unknown {
       depth++;
     }
     if (c === '}' && --depth === 0) {
-      if (/[\[{]/.test(text.slice(i + 1))) {
+      if (/[[{]/.test(text.slice(i + 1))) {
         throw new BrainError(
           'Agent returned multiple or ambiguous JSON results. Run the analysis again.',
         );

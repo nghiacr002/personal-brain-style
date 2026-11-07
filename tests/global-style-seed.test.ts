@@ -28,10 +28,10 @@ test('fresh startup installs the complete global catalog and remaps dependencies
       assert.ok(
         r.summary &&
           r.useWhen &&
-          r.principles.length &&
-          r.reviewCriteria.length &&
-          r.examples.length &&
-          r.requirements.length,
+          r.principles?.length &&
+          r.reviewCriteria?.length &&
+          r.examples?.length &&
+          r.requirements?.length,
         r.title,
       );
       assert.ok(
@@ -45,7 +45,7 @@ test('fresh startup installs the complete global catalog and remaps dependencies
       assert.equal(record.content, source.content);
       assert.ok(!record.projectId && !record.backend);
       assert.deepEqual(
-        record.requiredIds.map((id) => db.get(id)!.title),
+        record.requiredIds!.map((id) => db.get(id)!.title),
         source.requiredIds!.map((id) => globalStyleCatalog.find((r) => r.id === id)!.title),
       );
     }
@@ -81,15 +81,15 @@ test('fresh startup installs the complete global catalog and remaps dependencies
     ]) {
       assert.ok(coding.content.includes(rule), rule);
       assert.ok(
-        coding.principles.some((principle) => principle.includes(rule)),
+        coding.principles!.some((principle) => principle.includes(rule)),
         rule,
       );
     }
     db.update(coding.id, {content: 'My personal readability rules'}, coding.version);
     assert.equal(seedGlobalStyles(db), 0);
     assert.equal(db.get(coding.id)!.content, 'My personal readability rules');
-    assert.ok(ui.skillBindings.some((s) => s.name === 'ui-ux-pro-max'));
-    assert.ok(ui.skillBindings.some((s) => s.name === 'design-taste-frontend'));
+    assert.ok(ui.skillBindings!.some((s) => s.name === 'ui-ux-pro-max'));
+    assert.ok(ui.skillBindings!.some((s) => s.name === 'design-taste-frontend'));
     assert.match(ui.content, /PREFERRED OUTCOMES/);
     assert.doesNotMatch(ui.content, /references\/app-screens.md/);
     db.update(ui.id, {...ui, content: 'My edit'}, ui.version);

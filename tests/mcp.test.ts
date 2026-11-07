@@ -9,6 +9,21 @@ import {seed} from '../src/styles/seed.ts';
 
 const app = resolve('src/cli.ts');
 const runner = resolve('scripts/run.mjs');
+
+// Test view of JSON-RPC responses: each call reads only the fields its method returns.
+type RpcResponse = {
+  id: number;
+  error: {code: number};
+  result: {
+    serverInfo: {name: string; version: string};
+    protocolVersion: string;
+    tools: Array<{name: string; annotations: {readOnlyHint?: boolean}}>;
+    content: Array<{text: string}>;
+    contents: Array<{text: string}>;
+    prompts: Array<{name: string}>;
+    isError?: boolean;
+  };
+};
 test(
   'TC-REL-001 MCP stdio initialization, discovery, resources and prompts',
   {timeout: 12000},
@@ -23,7 +38,7 @@ test(
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let buffer = '';
-    const waiter = new Map<number, (x: any) => void>();
+    const waiter = new Map<number, (x: RpcResponse) => void>();
     let stderr = '';
     child.stderr.on('data', (chunk) => (stderr += chunk.toString()));
     child.stdout.on('data', (chunk) => {
@@ -35,15 +50,15 @@ test(
         if (!line.trim()) {
           continue;
         }
-        const msg = JSON.parse(line);
+        const msg = JSON.parse(line) as RpcResponse;
         waiter.get(msg.id)?.(msg);
         waiter.delete(msg.id);
       }
     });
     let id = 0;
-    function call(method: string, params: any = {}) {
+    function call(method: string, params: Record<string, unknown> = {}) {
       const reqId = ++id;
-      return new Promise<any>((done, reject) => {
+      return new Promise<RpcResponse>((done, reject) => {
         const timeout = setTimeout(
           () => reject(new Error(`MCP response timeout ${method}: ${stderr}`)),
           5000,
@@ -72,13 +87,13 @@ test(
         JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized'}) + '\n',
       );
       const list = await call('tools/list');
-      assert.ok(list.result.tools.some((t: any) => t.name === 'brain_discover'));
+      assert.ok(list.result.tools.some((t) => t.name === 'brain_discover'));
       const search = await call('tools/call', {
         name: 'brain_discover',
         arguments: {task: 'drawio architecture'},
       });
       const matching = JSON.parse(search.result.content[0].text);
-      assert.ok(matching.some((x: any) => x.kind === 'skill'));
+      assert.ok(matching.some((x: {kind: string}) => x.kind === 'skill'));
       const resource = await call('resources/read', {uri: 'brain://style/baseline'});
       assert.match(resource.result.contents[0].text, /PERSONAL BRAIN STYLE BASELINE/);
       const prompts = await call('prompts/list');
@@ -141,7 +156,7 @@ test('ChatGPT MCP is read-only and pinned to its selected project', {timeout: 12
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let buffer = '';
-  const waiter = new Map<number, (x: any) => void>();
+  const waiter = new Map<number, (x: RpcResponse) => void>();
   let stderr = '';
   child.stderr.on('data', (chunk) => (stderr += chunk.toString()));
   child.stdout.on('data', (chunk) => {
@@ -153,15 +168,15 @@ test('ChatGPT MCP is read-only and pinned to its selected project', {timeout: 12
       if (!line.trim()) {
         continue;
       }
-      const msg = JSON.parse(line);
+      const msg = JSON.parse(line) as RpcResponse;
       waiter.get(msg.id)?.(msg);
       waiter.delete(msg.id);
     }
   });
   let id = 0;
-  function call(method: string, params: any = {}) {
+  function call(method: string, params: Record<string, unknown> = {}) {
     const reqId = ++id;
-    return new Promise<any>((done, reject) => {
+    return new Promise<RpcResponse>((done, reject) => {
       const timeout = setTimeout(
         () => reject(new Error(`MCP response timeout ${method}: ${stderr}`)),
         5000,
@@ -182,17 +197,19 @@ test('ChatGPT MCP is read-only and pinned to its selected project', {timeout: 12
     assert.equal(init.result.serverInfo.name, 'personal-brain-style');
     child.stdin.write(JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized'}) + '\n');
     const list = await call('tools/list');
-    assert.ok(list.result.tools.some((t: any) => t.name === 'brain_discover'));
+    assert.ok(list.result.tools.some((t) => t.name === 'brain_discover'));
     assert.deepEqual(
-      list.result.tools.map((t: any) => t.name).sort(),
+      list.result.tools.map((t) => t.name).sort(),
       ['brain_bootstrap', 'brain_discover', 'brain_get', 'brain_resolve', 'brain_style'].sort(),
     );
-    assert.ok(list.result.tools.every((t: any) => t.annotations.readOnlyHint));
+    assert.ok(list.result.tools.every((t) => t.annotations.readOnlyHint));
     const search = await call('tools/call', {
       name: 'brain_discover',
       arguments: {task: 'drawio architecture'},
     });
-    assert.ok(JSON.parse(search.result.content[0].text).every((r: any) => r.id === selected.id));
+    assert.ok(
+      JSON.parse(search.result.content[0].text).every((r: {id: string}) => r.id === selected.id),
+    );
     const loaded = JSON.parse(
       (await call('tools/call', {name: 'brain_get', arguments: {id: selected.id}})).result
         .content[0].text,

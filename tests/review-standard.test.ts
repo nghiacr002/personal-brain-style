@@ -17,15 +17,15 @@ test('restores Review, selects standard and required rules, and respects later d
     assert.equal(installReviewStandard(db), 2);
     assert.equal(db.domains().find((d) => d.id === 'reviews')!.name, 'Review');
     const style = db.list().find((r) => r.tags.includes('shared-review-standard'))!;
-    assert.equal(style.requiredIds.length, 1);
+    assert.equal(style.requiredIds!.length, 1);
     assert.ok(style.examples!.length);
     assert.ok(style.externalSkills!.length);
-    assert.match(db.get(style.requiredIds[0])!.content, /correctness, security/);
-    assert.match(db.get(style.requiredIds[0])!.content, /workflows and artifact/);
+    assert.match(db.get(style.requiredIds![0])!.content, /correctness, security/);
+    assert.match(db.get(style.requiredIds![0])!.content, /workflows and artifact/);
     for (const project of [a, b]) {
       const effective = db.scopedRecords(project.id);
       assert.ok(effective.some((r) => r.id === style.id));
-      for (const id of style.requiredIds) {
+      for (const id of style.requiredIds!) {
         assert.ok(effective.some((r) => r.id === id));
       }
     }

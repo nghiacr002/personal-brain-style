@@ -52,7 +52,13 @@ export function hookCommand(agent: Agent, phase: 'session' | 'prompt', opts: Ins
   }
   return `${base.map(shellQuote).join(' ')} hook ${agent} ${phase}`;
 }
-function load(file: string): Record<string, any> {
+type JsonObject = Record<string, unknown>;
+type HookConfig = JsonObject & {hooks?: Record<string, unknown>};
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null;
+}
+function load(file: string): HookConfig {
   if (!existsSync(file)) {
     return {};
   }
@@ -62,51 +68,53 @@ function load(file: string): Record<string, any> {
   }
   return content;
 }
-function ensureHooks(config: Record<string, any>) {
+function ensureHooks(config: HookConfig): Record<string, unknown> {
   if (!config.hooks) {
     config.hooks = {};
   }
   if (typeof config.hooks !== 'object' || Array.isArray(config.hooks)) {
     throw new Error('Invalid hooks structure');
   }
+  return config.hooks;
 }
-function own(entry: any): boolean {
-  return entry?.statusMessage === HOOK_ID;
+function own(entry: unknown): boolean {
+  return isObject(entry) && entry.statusMessage === HOOK_ID;
 }
 // Own commands are tagged with a benign statusMessage to make safe removal deterministic.
-function stripOwn(config: Record<string, any>) {
-  ensureHooks(config);
+function stripOwn(config: HookConfig) {
+  const hooks = ensureHooks(config);
   for (const event of ['SessionStart', 'UserPromptSubmit']) {
-    const list = config.hooks[event];
+    const list = hooks[event];
     if (!Array.isArray(list)) {
       continue;
     }
-    config.hooks[event] = list
-      .map((group: any) => {
-        if (!group || !Array.isArray(group.hooks)) {
+    const remaining = list
+      .map((group: unknown) => {
+        if (!isObject(group) || !Array.isArray(group.hooks)) {
           return group;
         }
-        return {
-          ...group,
-          hooks: group.hooks.filter((h: any) => h?.statusMessage !== HOOK_ID && !own(h)),
-        };
+        return {...group, hooks: group.hooks.filter((h: unknown) => !own(h))};
       })
-      .filter((group: any) => !Array.isArray(group?.hooks) || group.hooks.length);
-    if (!config.hooks[event].length) {
-      delete config.hooks[event];
+      .filter(
+        (group: unknown) => !isObject(group) || !Array.isArray(group.hooks) || group.hooks.length,
+      );
+    if (remaining.length) {
+      hooks[event] = remaining;
+    } else {
+      delete hooks[event];
     }
   }
-  if (!Object.keys(config.hooks).length) {
+  if (!Object.keys(hooks).length) {
     delete config.hooks;
   }
 }
-function add(config: Record<string, any>, agent: Agent, opts: InstallOptions) {
-  ensureHooks(config);
+function add(config: HookConfig, agent: Agent, opts: InstallOptions) {
+  const hooks = ensureHooks(config);
   for (const [event, phase] of [
     ['SessionStart', 'session'],
     ['UserPromptSubmit', 'prompt'],
   ] as const) {
-    const handler: any = {
+    const handler: JsonObject = {
       type: 'command',
       command: hookCommand(agent, phase, opts),
       statusMessage: HOOK_ID,
@@ -120,10 +128,15 @@ function add(config: Record<string, any>, agent: Agent, opts: InstallOptions) {
     if (agent === 'codex') {
       handler.additionalContextLimit = 2500;
     }
-    (config.hooks[event] ||= []).push({hooks: [handler]});
+    const groups = hooks[event] || [];
+    if (!Array.isArray(groups)) {
+      throw new Error('Invalid hooks structure');
+    }
+    groups.push({hooks: [handler]});
+    hooks[event] = groups;
   }
 }
-function save(file: string, data: Record<string, any>) {
+function save(file: string, data: JsonObject) {
   mkdirSync(dirname(file), {recursive: true, mode: 0o700});
   if (existsSync(file)) {
     copyFileSync(file, `${file}.personal-brain-backup-${Date.now()}`);
@@ -245,8 +258,8 @@ export function manageHookConfig(
   const installed = ['SessionStart', 'UserPromptSubmit'].some(
     (event) =>
       Array.isArray(config.hooks?.[event]) &&
-      config.hooks[event].some((g: any) =>
-        g?.hooks?.some((h: any) => h?.statusMessage === HOOK_ID || own(h)),
+      config.hooks[event].some(
+        (group: unknown) => isObject(group) && Array.isArray(group.hooks) && group.hooks.some(own),
       ),
   );
   if (action === 'status') {

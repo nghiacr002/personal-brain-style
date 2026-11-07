@@ -211,8 +211,8 @@ test('HTTP discovery remains read-only; item lists surface missing skills', asyn
     repo = join(dir, 'repo'),
     db = new BrainDB(join(dir, 'brain.sqlite'));
   const server = createBrainHttpServer(db);
-  const request = (url: string, method = 'GET', origin?: string) =>
-    new Promise<{status: number; data: any}>((resolve) => {
+  const request = <T = unknown>(url: string, method = 'GET', origin?: string) =>
+    new Promise<{status: number; data: T}>((resolve) => {
       let status = 0;
       server.emit(
         'request',
@@ -233,10 +233,15 @@ test('HTTP discovery remains read-only; item lists surface missing skills', asyn
     put(join(repo, '.personal-brain.json'), JSON.stringify({projectId: p.id}));
     put(join(repo, 'AGENTS.md'), 'Test conventions');
     db.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('repository:' + p.id, repo);
-    const preview = await request('/api/projects/' + p.id + '/discovery');
+    const preview = await request<{selectedStyles: unknown[]}>(
+      '/api/projects/' + p.id + '/discovery',
+    );
     assert.equal(preview.status, 200);
     assert.equal(preview.data.selectedStyles.length, 0);
-    const created = await request('/api/projects/' + p.id + '/discovery', 'POST');
+    const created = await request<{projectId: string}>(
+      '/api/projects/' + p.id + '/discovery',
+      'POST',
+    );
     assert.equal(created.status, 200);
     assert.equal(created.data.projectId, p.id);
     assert.equal(db.list({projectId: p.id}).filter((r) => r.projectId === p.id).length, 0);
@@ -254,8 +259,10 @@ test('HTTP discovery remains read-only; item lists surface missing skills', asyn
       checks: [],
       backend: null,
     });
-    const items = (await request('/api/items?projectId=' + p.id)).data;
-    assert.deepEqual(items.find((r: any) => r.id === record.id).skillWarnings, [
+    const items = (
+      await request<Array<{id: string; skillWarnings: unknown}>>('/api/items?projectId=' + p.id)
+    ).data;
+    assert.deepEqual(items.find((r) => r.id === record.id)!.skillWarnings, [
       'not-installed-unique-test-skill: missing',
     ]);
     const denied = await request(

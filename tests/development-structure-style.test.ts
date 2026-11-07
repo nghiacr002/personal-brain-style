@@ -21,7 +21,7 @@ test('development structure is a reusable global style and preserves user choice
     );
     assert.equal(style.projectId, undefined);
     assert.equal(style.domain, 'development-structure');
-    assert.equal(db.get(style.requiredIds[0])!.domain, 'research');
+    assert.equal(db.get(style.requiredIds![0])!.domain, 'research');
     assert.match(style.content, /FRONTEND/);
     assert.match(style.content, /BACKEND/);
     assert.equal(style.examples!.length, 4);

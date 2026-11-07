@@ -131,8 +131,8 @@ test('project API validates input and updates with optimistic concurrency', asyn
   const dir = mkdtempSync(join(tmpdir(), 'pb-project-api-'));
   const db = new BrainDB(join(dir, 'brain.sqlite'));
   const server = createBrainHttpServer(db);
-  const request = (url: string, method = 'GET', payload?: unknown) =>
-    new Promise<{status: number; data: any}>((resolve) => {
+  const request = <T = unknown>(url: string, method = 'GET', payload?: unknown) =>
+    new Promise<{status: number; data: T}>((resolve) => {
       let status = 0;
       const req = {
         url,
@@ -159,13 +159,13 @@ test('project API validates input and updates with optimistic concurrency', asyn
       (await request('/api/projects', 'POST', {name: '', description: '', assignments: []})).status,
       400,
     );
-    const created = await request('/api/projects', 'POST', {
+    const created = await request<{id: string}>('/api/projects', 'POST', {
       name: 'Portal',
       description: '',
       assignments: [],
     });
     assert.equal(created.status, 201);
-    assert.equal((await request('/api/projects')).data.length, 1);
+    assert.equal((await request<unknown[]>('/api/projects')).data.length, 1);
     assert.equal((await request('/api/projects/' + created.data.id + '/resolved')).status, 200);
     assert.equal(
       (

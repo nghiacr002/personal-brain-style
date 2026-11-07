@@ -160,9 +160,15 @@ export function matchSkill(reference: string, skills: InstalledSkill[], host?: s
     matches = matches.filter((s) => s.scope === 'project');
   }
   const versions = new Set(matches.map((s) => s.digest));
+  let status: 'missing' | 'ambiguous' | 'available' = 'available';
+  if (matches.length === 0) {
+    status = 'missing';
+  } else if (versions.size > 1) {
+    status = 'ambiguous';
+  }
   return {
     reference,
-    status: matches.length === 0 ? 'missing' : versions.size > 1 ? 'ambiguous' : 'available',
+    status,
     skills: matches,
   };
 }
@@ -200,7 +206,7 @@ export function discoverProject(
   const inventory = installedSkills(folder, home);
   issues.push(...inventory.issues);
   const records = db.list({projectId, limit: 300}).filter((r) => r.status !== 'archived');
-  let effective: BrainRecord[] = [];
+  let effective: BrainRecord[];
   try {
     effective = db.scopedRecords(projectId);
   } catch (e) {

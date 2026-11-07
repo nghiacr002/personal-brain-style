@@ -11,6 +11,7 @@ export default tseslint.config(
     rules: {
       curly: ['error', 'all'],
       'no-nested-ternary': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', {ignoreRestSiblings: true}],
     },
   },
   {

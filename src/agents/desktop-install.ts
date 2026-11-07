@@ -7,7 +7,7 @@ import {
   renameSync,
   rmSync,
 } from 'node:fs';
-import {dirname, join, resolve, win32, posix} from 'node:path';
+import {dirname, resolve, win32, posix} from 'node:path';
 import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 

@@ -153,6 +153,12 @@ export function previewLibraryImport(db: BrainDB, value: unknown) {
     const conflict =
       existing &&
       (existing.kind !== r.kind || existing.domain !== r.domain || existing.status !== r.status);
+    let action: 'create' | 'keep' | 'conflict' = 'create';
+    if (conflict) {
+      action = 'conflict';
+    } else if (existing) {
+      action = 'keep';
+    }
     return {
       id: r.id,
       title: r.title,
@@ -161,7 +167,7 @@ export function previewLibraryImport(db: BrainDB, value: unknown) {
       kind: r.kind,
       keyId: r.keyId,
       linkedIds: linkedIds(r),
-      action: conflict ? 'conflict' : existing ? 'keep' : 'create',
+      action,
       existingId: existing?.id,
       existingVersion: existing?.version,
     };

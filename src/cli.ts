@@ -130,11 +130,11 @@ if (arg === 'desktop') {
     console.error('Usage: hooks install|remove|status [claude|codex|opencode|both|all]');
     process.exitCode = 2;
   } else {
-    for (const agent of agents === 'both'
-      ? ['claude', 'codex']
-      : agents === 'all'
-        ? ['claude', 'codex', 'opencode']
-        : [agents]) {
+    const agentGroups: Record<string, string[]> = {
+      both: ['claude', 'codex'],
+      all: ['claude', 'codex', 'opencode'],
+    };
+    for (const agent of agentGroups[agents] ?? [agents]) {
       const result = manageHookConfig(
         action as 'install' | 'remove' | 'status',
         agent as 'claude' | 'codex' | 'opencode',

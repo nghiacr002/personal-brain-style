@@ -91,7 +91,7 @@ server.close();db.close();`,
   run(process.execPath, [
     '--input-type=module',
     '-e',
-    `import {hookCommand} from ${moduleUrl(join(installed, 'dist/src/agents/hook-install.js'))};import {existsSync} from 'node:fs';const command=hookCommand('codex','session');for(const part of command.matchAll(/'([^']+)'/g)){if(!existsSync(part[1]))throw Error('Missing hook executable: '+part[1]);}if(!command.includes('cli.js'))throw Error('Hook points to TypeScript');`,
+    `import {hookCommand} from ${moduleUrl(join(installed, 'dist/src/agents/hook-install.js'))};import {existsSync} from 'node:fs';let command=hookCommand('codex','session');const encoded=command.match(/-EncodedCommand (\\S+)$/);if(encoded){command=Buffer.from(encoded[1],'base64').toString('utf16le');}for(const part of command.matchAll(/'([^']+)'/g)){if(/[\\\\/]/.test(part[1])&&!existsSync(part[1]))throw Error('Missing hook executable: '+part[1]);}if(!command.includes('cli.js'))throw Error('Hook points to TypeScript');`,
   ]);
   console.log(
     'Packed installation, CLI, MCP, hook paths, static assets and clean workspace startup passed.',

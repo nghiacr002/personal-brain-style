@@ -2048,6 +2048,16 @@ export class BrainDB {
     selected.forEach((record) => include(record, true));
     return [...effective.values()];
   }
+  // Every active preference visible to a project, without list()'s 300-record cap.
+  activePreferences(projectId?: string): BrainRecord[] {
+    return (
+      this.db.prepare("SELECT snapshot FROM records WHERE status='active'").all() as {
+        snapshot: string;
+      }[]
+    )
+      .map((r) => this.parse(r.snapshot))
+      .filter((r) => r.kind === 'preference' && (!r.projectId || r.projectId === projectId));
+  }
   bootstrapWithRecords(maxChars = 3500, projectId?: string) {
     const items = this.scopedRecords(projectId)
       .filter((r) => r.kind === 'preference' && !r.compatibility)

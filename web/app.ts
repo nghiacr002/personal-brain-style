@@ -2294,7 +2294,8 @@ async function analyzeOnboarding() {
   );
   buttons.forEach((b) => (b.disabled = true));
   $('onboardingStop').hidden = false;
-  $('onboardingFindings').textContent = 'Analyzing repository… This may take up to five minutes.';
+  $('onboardingFindings').textContent =
+    'Analyzing repository… Usually a few minutes. Large libraries are analyzed in several agent calls and take longer.';
   try {
     const result = await api<{
       recommendations: Array<{

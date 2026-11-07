@@ -134,40 +134,50 @@ test('linked folder: inspection names the project; replacing relinks and failure
   }
 });
 
-test('AI discovery shortens low-priority styles to fit the limit instead of refusing', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-wizard-budget-')),
+test('large libraries are analyzed in stages that each fit the prompt limit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pb-wizard-staged-')),
     folder = join(root, 'repo'),
-    bin = join(root, 'bin');
+    bin = join(root, 'bin'),
+    log = join(root, 'calls.log');
   mkdirSync(folder);
   mkdirSync(bin);
   const db = new BrainDB(join(root, 'test.sqlite')),
     path = process.env.PATH;
+  const style = (title: string, domain: string, priority: number) =>
+    db.create({
+      kind: 'preference',
+      domain,
+      title,
+      summary: title,
+      useWhen: 'Use when ' + title + ' ' + 'x'.repeat(380),
+      content: title + ' rules ' + 'y'.repeat(1000),
+      tags: ['tag'],
+      priority,
+      status: 'active',
+      checks: [],
+      backend: null,
+    });
   try {
     writeFileSync(join(folder, 'README.md'), 'A TypeScript application.');
-    // Twelve 20k-character styles (240k) cannot all be sent within the 200k limit.
-    const styles = Array.from({length: 12}, (_, i) =>
-      db.create({
-        kind: 'preference',
-        domain: 'general',
-        title: 'Style ' + i,
-        summary: 'Summary ' + i,
-        content: String(i).repeat(20000),
-        principles: [String(i).repeat(10)],
-        tags: [],
-        priority: 90 - i,
-        status: 'active',
-        checks: [],
-        backend: null,
-      }),
-    );
-    const lowest = styles.at(-1)!;
-    const reply = JSON.stringify({
-      recommendations: [{id: lowest.id, reason: 'README.md', projectGuidelines: 'Invented rule'}],
-    });
-    writeFileSync(
-      join(bin, 'agent.cjs'),
-      `let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{if(input.length>200000)process.exit(3);console.log(${JSON.stringify(reply)});});`,
-    );
+    // 450 styles: the compact catalog alone exceeds one request, so selection needs several rounds.
+    for (let i = 0; i < 447; i++) {
+      style('Filler ' + i, 'general', 50);
+    }
+    const picks = [
+      style('Pick coding', 'coding', 90),
+      style('Pick design', 'design', 60),
+      // Lowest priority, beyond the first 300 records: must still be considered.
+      style('Pick writing', 'writing', 1),
+    ];
+    // The fake agent answers by stage, logs each call and fails if a prompt is over the limit.
+    const agentSource = (failDraft: boolean) =>
+      `const fs=require('fs');let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{` +
+      `if(input.length>200000)process.exit(3);fs.appendFileSync(${JSON.stringify(log)},input.slice(0,6)+'\\n');` +
+      `const data=JSON.parse(input.slice(input.indexOf('DATA:\\n')+6));` +
+      `if(input.startsWith('Select')){console.log(JSON.stringify({recommendations:data.styles.filter(s=>s.title.startsWith('Pick')).map(s=>({id:s.id,reason:'README.md'}))}));}` +
+      `else if(input.startsWith('Draft')){${failDraft ? 'process.exit(5);' : ''}console.log(JSON.stringify({guidelines:data.styles.map(s=>({id:s.id,customizationNote:'Fits',projectGuidelines:'Guideline for '+s.title}))}));}` +
+      `else process.exit(4);});`;
+    writeFileSync(join(bin, 'agent.cjs'), agentSource(false));
     if (process.platform === 'win32') {
       writeFileSync(join(bin, 'claude.cmd'), '@echo off\r\nnode "%dp0%\\agent.cjs" %*\r\n');
     } else {
@@ -183,20 +193,34 @@ test('AI discovery shortens low-priority styles to fit the limit instead of refu
     }
     process.env.PATH = bin;
     const result = await recommendProjectStyles(db, folder, 'claude');
-    assert.equal(
-      result.recommendations[0].id,
-      lowest.id,
-      'shortened styles can still be suggested',
+    assert.deepEqual(result.recommendations.map((r) => r.id).sort(), picks.map((p) => p.id).sort());
+    for (const r of result.recommendations) {
+      assert.match(r.projectGuidelines!, /^Guideline for Pick/);
+    }
+    const calls = readFileSync(log, 'utf8').trim().split('\n');
+    assert.ok(
+      calls.filter((c) => c.startsWith('Select')).length >= 3,
+      'partial rounds plus a final round',
     );
-    assert.equal(result.recommendations[0].projectGuidelines, undefined);
-    assert.ok(result.issues.some((issue) => issue.type === 'catalog-shortened'));
+    assert.equal(
+      calls.filter((c) => c.startsWith('Draft')).length,
+      1,
+      'one call drafts guidelines',
+    );
+    assert.ok(result.issues.some((issue) => issue.type === 'staged-analysis'));
+
+    // A failed guidelines call keeps the selection and explains what is missing.
+    writeFileSync(join(bin, 'agent.cjs'), agentSource(true));
+    const degraded = await recommendProjectStyles(db, folder, 'claude');
+    assert.equal(degraded.recommendations.length, 3);
+    assert.ok(degraded.recommendations.every((r) => r.projectGuidelines === undefined));
+    assert.ok(degraded.issues.some((issue) => issue.type === 'guidelines-failed'));
   } finally {
     process.env.PATH = path;
     db.close();
     rmSync(root, {recursive: true, force: true});
   }
 });
-
 test('AI recommendations reject invented, private, duplicate or conflicting styles', () => {
   const style = {
     id: 's',

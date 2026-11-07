@@ -2,18 +2,49 @@ import {BrainDB} from '../core/database.ts';
 import {visualDrawingPrompt} from './drawing-styles.ts';
 
 // One-time user-requested selection for existing projects; later deselection is respected.
-export function installNetworkDrawingStyle(db:BrainDB){
- const marker='shared_network_drawing_v1';
- if(db.db.prepare('SELECT 1 FROM meta WHERE key=?').get(marker))return 0;
- const domain='network-architecture',tag='shared-network-architecture-drawing';
- if(!db.hasDomain(domain))db.saveDomain('Network architecture');
- const existing=db.db.prepare("SELECT snapshot FROM records WHERE json_extract(snapshot,'$.projectId') IS NULL AND EXISTS (SELECT 1 FROM json_each(records.snapshot,'$.tags') WHERE value=?)").get(tag) as {snapshot:string}|undefined;
- const style=existing?JSON.parse(existing.snapshot):db.create({
-  kind:'preference',domain,title:'Network architecture — topology, boundaries and traffic flows',
-  summary:'Editable network views with explicit environments, network boundaries, verified service icons and traceable traffic paths.',
-  useWhen:'Drawing or reviewing network architecture, topology, connectivity, hub-and-spoke, VNet/VPC, subnets, private endpoints, routing, firewall, DNS, hybrid or multi-environment deployment diagrams.',
-  tags:[tag,'network','topology','connectivity','hub-spoke','vnet','vpc','subnet','firewall','routing','dns','private endpoint','hybrid','drawio','deployment'],
-  content:`Apply only to network architecture tasks. Deliver native editable .drawio with real nodes and connectors unless the user explicitly requests another format. Read drawio-skill before authoring. Use verified provider icons with nearby service names; preserve official icon geometry. Use neutral icons for vendor-neutral components. This style does not select Azure, mandate hub-and-spoke, or impose an application UI palette.
+export function installNetworkDrawingStyle(db: BrainDB) {
+  const marker = 'shared_network_drawing_v1';
+  if (db.db.prepare('SELECT 1 FROM meta WHERE key=?').get(marker)) {
+    return 0;
+  }
+  const domain = 'network-architecture',
+    tag = 'shared-network-architecture-drawing';
+  if (!db.hasDomain(domain)) {
+    db.saveDomain('Network architecture');
+  }
+  const existing = db.db
+    .prepare(
+      "SELECT snapshot FROM records WHERE json_extract(snapshot,'$.projectId') IS NULL AND EXISTS (SELECT 1 FROM json_each(records.snapshot,'$.tags') WHERE value=?)",
+    )
+    .get(tag) as {snapshot: string} | undefined;
+  const style = existing
+    ? JSON.parse(existing.snapshot)
+    : db.create({
+        kind: 'preference',
+        domain,
+        title: 'Network architecture — topology, boundaries and traffic flows',
+        summary:
+          'Editable network views with explicit environments, network boundaries, verified service icons and traceable traffic paths.',
+        useWhen:
+          'Drawing or reviewing network architecture, topology, connectivity, hub-and-spoke, VNet/VPC, subnets, private endpoints, routing, firewall, DNS, hybrid or multi-environment deployment diagrams.',
+        tags: [
+          tag,
+          'network',
+          'topology',
+          'connectivity',
+          'hub-spoke',
+          'vnet',
+          'vpc',
+          'subnet',
+          'firewall',
+          'routing',
+          'dns',
+          'private endpoint',
+          'hybrid',
+          'drawio',
+          'deployment',
+        ],
+        content: `Apply only to network architecture tasks. Deliver native editable .drawio with real nodes and connectors unless the user explicitly requests another format. Read drawio-skill before authoring. Use verified provider icons with nearby service names; preserve official icon geometry. Use neutral icons for vendor-neutral components. This style does not select Azure, mandate hub-and-spoke, or impose an application UI palette.
 
 Compose the overview like the supplied reference: external users, sites and third parties at the edge; shared connectivity services together; environment or region groups arranged consistently; repeated workload blocks aligned with the same internal order. Use square containers, restrained category colors, short labels and a notation legend. Preserve logical grouping without copying the reference's tiny text, dense crossings, resource names, addresses or topology into unrelated projects.
 
@@ -36,19 +67,53 @@ https://learn.microsoft.com/en-us/azure/architecture/networking/architecture/hub
 https://learn.microsoft.com/en-us/azure/architecture/icons/
 
 ${visualDrawingPrompt}`,
-  principles:['Separate ownership, network containment and trust boundaries.','Show evidence-backed traffic paths, not assumed reachability.','Use aligned environment/workload groups and readable overview/detail views.','Preserve native editable diagrams and verify semantics as well as rendering.'],
-  externalSkills:['drawio-skill'],requiredIds:[],
-  examples:['Hybrid overview: on-premises site → verified VPN/ExpressRoute gateway → connectivity hub, with separately labelled production and nonproduction spokes. Show actual peering and route-controlled traffic independently; do not infer spoke-to-spoke connectivity.','Private service detail: workload → private endpoint → managed database, with a separate DNS-resolution path where verified. Show the endpoint subnet and outbound integration subnet separately; place the managed database according to its actual hosting semantics.','Large estate: one overview plus Production and Nonproduction detail pages. Repeat the same ingress, application, endpoint and data layout for each workload. Flow F01 links to the traffic matrix with verified source, target, protocol, port, purpose and evidence.'],
-  reviewCriteria:['Trace every network, CIDR, service and connection to supplied configuration or clearly label it proposed/unknown.','Verify ownership boundaries differ from network and trust boundaries; check subnet containment and address overlaps.','Verify ingress, egress, routing, DNS and return paths where applicable; reject assumed transitive peering or unproven isolation.','Check private endpoints, service integration and managed-service placement accurately represent the platform.','Check flow labels and traffic matrix agree; unknown ports, firewall rules and reachability remain unverified.','Inspect every page at intended reading size for readable labels, aligned groups, crossings, legends and correct official icons.','Verify editable .drawio delivery and report structural, semantic, rendered and connectivity checks separately.'],
-  requirements:[{id:'req-network-source',type:'artifact',label:'Editable native network architecture diagram',extension:'.drawio'}],
-  priority:90,status:'active',checks:[],backend:null
- });
- let attached=0;
- for(const project of db.projects()){
-  if(project.assignments.some(a=>a.recordId===style.id))continue;
-  db.saveProject({...project,assignments:[...project.assignments,{recordId:style.id,override:null}]},project.id,project.version);
-  attached++;
- }
- db.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run(marker,'1');
- return attached;
+        principles: [
+          'Separate ownership, network containment and trust boundaries.',
+          'Show evidence-backed traffic paths, not assumed reachability.',
+          'Use aligned environment/workload groups and readable overview/detail views.',
+          'Preserve native editable diagrams and verify semantics as well as rendering.',
+        ],
+        externalSkills: ['drawio-skill'],
+        requiredIds: [],
+        examples: [
+          'Hybrid overview: on-premises site → verified VPN/ExpressRoute gateway → connectivity hub, with separately labelled production and nonproduction spokes. Show actual peering and route-controlled traffic independently; do not infer spoke-to-spoke connectivity.',
+          'Private service detail: workload → private endpoint → managed database, with a separate DNS-resolution path where verified. Show the endpoint subnet and outbound integration subnet separately; place the managed database according to its actual hosting semantics.',
+          'Large estate: one overview plus Production and Nonproduction detail pages. Repeat the same ingress, application, endpoint and data layout for each workload. Flow F01 links to the traffic matrix with verified source, target, protocol, port, purpose and evidence.',
+        ],
+        reviewCriteria: [
+          'Trace every network, CIDR, service and connection to supplied configuration or clearly label it proposed/unknown.',
+          'Verify ownership boundaries differ from network and trust boundaries; check subnet containment and address overlaps.',
+          'Verify ingress, egress, routing, DNS and return paths where applicable; reject assumed transitive peering or unproven isolation.',
+          'Check private endpoints, service integration and managed-service placement accurately represent the platform.',
+          'Check flow labels and traffic matrix agree; unknown ports, firewall rules and reachability remain unverified.',
+          'Inspect every page at intended reading size for readable labels, aligned groups, crossings, legends and correct official icons.',
+          'Verify editable .drawio delivery and report structural, semantic, rendered and connectivity checks separately.',
+        ],
+        requirements: [
+          {
+            id: 'req-network-source',
+            type: 'artifact',
+            label: 'Editable native network architecture diagram',
+            extension: '.drawio',
+          },
+        ],
+        priority: 90,
+        status: 'active',
+        checks: [],
+        backend: null,
+      });
+  let attached = 0;
+  for (const project of db.projects()) {
+    if (project.assignments.some((a) => a.recordId === style.id)) {
+      continue;
+    }
+    db.saveProject(
+      {...project, assignments: [...project.assignments, {recordId: style.id, override: null}]},
+      project.id,
+      project.version,
+    );
+    attached++;
+  }
+  db.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run(marker, '1');
+  return attached;
 }

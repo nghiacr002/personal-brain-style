@@ -1,284 +1,153 @@
 // Fingerprints of the pre-boundary release; used only to identify unchanged upgrade candidates.
-export const catalogBaseline:Record<string,string> = {
-  "quality-control": "85dcd5b421a137b2c19205bdda9580394a9123b770d493e1acf6e4e2e9b5e229",
-  "research": "075b6dbe66c5fb14c949275060d0ab929b316dcec7b44297dfb0fdda6bec5282",
-  "writing": "e09627c0b191c73a59c955cc954f3fb728da2ec8c969e35f969ff7da1cd39d94",
-  "doc-markdown": "e0245b0aa0e21cb34f8e34ba417a6fad5300b450c165d5fd85a7aaf326f804e8",
-  "doc-html": "b7c905969780704cfb80e690614451d631316c2fcaef1f73bf7acbee623d4171",
-  "doc-word": "e26dc46ca62f22e28806993d43b08c5a88e148b6e0d93ab77b87aaed44eb5aab",
-  "thinking": "670dff62cf0082ff2c8e135ae6068f39bebd37709289389aaa107dfd8283f4bd",
-  "review-standard": "553270e32996f010bc94719f030f5778d6198b46eaeb4fcb176d833c9b314fda",
-  "review-checklist": "40f69fc98efd53399ef91c39311f95e1fb3ffb2a66611a2cf8c58c66ffb4c02e",
-  "ai-delivery": "77ff1ebfcd9c0e2742d61fa7850ccb527c25429d306dc7e2c68ef87002ed16fa",
-  "product-ownership": "6c928e6422364305ce9ce7551ac5add195ec177dfaa853243425ee5e0ed919f7",
-  "business-analysis": "1c9ee53a7d3534b367d4450c35b3a45bffe943c3ac197e0e96ed6e3f8c135d44",
-  "technology-research": "ea646664e6e1b0912f58ad64ed0145049180cddcca0b9d2e0e70337145473a11",
-  "drawing": "cdb80d34541df5caa4c90ca0d07ad9370c62679a570d618b4b5b7c4656a54fcd",
-  "drawio": "458f258296542306a830e016331042360d30efdadb523c6a95ee201b3a2f6808",
-  "mermaid": "c497df0b38f929aeeea0237cd70faf334fb7811e0f1c104ebb50db34cd554ba7",
-  "ui-ux": "0bd845e4e0073744f66d65f36c20b4e7d3ee6336abbe20ac409c4ad273438a9b",
-  "design-system": "fbad50a42f44482e44a6071972f65da3a82968596bb502d7873c944a742745de",
-  "solution-architecture": "0c2feeb25643640307cd5b8bfe8f2e5766a42ca9d8a6f335b31731d4f6c1680e",
-  "software-architecture": "f1f90f3975cb4a38342c892d550e2e3e935e3a93904dc74eb5916ad44341380c",
-  "cloud-architecture": "67e4f35ee086ab571f1fa965d7552938224de4eb8fd1de896102c40a11fc8553",
-  "cloud-azure": "84ac2c8c32f5a3174cbeca3935c768453f05a70b86e2c4dc00121b698bad91c7",
-  "network-architecture": "383e83561807ac92565ef7e2ef13c031527418ad96ba68d302d52db91fb67446",
-  "data-architecture": "ea438a576ed328b1d06f3cc33bdb96516725012b35a92e2988e4fe2f83029543",
-  "security-architecture": "a128d731ef74c4fa5c8011940c7109020f845471a1deb1526dad0b91ac9f0eaf",
-  "development": "8edd7a22295496ace232eed9a326549fba119dfb33be8b92792337321974c46b",
-  "technical-leadership": "6f9bb368edd04b91b1ae40644481318f4ae4c707e3afd9cbaebf2d82b35e117a",
-  "quality-assurance": "fd8ff120d57f4ad6efdd3d9dc899f188e0967ac0c11da9ff5113c6577d409ac2",
-  "sre-devops": "37526e949b3e8fd339f3546000275de15c4f3150eb6b947d7af4431d92025eeb",
-  "integration-architecture": "72bad4f9f58de2c25fdbc1333bf795e4f763edcb1ce27e554b80a3ae62e89db7",
-  "software-design": "e17ac2f747110a83334011c3b0e1b4e23035044842d4e4e6ea2e43f785d4a8ac",
-  "eng-frontend": "d32c36ef4f64e391225ea6577631fb7bfd3ba7c4ef5378cf5231ba5f878e4ae7",
-  "eng-backend": "ca69f7c5ca62dd15bd7af46f6d38300c245a2d8b373f572985a4af515a6323ea",
-  "eng-frontend-typescript": "bd85c9c9aa21b6b9b2a951221715d366050c3f47d05ca2aea089238dbe3bb595",
-  "eng-frontend-mobile": "670d7e63f1aec15aae0e7ae38b36196f1d3fe247ee58cce9b789949c5d1bfcca",
-  "eng-backend-typescript": "1c7ac408d82fa1d8ace9f3fae613fd69c8eefbaa3c84e6cdd3eab19253716520",
-  "eng-backend-dotnet": "2b62c71c971273627de6fb24b65c52fd2c2f615a13ef871048347d6e11badf46",
-  "structure-frontend-typescript": "98b55f30f1a701356fd9cd931a0b78b6164fa91349114b461d97160addd3e346",
-  "structure-frontend-mobile": "304746448716858da45537cc6cdbb9e77aed2c71019439b3d03231af011363f2",
-  "structure-backend-typescript": "b31480476916fb49814c81ef333e6695f0fc585849d3a2e0013f6af341d01ff5",
-  "structure-backend-dotnet": "37aabb3460db6c6512c17570e70759173f2c6bd3596bd5982a40911e144ce70b",
-  "coding-style": "71ec97794bd013649f23bab63307597d9e18d2bc3ff4428357607d9a059fdf57",
-  "coding-patterns": "c735cf9d9334b17818d68a632f6060bf6742571502221b764414f7d5f7b5c99a",
-  "logging-tracing": "96cc746a3e5ab608498659d62c4421b958494b52c7347a1b69a67ac96825cdca",
-  "doc-prd": "c75707f6d4bd32441499647f00003bd91b9f51cafe6a7edd1b66d196e2705691",
-  "doc-roadmap": "6b9fb55dbe0de54f3f8eb9c0a00e5d306aa8ffe6cfd6ab35942c21bfea3a480f",
-  "doc-brd": "3b179d40abec526333c62c9bd5d8ef1f7a34d9e8b10b7aa8249bc910a8674569",
-  "doc-adr": "9513cffcac8a2b1a4870969f29c8fabc72f78dce95e172279e361f9b484f529a",
-  "doc-test": "e1b8e3c8e61981b3c4aa36d8c95f9a98bda8c066352f5250e676343e3809ff35",
-  "doc-runbook": "3bead05e84610fb95a4cb37480a7a04e45f31f0d11fd205b54140db31d7aed3b",
-  "doc-hld": "9e991cd0395904fbcd1eaa2cc4bccc1c7cbe35ad30efae2084f42f812e65397f",
-  "doc-lld": "838c602612271fa5d6b6b09054569d22f0bf74994b1002237342b8ed0a0d7195",
-  "doc-api": "bd0e6b97c491ab6143da37c0b32fef1f979a5c2e2becdb7ffa15fa1216ab09a5",
-  "doc-database": "b614b4bf31713b375e01e7527fc60dc3c1e1c02bb0d1a1903186f521059578ef",
-  "doc-integration": "227d73d867cbdbd0457003b0ceeaecfd04d961610055d17078c6331d7c104ae1"
+export const catalogBaseline: Record<string, string> = {
+  'quality-control': '85dcd5b421a137b2c19205bdda9580394a9123b770d493e1acf6e4e2e9b5e229',
+  research: '075b6dbe66c5fb14c949275060d0ab929b316dcec7b44297dfb0fdda6bec5282',
+  writing: 'e09627c0b191c73a59c955cc954f3fb728da2ec8c969e35f969ff7da1cd39d94',
+  'doc-markdown': 'e0245b0aa0e21cb34f8e34ba417a6fad5300b450c165d5fd85a7aaf326f804e8',
+  'doc-html': 'b7c905969780704cfb80e690614451d631316c2fcaef1f73bf7acbee623d4171',
+  'doc-word': 'e26dc46ca62f22e28806993d43b08c5a88e148b6e0d93ab77b87aaed44eb5aab',
+  thinking: '670dff62cf0082ff2c8e135ae6068f39bebd37709289389aaa107dfd8283f4bd',
+  'review-standard': '553270e32996f010bc94719f030f5778d6198b46eaeb4fcb176d833c9b314fda',
+  'review-checklist': '40f69fc98efd53399ef91c39311f95e1fb3ffb2a66611a2cf8c58c66ffb4c02e',
+  'ai-delivery': '77ff1ebfcd9c0e2742d61fa7850ccb527c25429d306dc7e2c68ef87002ed16fa',
+  'product-ownership': '6c928e6422364305ce9ce7551ac5add195ec177dfaa853243425ee5e0ed919f7',
+  'business-analysis': '1c9ee53a7d3534b367d4450c35b3a45bffe943c3ac197e0e96ed6e3f8c135d44',
+  'technology-research': 'ea646664e6e1b0912f58ad64ed0145049180cddcca0b9d2e0e70337145473a11',
+  drawing: 'cdb80d34541df5caa4c90ca0d07ad9370c62679a570d618b4b5b7c4656a54fcd',
+  drawio: '458f258296542306a830e016331042360d30efdadb523c6a95ee201b3a2f6808',
+  mermaid: 'c497df0b38f929aeeea0237cd70faf334fb7811e0f1c104ebb50db34cd554ba7',
+  'ui-ux': '0bd845e4e0073744f66d65f36c20b4e7d3ee6336abbe20ac409c4ad273438a9b',
+  'design-system': 'fbad50a42f44482e44a6071972f65da3a82968596bb502d7873c944a742745de',
+  'solution-architecture': '0c2feeb25643640307cd5b8bfe8f2e5766a42ca9d8a6f335b31731d4f6c1680e',
+  'software-architecture': 'f1f90f3975cb4a38342c892d550e2e3e935e3a93904dc74eb5916ad44341380c',
+  'cloud-architecture': '67e4f35ee086ab571f1fa965d7552938224de4eb8fd1de896102c40a11fc8553',
+  'cloud-azure': '84ac2c8c32f5a3174cbeca3935c768453f05a70b86e2c4dc00121b698bad91c7',
+  'network-architecture': '383e83561807ac92565ef7e2ef13c031527418ad96ba68d302d52db91fb67446',
+  'data-architecture': 'ea438a576ed328b1d06f3cc33bdb96516725012b35a92e2988e4fe2f83029543',
+  'security-architecture': 'a128d731ef74c4fa5c8011940c7109020f845471a1deb1526dad0b91ac9f0eaf',
+  development: '8edd7a22295496ace232eed9a326549fba119dfb33be8b92792337321974c46b',
+  'technical-leadership': '6f9bb368edd04b91b1ae40644481318f4ae4c707e3afd9cbaebf2d82b35e117a',
+  'quality-assurance': 'fd8ff120d57f4ad6efdd3d9dc899f188e0967ac0c11da9ff5113c6577d409ac2',
+  'sre-devops': '37526e949b3e8fd339f3546000275de15c4f3150eb6b947d7af4431d92025eeb',
+  'integration-architecture': '72bad4f9f58de2c25fdbc1333bf795e4f763edcb1ce27e554b80a3ae62e89db7',
+  'software-design': 'e17ac2f747110a83334011c3b0e1b4e23035044842d4e4e6ea2e43f785d4a8ac',
+  'eng-frontend': 'd32c36ef4f64e391225ea6577631fb7bfd3ba7c4ef5378cf5231ba5f878e4ae7',
+  'eng-backend': 'ca69f7c5ca62dd15bd7af46f6d38300c245a2d8b373f572985a4af515a6323ea',
+  'eng-frontend-typescript': 'bd85c9c9aa21b6b9b2a951221715d366050c3f47d05ca2aea089238dbe3bb595',
+  'eng-frontend-mobile': '670d7e63f1aec15aae0e7ae38b36196f1d3fe247ee58cce9b789949c5d1bfcca',
+  'eng-backend-typescript': '1c7ac408d82fa1d8ace9f3fae613fd69c8eefbaa3c84e6cdd3eab19253716520',
+  'eng-backend-dotnet': '2b62c71c971273627de6fb24b65c52fd2c2f615a13ef871048347d6e11badf46',
+  'structure-frontend-typescript':
+    '98b55f30f1a701356fd9cd931a0b78b6164fa91349114b461d97160addd3e346',
+  'structure-frontend-mobile': '304746448716858da45537cc6cdbb9e77aed2c71019439b3d03231af011363f2',
+  'structure-backend-typescript':
+    'b31480476916fb49814c81ef333e6695f0fc585849d3a2e0013f6af341d01ff5',
+  'structure-backend-dotnet': '37aabb3460db6c6512c17570e70759173f2c6bd3596bd5982a40911e144ce70b',
+  'coding-style': '71ec97794bd013649f23bab63307597d9e18d2bc3ff4428357607d9a059fdf57',
+  'coding-patterns': 'c735cf9d9334b17818d68a632f6060bf6742571502221b764414f7d5f7b5c99a',
+  'logging-tracing': '96cc746a3e5ab608498659d62c4421b958494b52c7347a1b69a67ac96825cdca',
+  'doc-prd': 'c75707f6d4bd32441499647f00003bd91b9f51cafe6a7edd1b66d196e2705691',
+  'doc-roadmap': '6b9fb55dbe0de54f3f8eb9c0a00e5d306aa8ffe6cfd6ab35942c21bfea3a480f',
+  'doc-brd': '3b179d40abec526333c62c9bd5d8ef1f7a34d9e8b10b7aa8249bc910a8674569',
+  'doc-adr': '9513cffcac8a2b1a4870969f29c8fabc72f78dce95e172279e361f9b484f529a',
+  'doc-test': 'e1b8e3c8e61981b3c4aa36d8c95f9a98bda8c066352f5250e676343e3809ff35',
+  'doc-runbook': '3bead05e84610fb95a4cb37480a7a04e45f31f0d11fd205b54140db31d7aed3b',
+  'doc-hld': '9e991cd0395904fbcd1eaa2cc4bccc1c7cbe35ad30efae2084f42f812e65397f',
+  'doc-lld': '838c602612271fa5d6b6b09054569d22f0bf74994b1002237342b8ed0a0d7195',
+  'doc-api': 'bd0e6b97c491ab6143da37c0b32fef1f979a5c2e2becdb7ffa15fa1216ab09a5',
+  'doc-database': 'b614b4bf31713b375e01e7527fc60dc3c1e1c02bb0d1a1903186f521059578ef',
+  'doc-integration': '227d73d867cbdbd0457003b0ceeaecfd04d961610055d17078c6331d7c104ae1',
 };
 
-export const catalogBaselineLinks:Record<string,string[]> = {
-  "quality-control": [],
-  "research": [
-    "quality-control"
+export const catalogBaselineLinks: Record<string, string[]> = {
+  'quality-control': [],
+  research: ['quality-control'],
+  writing: ['quality-control'],
+  'doc-markdown': ['writing'],
+  'doc-html': ['writing'],
+  'doc-word': ['writing'],
+  thinking: ['research', 'writing', 'doc-adr'],
+  'review-standard': ['review-checklist', 'research'],
+  'review-checklist': [],
+  'ai-delivery': ['thinking', 'review-standard'],
+  'product-ownership': ['business-analysis', 'thinking', 'doc-prd', 'doc-roadmap'],
+  'business-analysis': ['writing', 'research', 'drawing', 'doc-brd'],
+  'technology-research': ['research', 'thinking'],
+  drawing: ['writing'],
+  drawio: ['drawing'],
+  mermaid: ['drawing'],
+  'ui-ux': ['business-analysis', 'design-system', 'research'],
+  'design-system': ['quality-control'],
+  'solution-architecture': [
+    'software-architecture',
+    'integration-architecture',
+    'cloud-architecture',
+    'network-architecture',
+    'data-architecture',
+    'security-architecture',
+    'technology-research',
+    'business-analysis',
+    'doc-hld',
   ],
-  "writing": [
-    "quality-control"
+  'software-architecture': ['thinking', 'drawing', 'business-analysis', 'software-design'],
+  'cloud-architecture': ['thinking', 'security-architecture', 'network-architecture'],
+  'cloud-azure': ['cloud-architecture'],
+  'network-architecture': ['drawing', 'security-architecture'],
+  'data-architecture': ['thinking', 'drawing', 'security-architecture', 'doc-database'],
+  'security-architecture': ['thinking', 'drawing'],
+  development: ['quality-assurance', 'research', 'coding-style'],
+  'technical-leadership': [
+    'software-architecture',
+    'review-standard',
+    'quality-assurance',
+    'ai-delivery',
+    'eng-frontend',
+    'eng-backend',
   ],
-  "doc-markdown": [
-    "writing"
+  'quality-assurance': ['quality-control', 'writing', 'doc-test'],
+  'sre-devops': [
+    'cloud-architecture',
+    'security-architecture',
+    'quality-assurance',
+    'logging-tracing',
+    'doc-runbook',
   ],
-  "doc-html": [
-    "writing"
+  'integration-architecture': [
+    'software-architecture',
+    'security-architecture',
+    'data-architecture',
+    'doc-integration',
+    'doc-api',
   ],
-  "doc-word": [
-    "writing"
+  'software-design': ['thinking', 'drawing', 'doc-lld'],
+  'eng-frontend': ['development', 'software-design', 'ui-ux', 'coding-patterns', 'logging-tracing'],
+  'eng-backend': [
+    'development',
+    'software-design',
+    'coding-patterns',
+    'logging-tracing',
+    'doc-api',
   ],
-  "thinking": [
-    "research",
-    "writing",
-    "doc-adr"
-  ],
-  "review-standard": [
-    "review-checklist",
-    "research"
-  ],
-  "review-checklist": [],
-  "ai-delivery": [
-    "thinking",
-    "review-standard"
-  ],
-  "product-ownership": [
-    "business-analysis",
-    "thinking",
-    "doc-prd",
-    "doc-roadmap"
-  ],
-  "business-analysis": [
-    "writing",
-    "research",
-    "drawing",
-    "doc-brd"
-  ],
-  "technology-research": [
-    "research",
-    "thinking"
-  ],
-  "drawing": [
-    "writing"
-  ],
-  "drawio": [
-    "drawing"
-  ],
-  "mermaid": [
-    "drawing"
-  ],
-  "ui-ux": [
-    "business-analysis",
-    "design-system",
-    "research"
-  ],
-  "design-system": [
-    "quality-control"
-  ],
-  "solution-architecture": [
-    "software-architecture",
-    "integration-architecture",
-    "cloud-architecture",
-    "network-architecture",
-    "data-architecture",
-    "security-architecture",
-    "technology-research",
-    "business-analysis",
-    "doc-hld"
-  ],
-  "software-architecture": [
-    "thinking",
-    "drawing",
-    "business-analysis",
-    "software-design"
-  ],
-  "cloud-architecture": [
-    "thinking",
-    "security-architecture",
-    "network-architecture"
-  ],
-  "cloud-azure": [
-    "cloud-architecture"
-  ],
-  "network-architecture": [
-    "drawing",
-    "security-architecture"
-  ],
-  "data-architecture": [
-    "thinking",
-    "drawing",
-    "security-architecture",
-    "doc-database"
-  ],
-  "security-architecture": [
-    "thinking",
-    "drawing"
-  ],
-  "development": [
-    "quality-assurance",
-    "research",
-    "coding-style"
-  ],
-  "technical-leadership": [
-    "software-architecture",
-    "review-standard",
-    "quality-assurance",
-    "ai-delivery",
-    "eng-frontend",
-    "eng-backend"
-  ],
-  "quality-assurance": [
-    "quality-control",
-    "writing",
-    "doc-test"
-  ],
-  "sre-devops": [
-    "cloud-architecture",
-    "security-architecture",
-    "quality-assurance",
-    "logging-tracing",
-    "doc-runbook"
-  ],
-  "integration-architecture": [
-    "software-architecture",
-    "security-architecture",
-    "data-architecture",
-    "doc-integration",
-    "doc-api"
-  ],
-  "software-design": [
-    "thinking",
-    "drawing",
-    "doc-lld"
-  ],
-  "eng-frontend": [
-    "development",
-    "software-design",
-    "ui-ux",
-    "coding-patterns",
-    "logging-tracing"
-  ],
-  "eng-backend": [
-    "development",
-    "software-design",
-    "coding-patterns",
-    "logging-tracing",
-    "doc-api"
-  ],
-  "eng-frontend-typescript": [
-    "eng-frontend",
-    "structure-frontend-typescript"
-  ],
-  "eng-frontend-mobile": [
-    "eng-frontend",
-    "structure-frontend-mobile"
-  ],
-  "eng-backend-typescript": [
-    "eng-backend",
-    "structure-backend-typescript"
-  ],
-  "eng-backend-dotnet": [
-    "eng-backend",
-    "structure-backend-dotnet"
-  ],
-  "structure-frontend-typescript": [
-    "software-design"
-  ],
-  "structure-frontend-mobile": [
-    "software-design"
-  ],
-  "structure-backend-typescript": [
-    "software-design"
-  ],
-  "structure-backend-dotnet": [
-    "software-design"
-  ],
-  "coding-style": [],
-  "coding-patterns": [
-    "software-design"
-  ],
-  "logging-tracing": [],
-  "doc-prd": [
-    "writing"
-  ],
-  "doc-roadmap": [
-    "writing"
-  ],
-  "doc-brd": [
-    "writing"
-  ],
-  "doc-adr": [
-    "writing"
-  ],
-  "doc-test": [
-    "writing"
-  ],
-  "doc-runbook": [
-    "writing"
-  ],
-  "doc-hld": [
-    "writing",
-    "drawing"
-  ],
-  "doc-lld": [
-    "writing",
-    "drawing"
-  ],
-  "doc-api": [
-    "writing"
-  ],
-  "doc-database": [
-    "writing",
-    "drawing"
-  ],
-  "doc-integration": [
-    "writing",
-    "drawing"
-  ]
+  'eng-frontend-typescript': ['eng-frontend', 'structure-frontend-typescript'],
+  'eng-frontend-mobile': ['eng-frontend', 'structure-frontend-mobile'],
+  'eng-backend-typescript': ['eng-backend', 'structure-backend-typescript'],
+  'eng-backend-dotnet': ['eng-backend', 'structure-backend-dotnet'],
+  'structure-frontend-typescript': ['software-design'],
+  'structure-frontend-mobile': ['software-design'],
+  'structure-backend-typescript': ['software-design'],
+  'structure-backend-dotnet': ['software-design'],
+  'coding-style': [],
+  'coding-patterns': ['software-design'],
+  'logging-tracing': [],
+  'doc-prd': ['writing'],
+  'doc-roadmap': ['writing'],
+  'doc-brd': ['writing'],
+  'doc-adr': ['writing'],
+  'doc-test': ['writing'],
+  'doc-runbook': ['writing'],
+  'doc-hld': ['writing', 'drawing'],
+  'doc-lld': ['writing', 'drawing'],
+  'doc-api': ['writing'],
+  'doc-database': ['writing', 'drawing'],
+  'doc-integration': ['writing', 'drawing'],
 };

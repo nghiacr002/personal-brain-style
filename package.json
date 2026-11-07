@@ -19,10 +19,18 @@
     "start:stable": "node scripts/run.mjs src/cli.ts serve",
     "build:package": "npm run build:ui && node scripts/build-package.mjs",
     "prepack": "npm run build:package",
-    "test:quality": "node scripts/run.mjs --test tests/instruction-quality.test.ts"
+    "test:quality": "node scripts/run.mjs --test tests/instruction-quality.test.ts",
+    "format": "prettier --write \"**/*.{ts,mjs,js}\"",
+    "format:check": "prettier --check \"**/*.{ts,mjs,js}\"",
+    "lint": "eslint ."
   },
   "devDependencies": {
-    "typescript": "^5.8.3"
+    "@eslint/js": "10.0.1",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
+    "prettier": "3.9.10",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "8.72.1"
   },
   "bin": {
     "personal-brain": "dist/scripts/personal-brain.mjs"

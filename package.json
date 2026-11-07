@@ -1,6 +1,6 @@
 {
   "name": "personal-brain-style",
-  "version": "1.3.0-beta.4",
+  "version": "1.3.0-beta.5",
   "type": "module",
   "description": "Your working preferences, applied consistently across AI tools. Local preference studio with discovery and MCP integrations.",
   "license": "MIT",

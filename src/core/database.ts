@@ -404,7 +404,9 @@ export class BrainDB {
       return this.domains().find((d) => d.id === key)!;
     });
   }
+  isClosed = false;
   close() {
+    this.isClosed = true;
     this.db.close();
   }
   private parse(snapshot: string) {

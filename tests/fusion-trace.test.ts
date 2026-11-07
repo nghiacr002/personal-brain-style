@@ -403,6 +403,32 @@ test('Fusion CLI completes, cancels and does not recreate deleted project histor
   }
 });
 
+test(
+  'Fusion agent finishing after the database closed does not throw',
+  {skip: process.platform === 'win32' && 'POSIX shell fixture'},
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pb-fusion-closed-')),
+      db = new BrainDB(join(dir, 'db')),
+      path = process.env.PATH;
+    try {
+      const project = db.saveProject({name: 'A', description: '', assignments: []});
+      writeFileSync(
+        join(dir, 'claude'),
+        `#!/bin/sh\n/bin/cat >/dev/null\n/bin/sleep 0.2\nprintf '{"proposals":[]}\\n'\n`,
+        {mode: 0o755},
+      );
+      process.env.PATH = dir;
+      startFusion(db, {agent: 'claude', projectIds: [project.id]});
+      db.close();
+      // An uncaught "database is not open" error here fails this test in node:test.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    } finally {
+      process.env.PATH = path;
+      rmSync(dir, {recursive: true, force: true});
+    }
+  },
+);
+
 test('Fusion uses preference evidence and preserves required skill references', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-fusion-evidence-')),
     db = new BrainDB(join(dir, 'db'));

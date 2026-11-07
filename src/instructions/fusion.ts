@@ -387,6 +387,10 @@ export function startFusion(db: BrainDB, args: {agent?: unknown; projectIds?: un
       job.status = cancelled ? 'cancelled' : 'failed';
       job.error = e instanceof Error ? e.message : 'Analysis failed';
     }
+    // The agent can exit after shutdown closed the database; there is nothing left to record.
+    if (db.isClosed) {
+      return;
+    }
     if (db.db.prepare('SELECT 1 FROM meta WHERE key=?').get('fusion:' + job.id)) {
       save(db, job);
     }

@@ -134,6 +134,69 @@ test('linked folder: inspection names the project; replacing relinks and failure
   }
 });
 
+test('AI discovery shortens low-priority styles to fit the limit instead of refusing', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pb-wizard-budget-')),
+    folder = join(root, 'repo'),
+    bin = join(root, 'bin');
+  mkdirSync(folder);
+  mkdirSync(bin);
+  const db = new BrainDB(join(root, 'test.sqlite')),
+    path = process.env.PATH;
+  try {
+    writeFileSync(join(folder, 'README.md'), 'A TypeScript application.');
+    // Twelve 20k-character styles (240k) cannot all be sent within the 200k limit.
+    const styles = Array.from({length: 12}, (_, i) =>
+      db.create({
+        kind: 'preference',
+        domain: 'general',
+        title: 'Style ' + i,
+        summary: 'Summary ' + i,
+        content: String(i).repeat(20000),
+        principles: [String(i).repeat(10)],
+        tags: [],
+        priority: 90 - i,
+        status: 'active',
+        checks: [],
+        backend: null,
+      }),
+    );
+    const lowest = styles.at(-1)!;
+    const reply = JSON.stringify({
+      recommendations: [{id: lowest.id, reason: 'README.md', projectGuidelines: 'Invented rule'}],
+    });
+    writeFileSync(
+      join(bin, 'agent.cjs'),
+      `let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{if(input.length>200000)process.exit(3);console.log(${JSON.stringify(reply)});});`,
+    );
+    if (process.platform === 'win32') {
+      writeFileSync(join(bin, 'claude.cmd'), '@echo off\r\nnode "%dp0%\\agent.cjs" %*\r\n');
+    } else {
+      writeFileSync(
+        join(bin, 'claude'),
+        '#!/bin/sh\nexec ' +
+          JSON.stringify(process.execPath) +
+          ' ' +
+          JSON.stringify(join(bin, 'agent.cjs')) +
+          ' "$@"\n',
+        {mode: 0o755},
+      );
+    }
+    process.env.PATH = bin;
+    const result = await recommendProjectStyles(db, folder, 'claude');
+    assert.equal(
+      result.recommendations[0].id,
+      lowest.id,
+      'shortened styles can still be suggested',
+    );
+    assert.equal(result.recommendations[0].projectGuidelines, undefined);
+    assert.ok(result.issues.some((issue) => issue.type === 'catalog-shortened'));
+  } finally {
+    process.env.PATH = path;
+    db.close();
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
 test('AI recommendations reject invented, private, duplicate or conflicting styles', () => {
   const style = {
     id: 's',

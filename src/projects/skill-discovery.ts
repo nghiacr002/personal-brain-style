@@ -145,8 +145,8 @@ export function matchSkill(reference: string, skills: InstalledSkill[], host?: s
         s.agent === host ||
         (host === 'opencode' &&
           s.agent === 'claude' &&
-          s.file.includes('/skills/') &&
-          !s.file.includes('/plugins/')) ||
+          /[\\/]skills[\\/]/.test(s.file) &&
+          !/[\\/]plugins[\\/]/.test(s.file)) ||
         s.agent === 'shared' ||
         s.agent === 'agents',
     );

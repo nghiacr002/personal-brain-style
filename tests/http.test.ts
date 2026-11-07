@@ -39,5 +39,5 @@ test('install info reports version, build time and a command for this copy', () 
   const info = installInfo();
   assert.equal(info.mode, 'source');
   assert.match(info.version, /^\d+\.\d+\.\d+/);
-  assert.match(info.raw, /scripts\/run\.mjs .*src\/cli\.ts$/);
+  assert.match(info.raw, /scripts[\\/]run\.mjs'? .*src[\\/]cli\.ts'?$/);
 });

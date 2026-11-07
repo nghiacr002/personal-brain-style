@@ -227,7 +227,7 @@ test('AI discovery uses bounded evidence without creating projects or changing s
       `let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{if(!input.includes('A TypeScript application.'))process.exit(2);console.log(${JSON.stringify(reply)});});`,
     );
     if (process.platform === 'win32') {
-      writeFileSync(join(bin, 'claude.cmd'), '@echo off\r\nnode "%dp0%agent.cjs" %*\r\n');
+      writeFileSync(join(bin, 'claude.cmd'), '@echo off\r\nnode "%dp0%\\agent.cjs" %*\r\n');
     } else {
       writeFileSync(
         join(bin, 'claude'),

@@ -12,14 +12,15 @@ test('commands match how Personal Brain was installed', () => {
   assert.deepEqual(launcher(npx).argv, ['npx', '--yes', 'personal-brain-style']);
   assert.equal(commandLine(npx, false).cli, 'personal-brain');
   assert.equal(commandLine(npx, false).onPath, false);
-  assert.equal(
-    launcher(global).argv[1],
-    '/usr/local/lib/node_modules/personal-brain-style/dist/scripts/run.mjs',
+  assert.ok(
+    launcher(global)
+      .argv[1].replaceAll('\\', '/')
+      .endsWith('/usr/local/lib/node_modules/personal-brain-style/dist/scripts/run.mjs'),
   );
   const source = commandLine(undefined, true);
   assert.equal(source.mode, 'source');
   assert.match(source.npx, /^npx --yes personal-brain-style@\d/);
-  assert.match(source.raw, /scripts\/run\.mjs .*src\/cli\.ts$/);
+  assert.match(source.raw, /scripts[\\/]run\.mjs'? .*src[\\/]cli\.ts'?$/);
   // An npx copy registers MCP through npx, so clearing the npx cache cannot break it.
   assert.deepEqual(mcpAddArgs('codex', npx), [
     'mcp',

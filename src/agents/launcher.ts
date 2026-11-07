@@ -1,6 +1,6 @@
 import {spawnSync} from 'node:child_process';
 import {readFileSync, statSync} from 'node:fs';
-import {delimiter, dirname, join, resolve, sep} from 'node:path';
+import {delimiter, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {manageHookConfig, type Agent, type InstallOptions} from './hook-install.ts';
 import {executable} from './executable.ts';
@@ -37,7 +37,8 @@ export function onPath(name: string) {
 // How agents start Personal Brain. npx caches can be cleared, so an npx copy launches through npx;
 // global and source copies keep absolute paths, which stay valid until the copy is removed.
 export function launcher(from = here): {mode: InstallMode; argv: string[]} {
-  const parts = from.split(sep);
+  // Accept either separator so POSIX-style and Windows paths are recognised alike.
+  const parts = from.split(/[\\/]/);
   // Pin the running version: the package publishes under the beta tag, so a bare name could resolve elsewhere.
   if (parts.includes('_npx')) {
     const v = packageVersion(from);

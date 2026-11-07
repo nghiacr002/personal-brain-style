@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawn, spawnSync} from 'node:child_process';
+import {spawn, spawnSync, type ChildProcess} from 'node:child_process';
 import {mkdtempSync, rmSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
@@ -24,6 +24,18 @@ type RpcResponse = {
     isError?: boolean;
   };
 };
+// Windows keeps the database locked until the server process exits, so wait before deleting.
+async function stopServer(child: ChildProcess) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const exited = new Promise((resolve) => child.once('exit', resolve));
+  child.stdin?.end();
+  const timer = setTimeout(() => child.kill(), 3000);
+  await exited;
+  clearTimeout(timer);
+}
+
 test(
   'TC-REL-001 MCP stdio initialization, discovery, resources and prompts',
   {timeout: 12000},
@@ -101,9 +113,8 @@ test(
       const missing = await call('tools/call', {name: 'brain_get', arguments: {id: 'missing'}});
       assert.equal(missing.result.isError, true);
     } finally {
-      child.stdin.end();
-      child.kill();
-      rmSync(dir, {recursive: true, force: true});
+      await stopServer(child);
+      rmSync(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
     }
   },
 );
@@ -266,8 +277,7 @@ test('ChatGPT MCP is read-only and pinned to its selected project', {timeout: 12
       check.close();
     }
   } finally {
-    child.stdin.end();
-    child.kill();
-    rmSync(dir, {recursive: true, force: true});
+    await stopServer(child);
+    rmSync(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
   }
 });

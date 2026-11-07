@@ -1894,6 +1894,7 @@ function projectForm() {
   onboardingStep = 0;
   onboardingGaps = null;
   onboardingGapsKey = '';
+  onboardingReplaceLink = null;
   const eligible = items.filter(
     (r) =>
       ((!r.projectId || r.projectId === selectedProject?.id) &&
@@ -1942,7 +1943,52 @@ function projectForm() {
 let onboardingStep = 0,
   onboardingAbort: AbortController | null = null,
   onboardingGaps: GapScan | null = null,
-  onboardingGapsKey = '';
+  onboardingGapsKey = '',
+  onboardingReplaceLink: ExistingLink | null = null;
+type ExistingLink = {
+  projectId: string;
+  projectName: string | null;
+  file: string;
+  inFolder: boolean;
+};
+function linkChoiceHtml(existing: ExistingLink) {
+  const where = existing.inFolder ? 'This folder' : `A parent folder (${esc(existing.file)})`;
+  const replace = existing.inFolder
+    ? 'create a new project that replaces the link when you finish setup. The other project is kept.'
+    : 'create a new project for this folder only. Its own .personal-brain.json takes precedence over the parent link.';
+  const replaceButton =
+    '<button type="button" class="button ghost small" data-link-choice="replace">Create a new project here</button>';
+  if (!existing.projectName) {
+    return `<p><strong>${where} is linked to a project that isn't in this Personal Brain</strong> (ID <code>${esc(existing.projectId)}</code>), for example one set up on another computer.</p><p>Choose another folder, or ${replace}</p><div class="row-actions">${replaceButton}</div>`;
+  }
+  return `<p><strong>${where} is already linked to the project “${esc(existing.projectName)}”.</strong></p><p>Edit that project, or ${replace}</p><div class="row-actions"><button type="button" class="button ghost small" data-link-choice="edit">Edit “${esc(existing.projectName)}”</button>${replaceButton}</div>`;
+}
+function showLinkChoice(existing: ExistingLink) {
+  const panel = $('onboardingLinkChoice');
+  panel.innerHTML = linkChoiceHtml(existing);
+  panel.hidden = false;
+  panel
+    .querySelector('[data-link-choice="edit"]')
+    ?.addEventListener('click', () => void editLinkedProject(existing.projectId));
+  panel.querySelector('[data-link-choice="replace"]')?.addEventListener('click', () => {
+    onboardingReplaceLink = existing;
+    panel.hidden = true;
+    void advanceOnboarding();
+  });
+  panel.focus();
+}
+async function editLinkedProject(projectId: string) {
+  try {
+    selectedProject = await api<ProjectConfig>('/api/projects/' + encodeURIComponent(projectId));
+  } catch (e) {
+    $('projectError').textContent = e instanceof Error ? e.message : String(e);
+    return;
+  }
+  projectFormDirty = false;
+  projectEditing = true;
+  projectForm();
+  updateUrl();
+}
 const gapsStep = 3,
   reviewStep = 4;
 type Gap = {
@@ -2113,7 +2159,7 @@ function setupProjectWizard() {
   meta.dataset.wizardStep = '0';
   meta.insertAdjacentHTML(
     'beforeend',
-    '<div class="field wizard-folder"><label for="onboardingFolder">Repository folder</label><div class="folder-input"><input id="onboardingFolder" required placeholder="Absolute path on the computer running Personal Brain" aria-describedby="folderHint" /><button type="button" class="button ghost" id="browseOnboardingFolder">Browse folders</button></div><p id="folderHint" class="hint">Choose an existing folder. Finishing setup writes .personal-brain.json here so agents can detect this project.</p></div>',
+    '<div class="field wizard-folder"><label for="onboardingFolder">Repository folder</label><div class="folder-input"><input id="onboardingFolder" required placeholder="Absolute path on the computer running Personal Brain" aria-describedby="folderHint" /><button type="button" class="button ghost" id="browseOnboardingFolder">Browse folders</button></div><p id="folderHint" class="hint">Choose an existing folder. Finishing setup writes .personal-brain.json here so agents can detect this project.</p><div id="onboardingLinkChoice" class="notice" role="alert" tabindex="-1" hidden></div></div>',
   );
   const selections = form.querySelector<HTMLElement>('.style-selector')!;
   const select = document.createElement('section');
@@ -2146,6 +2192,8 @@ function setupProjectWizard() {
   $('onboardingBack').addEventListener('click', () => showOnboardingStep(onboardingStep - 1));
   bindAiDiscovery();
   $('onboardingFolder').addEventListener('input', () => {
+    onboardingReplaceLink = null;
+    $('onboardingLinkChoice').hidden = true;
     $('onboardingFindings').textContent =
       'Folder changed. Run analysis again for current recommendations.';
     document.querySelectorAll('.wizard-recommendation').forEach((el) => el.remove());
@@ -2188,7 +2236,7 @@ function showOnboardingStep(step: number, focus = true) {
       document.querySelectorAll<HTMLInputElement>('input[name="assignment"]:checked'),
     );
     $('onboardingReview').innerHTML =
-      `<dl class="wizard-review"><dt>Project</dt><dd>${esc(($('projectName') as HTMLInputElement).value)}</dd><dt>Repository</dt><dd>${esc(($('onboardingFolder') as HTMLInputElement).value)}</dd><dt>Selected styles (${chosen.length})</dt><dd>${chosen.length ? `<ul>${chosen.map((input) => `<li>${esc(items.find((r) => r.id === input.value)!.title)}</li>`).join('')}</ul>` : 'No styles selected. Agents will receive no project styles.'}</dd>${onboardingGaps?.gaps.length ? `<dt>Open gaps (${onboardingGaps.gaps.length})</dt><dd>Skipped for now. Fix them later from the project's Gaps tab.</dd>` : ''}</dl>`;
+      `<dl class="wizard-review"><dt>Project</dt><dd>${esc(($('projectName') as HTMLInputElement).value)}</dd><dt>Repository</dt><dd>${esc(($('onboardingFolder') as HTMLInputElement).value)}</dd><dt>Selected styles (${chosen.length})</dt><dd>${chosen.length ? `<ul>${chosen.map((input) => `<li>${esc(items.find((r) => r.id === input.value)!.title)}</li>`).join('')}</ul>` : 'No styles selected. Agents will receive no project styles.'}</dd>${onboardingReplaceLink ? `<dt>Repository link</dt><dd>Replaces the link to ${esc(onboardingReplaceLink.projectName ? '“' + onboardingReplaceLink.projectName + '”' : 'project ' + onboardingReplaceLink.projectId)}. That project is kept but no longer used for this folder.</dd>` : ''}${onboardingGaps?.gaps.length ? `<dt>Open gaps (${onboardingGaps.gaps.length})</dt><dd>Skipped for now. Fix them later from the project's Gaps tab.</dd>` : ''}</dl>`;
   }
   if (focus) {
     document
@@ -2212,14 +2260,21 @@ async function advanceOnboarding() {
       if (!($('projectName') as HTMLInputElement).value.trim()) {
         throw new Error('Enter a project name.');
       }
-      const result = await api<{folder: string}>('/api/onboarding/folder', {
-        method: 'POST',
-        body: JSON.stringify({folder: ($('onboardingFolder') as HTMLInputElement).value}),
-      });
+      const result = await api<{folder: string; existing?: ExistingLink | null}>(
+        '/api/onboarding/folder',
+        {
+          method: 'POST',
+          body: JSON.stringify({folder: ($('onboardingFolder') as HTMLInputElement).value}),
+        },
+      );
       if ($('projectForm') !== form) {
         return;
       }
       ($('onboardingFolder') as HTMLInputElement).value = result.folder;
+      if (result.existing && !onboardingReplaceLink) {
+        showLinkChoice(result.existing);
+        return;
+      }
     }
     showOnboardingStep(onboardingStep + 1);
   } catch (error) {
@@ -2419,7 +2474,11 @@ async function saveProject(ev: Event) {
           body: JSON.stringify(
             selectedProject
               ? {project, expectedVersion: selectedProject.version}
-              : {project, folder: ($('onboardingFolder') as HTMLInputElement).value},
+              : {
+                  project,
+                  folder: ($('onboardingFolder') as HTMLInputElement).value,
+                  replaceLink: onboardingReplaceLink !== null,
+                },
           ),
         },
       );

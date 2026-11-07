@@ -64,11 +64,15 @@ export function resolveProjectScope(
   }
   return {projectId: undefined, source: 'Global defaults', file: null};
 }
-export function linkRepository(folder: string, projectId: string) {
+// replace: overwrite this folder's link after the user chose a new project over the existing one.
+export function linkRepository(folder: string, projectId: string, replace = false) {
   checkFolder(folder);
   const file = join(folder, '.personal-brain.json');
   try {
-    writeFileSync(file, JSON.stringify({projectId}, null, 2) + '\n', {flag: 'wx', mode: 0o600});
+    writeFileSync(file, JSON.stringify({projectId}, null, 2) + '\n', {
+      flag: replace ? 'w' : 'wx',
+      mode: 0o600,
+    });
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'EEXIST') {
       throw e;

@@ -1,7 +1,16 @@
 import {spawn} from 'node:child_process';
-import {mkdtempSync, readFileSync, rmSync, statSync, realpathSync, unlinkSync} from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {dirname, join} from 'node:path';
 import {BrainDB} from '../core/database.ts';
 import {BrainError, type BrainRecord} from '../core/models.ts';
 import {executable} from '../agents/executable.ts';
@@ -10,12 +19,13 @@ import {resolveProjectScope, linkRepository} from './project-scope.ts';
 import {projectFolder} from './skill-discovery.ts';
 import {repositoryEvidence} from './repository-evidence.ts';
 
-export function onboardingFolder(folder: unknown) {
+// allowLinked: read-only callers and an explicit "replace link" choice may use a linked folder.
+export function onboardingFolder(folder: unknown, allowLinked = false) {
   if (typeof folder !== 'string' || !folder.trim()) {
     throw new BrainError('Enter the absolute repository folder path.');
   }
   const scope = resolveProjectScope(undefined, folder.trim(), '');
-  if (scope.projectId) {
+  if (scope.projectId && !allowLinked) {
     throw new BrainError(
       'This folder already belongs to a project. Open that project, or choose an unlinked folder.',
       'CONFLICT',
@@ -24,20 +34,55 @@ export function onboardingFolder(folder: unknown) {
   }
   return realpathSync(folder.trim());
 }
-export function createLinkedProject(db: BrainDB, project: unknown, folder: unknown) {
-  const root = onboardingFolder(folder);
+// Reports an existing link so the wizard can offer "edit existing" or "replace with a new project".
+export function inspectOnboardingFolder(db: BrainDB, folder: unknown) {
+  const root = onboardingFolder(folder, true);
+  const scope = resolveProjectScope(undefined, root, '');
+  if (!scope.projectId || !scope.file) {
+    return {folder: root, existing: null};
+  }
+  let projectName: string | null = null;
+  try {
+    projectName = db.project(scope.projectId).name;
+  } catch {
+    /* Linked to a project this Personal Brain does not have (for example another computer). */
+  }
+  return {
+    folder: root,
+    existing: {
+      projectId: scope.projectId,
+      projectName,
+      file: scope.file,
+      inFolder: dirname(scope.file) === root,
+    },
+  };
+}
+export function createLinkedProject(
+  db: BrainDB,
+  project: unknown,
+  folder: unknown,
+  replaceLink = false,
+) {
+  const root = onboardingFolder(folder, replaceLink);
+  const linkFile = join(root, '.personal-brain.json');
+  const previousLink = existsSync(linkFile) ? readFileSync(linkFile) : null;
   let link: {file: string; projectId: string} | undefined;
   try {
     return db.transaction(() => {
       const saved = db.saveProject(project);
       db.scopedRecords(saved.id); // Validate dependency closure before writing the repository link.
-      link = linkRepository(root, saved.id);
+      link = linkRepository(root, saved.id, replaceLink);
       db.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('repository:' + saved.id, root);
       return saved;
     });
   } catch (error) {
     if (link && JSON.parse(readFileSync(link.file, 'utf8')).projectId === link.projectId) {
-      unlinkSync(link.file);
+      // Put back the link the user replaced, or remove the one this attempt created.
+      if (previousLink) {
+        writeFileSync(link.file, previousLink, {mode: 0o600});
+      } else {
+        unlinkSync(link.file);
+      }
     }
     throw error;
   }
@@ -118,7 +163,7 @@ export async function recommendProjectStyles(
       409,
     );
   }
-  const root = projectId ? projectFolder(db, projectId) : onboardingFolder(folder),
+  const root = projectId ? projectFolder(db, projectId) : onboardingFolder(folder, true),
     source = repositoryEvidence(root);
   if (!source.evidence.length) {
     throw new BrainError(

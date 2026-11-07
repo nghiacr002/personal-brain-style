@@ -14,6 +14,7 @@ import {join} from 'node:path';
 import {BrainDB} from '../src/core/database.ts';
 import {
   createLinkedProject,
+  inspectOnboardingFolder,
   onboardingFolder,
   validateRecommendations,
   recommendProjectStyles,
@@ -71,6 +72,62 @@ test('wizard creates project and repository link together; failed and conflictin
       /already belongs/,
     );
     assert.equal(db.projects().length, 1);
+  } finally {
+    db.close();
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('linked folder: inspection names the project; replacing relinks and failures restore the old link', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pb-wizard-relink-')),
+    folder = join(root, 'repo'),
+    nested = join(folder, 'packages', 'app');
+  mkdirSync(nested, {recursive: true});
+  const db = new BrainDB(join(root, 'test.sqlite'));
+  const linkFile = join(folder, '.personal-brain.json');
+  const linkedId = () => JSON.parse(readFileSync(linkFile, 'utf8')).projectId;
+  try {
+    assert.equal(inspectOnboardingFolder(db, folder).existing, null);
+    const first = createLinkedProject(
+      db,
+      {name: 'First', description: '', assignments: []},
+      folder,
+    );
+    const inspected = inspectOnboardingFolder(db, folder).existing!;
+    assert.equal(inspected.projectId, first.id);
+    assert.equal(inspected.projectName, 'First');
+    assert.equal(inspected.inFolder, true);
+    assert.equal(inspectOnboardingFolder(db, nested).existing!.inFolder, false);
+
+    // Without an explicit choice the link is protected.
+    assert.throws(
+      () => createLinkedProject(db, {name: 'Second', description: '', assignments: []}, folder),
+      /already belongs/,
+    );
+    db.db.exec(
+      "CREATE TRIGGER fail_repository BEFORE INSERT ON meta WHEN NEW.key LIKE 'repository:%' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END",
+    );
+    assert.throws(
+      () =>
+        createLinkedProject(db, {name: 'Second', description: '', assignments: []}, folder, true),
+      /fixture failure/,
+    );
+    assert.equal(linkedId(), first.id, 'a failed replacement restores the previous link');
+    db.db.exec('DROP TRIGGER fail_repository');
+
+    const second = createLinkedProject(
+      db,
+      {name: 'Second', description: '', assignments: []},
+      folder,
+      true,
+    );
+    assert.equal(linkedId(), second.id);
+    assert.equal(db.projects().length, 2, 'the replaced project is kept');
+
+    writeFileSync(linkFile, JSON.stringify({projectId: 'from-another-computer'}));
+    const unknown = inspectOnboardingFolder(db, folder).existing!;
+    assert.equal(unknown.projectName, null);
+    assert.equal(unknown.projectId, 'from-another-computer');
   } finally {
     db.close();
     rmSync(root, {recursive: true, force: true});
@@ -186,7 +243,23 @@ test('wizard HTTP routes validate folders and create scoped projects without soc
     });
     assert.equal(result.status, 201);
     assert.equal(db.project(result.data.id).name, 'HTTP wizard');
-    assert.equal((await request('/api/onboarding/folder', {folder})).status, 409);
+    const linked = await request<{existing: {projectId: string; projectName: string}}>(
+      '/api/onboarding/folder',
+      {folder},
+    );
+    assert.equal(linked.status, 200);
+    assert.equal(linked.data.existing.projectName, 'HTTP wizard');
+    const duplicate = await request('/api/onboarding/create', {
+      folder,
+      project: {name: 'Second', description: '', assignments: []},
+    });
+    assert.equal(duplicate.status, 409);
+    const replaced = await request<{id: string}>('/api/onboarding/create', {
+      folder,
+      replaceLink: true,
+      project: {name: 'Second', description: '', assignments: []},
+    });
+    assert.equal(replaced.status, 201);
   } finally {
     server.close();
     db.close();

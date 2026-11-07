@@ -33,6 +33,7 @@ import {fileURLToPath} from 'node:url';
 import {resolveProjectScope, linkRepository} from '../projects/project-scope.ts';
 import {
   onboardingFolder,
+  inspectOnboardingFolder,
   createLinkedProject,
   recommendProjectStyles,
 } from '../projects/onboarding.ts';
@@ -225,14 +226,18 @@ export function createBrainHttpServer(db: BrainDB) {
           return json(res, 201, db.saveProject(await body(req)));
         }
         if (path === '/api/onboarding/folder' && method === 'POST') {
-          return json(res, 200, {folder: onboardingFolder((await body(req)).folder)});
+          return json(res, 200, inspectOnboardingFolder(db, (await body(req)).folder));
         }
         if (path === '/api/folders/select' && method === 'POST') {
           return json(res, 200, await selectFolder());
         }
         if (path === '/api/onboarding/create' && method === 'POST') {
           const x = await body(req);
-          return json(res, 201, createLinkedProject(db, x.project, x.folder));
+          return json(
+            res,
+            201,
+            createLinkedProject(db, x.project, x.folder, x.replaceLink === true),
+          );
         }
         if (path === '/api/onboarding/analyze' && method === 'POST') {
           const x = await body(req),
@@ -312,7 +317,7 @@ export function createBrainHttpServer(db: BrainDB) {
         }
         if (path === '/api/gaps/scan' && method === 'POST') {
           const x = await body(req);
-          const folder = x.folder ? onboardingFolder(x.folder) : undefined;
+          const folder = x.folder ? onboardingFolder(x.folder, true) : undefined;
           return json(res, 200, scanGaps(db, x.recordIds, folder));
         }
         const repositoryMatch = path.match(/^\/api\/projects\/([a-f0-9-]{36})\/repository$/);

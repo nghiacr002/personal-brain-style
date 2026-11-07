@@ -176,6 +176,51 @@ test('wizard advances only after folder validation; back preserves fields and re
   assert.equal(element('submit').textContent, 'Create project');
 });
 
+test('linked folder prompts to edit the existing project or replace the link', async () => {
+  const {context, element, panels, labels} = setup();
+  for (let n = 0; n < 5; n++) {
+    panels.push({dataset: {wizardStep: String(n)}, hidden: false});
+    labels.push({dataset: {wizardLabel: String(n)}, setAttribute() {}, removeAttribute() {}});
+  }
+  element('projectName').value = 'New';
+  element('projectDescription').value = 'description';
+  element('onboardingFolder').value = '/repo';
+  element('onboardingLinkChoice').hidden = true;
+  vm.runInContext('showOnboardingStep(0)', context);
+  const existing = {
+    projectId: 'p1',
+    projectName: '<i>Old</i>',
+    file: '/repo/.personal-brain.json',
+    inFolder: true,
+  };
+  context.fetch = async () => ({ok: true, json: async () => ({folder: '/repo', existing})});
+  await vm.runInContext('advanceOnboarding()', context);
+  assert.equal(vm.runInContext('onboardingStep', context), 0, 'stays on the folder step');
+  const panel = element('onboardingLinkChoice');
+  assert.equal(panel.hidden, false);
+  assert.equal(panel.focused, true);
+  assert.match(panel.innerHTML, /&lt;i&gt;Old&lt;\/i&gt;/);
+  assert.match(panel.innerHTML, /data-link-choice="edit"/);
+  assert.match(panel.innerHTML, /data-link-choice="replace"/);
+
+  context.fetch = async () => ({
+    ok: true,
+    json: async () => ({folder: '/repo', existing: {...existing, projectName: null}}),
+  });
+  await vm.runInContext('advanceOnboarding()', context);
+  assert.doesNotMatch(
+    panel.innerHTML,
+    /data-link-choice="edit"/,
+    'unknown projects cannot be edited',
+  );
+
+  vm.runInContext(`onboardingReplaceLink = ${JSON.stringify(existing)}`, context);
+  await vm.runInContext('advanceOnboarding()', context);
+  assert.equal(vm.runInContext('onboardingStep', context), 1, 'replace continues setup');
+  vm.runInContext('showOnboardingStep(4)', context);
+  assert.match(element('onboardingReview').innerHTML, /Replaces the link to “&lt;i&gt;Old/);
+});
+
 for (const [inputId, buttonId, errorId] of [
   ['onboardingFolder', 'browseOnboardingFolder', 'projectError'],
   ['repositoryFolder', 'browseRepositoryFolder', 'repositoryResult'],

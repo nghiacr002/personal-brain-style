@@ -418,7 +418,18 @@ test(
         {mode: 0o755},
       );
       process.env.PATH = dir;
-      startFusion(db, {agent: 'claude', projectIds: [project.id]});
+      // An earlier test's agent may still be exiting; only one analysis runs at a time.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          startFusion(db, {agent: 'claude', projectIds: [project.id]});
+          break;
+        } catch (error) {
+          if (attempt > 100 || !/Another Fusion analysis is running/.test(String(error))) {
+            throw error;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      }
       db.close();
       // An uncaught "database is not open" error here fails this test in node:test.
       await new Promise((resolve) => setTimeout(resolve, 600));

@@ -529,6 +529,99 @@ test('project configuration saves assignments and displays effective source', as
   assert.doesNotMatch(element('main').innerHTML, /<strong>Sky UI/);
 });
 
+test('new project discovery selects suitable styles without replacing choices or overrides', async () => {
+  const elements = new Map();
+  const element = (id) => {
+    if (!elements.has(id)) {
+      elements.set(id, {
+        value: '',
+        textContent: '',
+        innerHTML: '',
+        addEventListener() {},
+      });
+    }
+    return elements.get(id);
+  };
+  const rows = ['existing', 'suitable', 'conflicting', 'unrelated'].map((id) => {
+    const input = {value: id, checked: id === 'existing', disabled: false};
+    const field = {value: id === 'existing' ? 'Keep my customization' : ''};
+    return {
+      dataset: {assignmentRow: id, slot: id === 'conflicting' ? 'suitable' : id},
+      classList: {toggle() {}},
+      input,
+      field,
+      querySelector(selector) {
+        if (selector === 'input[name="assignment"]') {
+          return input;
+        }
+        if (selector === 'textarea') {
+          return field;
+        }
+        return {after() {}};
+      },
+    };
+  });
+  element('projectForm').querySelectorAll = (selector) =>
+    selector === '[data-assignment-row]' ? rows : [];
+  let recommendations = ['existing', 'suitable', 'conflicting', 'missing'].map((id) => ({
+    id,
+    reason: 'Repository match',
+    projectGuidelines: 'AI draft must not replace customizations',
+  }));
+  let fail = false;
+  const context = vm.createContext({
+    document: {
+      getElementById: element,
+      addEventListener() {},
+      querySelectorAll: (selector) => (selector === '[data-assignment-row]' ? rows : []),
+      createElement: () => ({querySelector: () => ({addEventListener() {}})}),
+    },
+    AbortController,
+    setTimeout,
+    clearTimeout,
+    console,
+    fetch: async () => {
+      if (fail) {
+        throw new Error('Analysis unavailable');
+      }
+      return {
+        ok: true,
+        json: async () => ({recommendations, files: [], issues: [], limited: false}),
+      };
+    },
+  });
+  vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
+  vm.runInContext('filterProjectStyles=()=>{};renderConfiguration=()=>{}', context);
+  await vm.runInContext('analyzeOnboarding()', context);
+  assert.deepEqual(
+    rows.map((row) => row.input.checked),
+    [true, true, false, false],
+  );
+  assert.equal(rows[0].field.value, 'Keep my customization');
+  assert.equal(rows[1].field.value, '');
+  assert.match(element('onboardingFindings').innerHTML, /1 suitable styles automatically added/);
+  assert.equal(vm.runInContext('projectFormDirty', context), true);
+
+  // Editing an existing project still requires explicit acceptance.
+  rows[1].input.checked = false;
+  await vm.runInContext('selectedProject={id:"existing-project"};analyzeOnboarding()', context);
+  assert.equal(rows[1].input.checked, false);
+  assert.match(element('onboardingFindings').innerHTML, /Use suggestion/);
+
+  recommendations = [];
+  await vm.runInContext('selectedProject=null;analyzeOnboarding()', context);
+  assert.deepEqual(
+    rows.map((row) => row.input.checked),
+    [true, false, false, false],
+  );
+  assert.match(element('onboardingFindings').innerHTML, /0 suitable styles automatically added/);
+  fail = true;
+  await vm.runInContext('analyzeOnboarding()', context);
+  assert.match(element('onboardingFindings').textContent, /Analysis unavailable/);
+  assert.equal(rows[0].input.checked, true);
+  assert.equal(rows[0].field.value, 'Keep my customization');
+});
+
 test('dependency map includes transitive context, labels arrows, escapes titles and opens dependency editing', async () => {
   const elements = new Map();
   const element = (id) => {
@@ -1453,6 +1546,28 @@ test('graph viewport zoom, fit and pan change only the viewBox', () => {
   assert.equal(svg.view, '0 0 800 800');
 });
 
+test('learning inbox word diff marks insertions, deletions and dropped obligation words', () => {
+  const context = vm.createContext({
+    document: {
+      getElementById: () => ({addEventListener() {}}),
+      addEventListener() {},
+      querySelectorAll: () => [],
+    },
+    setTimeout,
+    clearTimeout,
+    console,
+  });
+  vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
+  const html = vm.runInContext(
+    'wordDiff("Use tabs. Never compress <code>.", "Use spaces. Compress <code>.")',
+    context,
+  );
+  assert.match(html, /<del>tabs\.<\/del>/);
+  assert.match(html, /<ins>spaces\.<\/ins>/);
+  assert.match(html, /<del class="lost">Never<\/del>/);
+  assert.ok(!html.includes('<code>'), 'content is escaped');
+});
+
 test('navigation keeps setup visible and groups trace explorer, skill discovery, style discovery and startup index under diagnostics', () => {
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const advanced = html.match(/<details id="advancedNav"[\s\S]*?<\/details>/)?.[0];
@@ -1460,13 +1575,27 @@ test('navigation keeps setup visible and groups trace explorer, skill discovery,
   for (const view of ['trace', 'skills', 'discover', 'baseline']) {
     assert.ok(advanced.includes(`data-view="${view}"`));
   }
-  for (const view of ['review_simulator', 'tool', 'feedback', 'history']) {
+  for (const view of ['review_simulator', 'tool', 'history']) {
     assert.ok(
       !html.includes(`class="nav-item" data-view="${view}"`),
       `${view} is hidden from navigation`,
     );
   }
   assert.ok(!advanced.includes('data-view="activation"'));
+  assert.ok(!advanced.includes('data-view="feedback"'), 'Learning is a workspace page');
+  assert.match(html, /data-view="feedback"[^<]*<svg[^]*?<\/svg>Learning<\/button>/);
+  assert.deepEqual(
+    [...html.matchAll(/<nav aria-label="Workspace">([^]*?)<\/nav>/g)][0][1].match(
+      /data-view="[a-z_]+"/g,
+    ),
+    [
+      'data-view="overview"',
+      'data-view="projects"',
+      'data-view="preference"',
+      'data-view="feedback"',
+    ],
+    'one Learning page in the workspace',
+  );
   assert.match(html, /Agent setup/);
 });
 
@@ -1695,153 +1824,6 @@ test('every info icon has its own help entry titled like the label beside it', (
   assert.equal(vm.runInContext('helpTitle("trace_startup")', context), 'Startup injections');
 });
 
-test('Fusion polling preserves the form while running and stops after leaving the page', async () => {
-  const elements = new Map(),
-    timers = [];
-  let status = 'running',
-    requests = 0;
-  const element = (id) => {
-    if (!elements.has(id)) {
-      elements.set(id, {
-        innerHTML: '',
-        textContent: '',
-        addEventListener() {},
-        querySelectorAll() {
-          return [];
-        },
-      });
-    }
-    return elements.get(id);
-  };
-  const context = vm.createContext({
-    document: {
-      getElementById: element,
-      addEventListener() {},
-      querySelectorAll() {
-        return [];
-      },
-    },
-    setTimeout: (fn) => {
-      timers.push(fn);
-      return timers.length;
-    },
-    clearTimeout() {},
-    console,
-    fetch: async (url) => {
-      requests++;
-      return {
-        ok: true,
-        json: async () => {
-          if (url === '/api/projects') {
-            return [{id: 'p', name: 'Project'}];
-          }
-          if (url === '/api/fusion') {
-            return [{id: 'run', agent: 'codex', status, createdAt: '2026-11-04'}];
-          }
-          return {id: 'run', status, proposals: []};
-        },
-      };
-    },
-  });
-  vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(
-    'updateUrl=()=>{};active="fusion";fusionCurrent="run";fusionProjects=[];fusionAgent="claude";',
-    context,
-  );
-  await vm.runInContext('fusionScreen()', context);
-  assert.match(element('main').innerHTML, /Comparing styles/);
-  assert.match(element('main').innerHTML, /aria-current="step"><span>2<\/span>/);
-  const html = element('main').innerHTML;
-  await timers.shift()();
-  assert.equal(element('main').innerHTML, html);
-  status = 'ready';
-  await timers.shift()();
-  assert.match(element('main').innerHTML, /No changes proposed/);
-  status = 'running';
-  await vm.runInContext('fusionScreen()', context);
-  vm.runInContext('active="projects"', context);
-  const before = requests;
-  await timers.shift()();
-  assert.equal(requests, before);
-});
-
-test('Fusion renders history as rows and shows one proposal with grouped decision actions', async () => {
-  const elements = new Map();
-  const element = (id) => {
-    if (!elements.has(id)) {
-      elements.set(id, {
-        innerHTML: '',
-        textContent: '',
-        addEventListener() {},
-        querySelectorAll() {
-          return [];
-        },
-      });
-    }
-    return elements.get(id);
-  };
-  const proposal = (id) => ({
-    targetId: id,
-    title: 'Proposal ' + id,
-    rationale: 'Reusable method',
-    content: 'New',
-    conflicts: [],
-    sourceIds: [],
-    principles: [],
-    examples: [],
-    externalSkills: [],
-    reviewCriteria: [],
-  });
-  const job = {
-    status: 'ready',
-    proposals: [proposal('a'), proposal('b')],
-    targets: [
-      {id: 'a', version: 1, content: 'Old'},
-      {id: 'b', version: 1, content: 'Old'},
-    ],
-    sources: [],
-    applied: [],
-    rejected: [],
-  };
-  const context = vm.createContext({
-    document: {
-      getElementById: element,
-      addEventListener() {},
-      querySelectorAll() {
-        return [];
-      },
-    },
-    setTimeout,
-    clearTimeout,
-    console,
-    fetch: async (url) => ({
-      ok: true,
-      json: async () => {
-        if (url === '/api/projects') {
-          return [];
-        }
-        if (url === '/api/fusion') {
-          return [{id: 'run', agent: 'codex', status: 'ready', createdAt: '2026-11-04'}];
-        }
-        return job;
-      },
-    }),
-  });
-  vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(
-    'updateUrl=()=>{};active="fusion";fusionCurrent="run";fusionSelected="b"',
-    context,
-  );
-  await vm.runInContext('fusionScreen()', context);
-  const html = element('main').innerHTML;
-  assert.match(html, /Recent analyses/);
-  assert.match(html, /2 proposals · 2 to review/);
-  assert.match(html, /aria-label="Proposals"/);
-  assert.match(html, /data-fusion-apply="b"/);
-  assert.doesNotMatch(html, /data-fusion-apply="a"/);
-  assert.match(html, /<footer class="fusion-decision">/);
-});
-
 test('Library drops cached private records before rendering counts, search or dependency map', () => {
   const elements = new Map();
   const element = (id) => {
@@ -2065,7 +2047,24 @@ test('skill diagnostics groups shared requirements, filters locally and rescans 
   assert.doesNotMatch(markup, /id="discoveryDialog"/);
 });
 
-test('Fusion start screen shows project cards and names how many projects the primary action analyzes', async () => {
+const inboxHealth = {
+  mode: 'suggest',
+  retentionDays: 90,
+  pausedProjects: [],
+  suppressions: 0,
+  autoConsolidate: false,
+  integrations: [],
+  recentAutomatic: [],
+  pending: 0,
+  accepted: 0,
+  dismissed: 0,
+  reviewed: 0,
+  applied: 0,
+  reverted: 0,
+  averageReviewHours: null,
+  oldestPendingDays: null,
+};
+function inboxContext(fetchJson, timers) {
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) {
@@ -2073,6 +2072,9 @@ test('Fusion start screen shows project cards and names how many projects the pr
         innerHTML: '',
         textContent: '',
         addEventListener() {},
+        querySelector() {
+          return null;
+        },
         querySelectorAll() {
           return [];
         },
@@ -2080,33 +2082,175 @@ test('Fusion start screen shows project cards and names how many projects the pr
     }
     return elements.get(id);
   };
-  const projects = [
-    {id: 'a', name: 'Alpha', assignments: [{recordId: 'x'}, {recordId: 'y'}]},
-    {id: 'b', name: 'Beta', assignments: [{recordId: 'z'}]},
-  ];
+  let requests = 0;
   const context = vm.createContext({
-    document: {
-      getElementById: element,
-      addEventListener() {},
-      querySelectorAll() {
-        return [];
-      },
-    },
-    setTimeout,
-    clearTimeout,
+    document: {getElementById: element, addEventListener() {}, querySelectorAll: () => []},
+    setTimeout: timers
+      ? (fn) => {
+          timers.push(fn);
+          return timers.length;
+        }
+      : () => 0, // the Learning page refreshes itself on a timer; tests drive timers explicitly
+    clearTimeout() {},
     console,
-    fetch: async (url) => ({ok: true, json: async () => (url === '/api/projects' ? projects : [])}),
+    URLSearchParams,
+    fetch: async (url) => {
+      requests++;
+      return {ok: true, json: async () => fetchJson(url)};
+    },
   });
   vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
-  vm.runInContext('updateUrl=()=>{};active="fusion";fusionCurrent="";fusionProjects=null', context);
-  await vm.runInContext('fusionScreen()', context);
+  vm.runInContext('updateUrl=()=>{};active="feedback";', context);
+  return {context, element, requests: () => requests};
+}
+
+test('Learning shows automatic learning state, polls a running comparison and stops after leaving', async () => {
+  const timers = [];
+  let status = 'running';
+  const run = () => ({id: 'run', agent: 'codex', status, createdAt: '2026-11-04', proposals: 2});
+  const {context, element, requests} = inboxContext((url) => {
+    if (url.startsWith('/api/feedback')) {
+      return [];
+    }
+    if (url === '/api/learning') {
+      return {
+        ...inboxHealth,
+        autoProjects: true,
+        autoProjectsAsked: true,
+        agent: '',
+        projects: {
+          state: status === 'running' ? 'running' : 'watching',
+          agent: 'codex',
+          customizedProjects: 1,
+          customizedStyles: 3,
+          running: status === 'running' ? run() : null,
+          last: status === 'running' ? null : run(),
+          error: null,
+          intervalMinutes: 2,
+          lastCheck:
+            status === 'running'
+              ? null
+              : {at: new Date(Date.now() - 61000).toISOString(), result: 'unchanged'},
+        },
+      };
+    }
+    if (url === '/api/projects') {
+      return [{id: 'p', name: 'Alpha', assignments: [{recordId: 'x'}]}];
+    }
+    return [run()];
+  }, timers);
+  await vm.runInContext('feedback()', context);
   let html = element('main').innerHTML;
-  assert.match(html, /Analyze 2 projects/);
-  assert.match(html, /3 selected styles will be compared/);
-  assert.match(html, /class="fusion-project is-chosen"/);
-  assert.match(html, /aria-current="step"><span>1<\/span>/);
-  vm.runInContext('fusionProjects=[]', context);
-  await vm.runInContext('fusionScreen()', context);
+  assert.match(html, /Automatic learning <span class="learn-badge running">Comparing now/);
+  assert.match(html, /comparing 1 project\(s\) with Codex/);
+  assert.match(html, /data-action="learning-stop" data-run="run"/);
+  assert.match(html, /<dt>Next check<\/dt><dd>—/);
+  assert.doesNotMatch(html, /Analyze projects/, 'no manual analysis step');
+  status = 'ready';
+  await timers.shift()();
   html = element('main').innerHTML;
-  assert.match(html, /type="submit" disabled>Choose a project/);
+  assert.match(html, /learn-badge on">On/);
+  assert.match(html, /watching 1 project\(s\) with 3 customized style\(s\)/);
+  assert.match(
+    html,
+    /<dt>Last check<\/dt><dd>\d+ min ago — no project styles changed since the last comparison/,
+  );
+  assert.match(html, /<dt>Next check<\/dt><dd>in about 1 min/);
+  assert.match(html, /<dt>Last comparison<\/dt><dd>[^<]*Codex · 0 project\(s\) — 2 proposal\(s\)/);
+  assert.match(html, /data-action="learning-check"/);
+  assert.match(html, /Waiting \(0\)/);
+  assert.match(html, /Nothing needs your OK/);
+  status = 'running';
+  await vm.runInContext('feedback()', context);
+  vm.runInContext('active="projects"', context);
+  const before = requests();
+  await timers.shift()();
+  assert.equal(requests(), before, 'polling stops after leaving Learning');
+});
+
+test('Project-analysis items show their source and evidence, and conflicts block Apply', () => {
+  const {context} = inboxContext(() => []);
+  const item = (conflicts) =>
+    JSON.stringify({
+      id: 'f1',
+      recordId: 'r1',
+      rating: 'correction',
+      note: 'Three projects agree',
+      createdAt: '2026-11-04',
+      projectId: null,
+      source: 'projects',
+      proposedContent: 'New rule',
+      baseVersion: 1,
+      diagnosis: 'revision',
+      status: 'pending',
+      decidedAt: null,
+      appliedVersion: null,
+      action: 'revise',
+      proposal: null,
+      evidenceIds: [],
+      target: {title: 'Code', content: 'Old rule', version: 1, status: 'active', shared: true},
+      stale: false,
+      lostObligations: [],
+      fixtureFailures: [],
+      evidence: {independent: 0, counter: 0, competing: 0},
+      analysis: {
+        agent: 'codex',
+        conflicts,
+        sources: [{title: 'Code', version: 2, project: 'Alpha'}],
+        fields: {summary: 'Better', principles: ['Simple']},
+      },
+    });
+  const clean = vm.runInContext(`inboxItem(${item([])}, () => 'P')`, context);
+  assert.match(clean, /From your projects/);
+  assert.match(clean, /Learned from 1 source style/);
+  assert.match(clean, /Code · v2 · Alpha/);
+  assert.match(clean, /Also updates summary/);
+  assert.match(clean, /data-feedback-decision="accept"/);
+  assert.ok(
+    !clean.includes('data-feedback-scope="project"'),
+    'no project-only for shared updates from project analysis',
+  );
+  const blocked = vm.runInContext(`inboxItem(${item(['Tabs vs spaces'])}, () => 'P')`, context);
+  assert.match(blocked, /Conflicting guidance/);
+  assert.ok(!blocked.includes('data-feedback-decision="accept"'));
+});
+
+test('Learning asks once whether to compare projects automatically, and stays off until answered', async () => {
+  let asked = false;
+  const {context, element} = inboxContext((url) => {
+    if (url === '/api/learning') {
+      return {
+        ...inboxHealth,
+        autoProjects: false,
+        autoProjectsAsked: asked,
+        agent: '',
+        projects: {
+          state: 'off',
+          agent: null,
+          customizedProjects: 0,
+          customizedStyles: 0,
+          running: null,
+          last: null,
+          error: null,
+          intervalMinutes: 2,
+          lastCheck: null,
+        },
+      };
+    }
+    return [];
+  });
+  await vm.runInContext('feedback()', context);
+  let html = element('main').innerHTML;
+  assert.match(html, /Learn from your projects automatically\?/);
+  assert.match(html, /data-learn-auto-answer="on"/);
+  assert.match(html, /data-learn-auto-answer="off"/);
+  assert.match(html, /uses your agent account/);
+  asked = true;
+  await vm.runInContext('feedback()', context);
+  html = element('main').innerHTML;
+  assert.doesNotMatch(html, /data-learn-auto-answer/, 'not asked again once answered');
+  assert.match(html, /Compare my projects automatically/);
+  assert.match(html, /learn-badge off">Off/);
+  assert.match(html, /data-action="learning-toggle" data-on="1">Turn on/);
+  assert.match(html, /<dt>Last comparison<\/dt><dd>none yet/);
 });

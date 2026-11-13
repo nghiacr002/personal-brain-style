@@ -17,6 +17,8 @@ The timeline updates live every 5 seconds. Use the **Live updates** switch to tu
 | MCP tool | `mcp.brain_get` | The client requested full contents of a specific record |
 | MCP tool | `mcp.brain_review` | The client submitted text for automated review checks |
 | MCP tool | `mcp.brain_feedback` | The client recorded feedback |
+| MCP tool | `mcp.brain_remember` / `mcp.brain_forget` | The client relayed a remember/forget request |
+| MCP tool | `mcp.brain_explain` | The client asked why a style applies or is missing |
 | MCP tool | `mcp.brain_call_tool` | The client attempted a configured external tool invocation |
 
 All MCP calls are recorded with success/error, time, agent hint, and available record IDs and versions. The command-line arguments used to register MCP (`mcp claude`, `mcp codex`, `mcp opencode`, `mcp chatgpt`) identify the agent; otherwise the MCP client name is used, and unrecognized clients appear as `unknown`. The OpenCode plugin runs the same session and prompt hooks, recorded under agent `opencode`. The registration hint identifies the originating connection, **not a security boundary**.

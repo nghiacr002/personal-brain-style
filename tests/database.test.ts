@@ -90,6 +90,56 @@ test('feedback records corrections without changing active rules', () =>
     assert.equal(db.get(r.id)?.version, 1);
     assert.equal(db.listFeedback().length, 1);
   }));
+test('learning inbox applies proposals only on user decision and against the base version', () =>
+  withDb((db) => {
+    const r = db.create(fixture());
+    const plain = db.addFeedback({recordId: r.id, rating: 'correction', note: 'Ignored routing'});
+    assert.equal(plain.diagnosis, 'execution');
+    const p = db.addFeedback({
+      recordId: r.id,
+      rating: 'correction',
+      note: 'Avoid crossings',
+      source: 'agent',
+      sourceEventId: 'evt-1',
+      proposedContent: 'Prefer orthogonal routing without crossings',
+    });
+    assert.equal(p.diagnosis, 'revision');
+    // Replayed event counts once.
+    assert.equal(
+      db.addFeedback({rating: 'correction', note: 'again', sourceEventId: 'evt-1'}).id,
+      p.id,
+    );
+    assert.equal(db.get(r.id)?.version, 1);
+    const done = db.decideFeedback(p.id, 'accept');
+    assert.equal(done.appliedVersion, 2);
+    assert.equal(db.get(r.id)?.content, 'Prefer orthogonal routing without crossings');
+    assert.throws(() => db.decideFeedback(p.id, 'dismiss'), /already decided/);
+    // A proposal made against an older version cannot overwrite a newer edit.
+    const stale = db.addFeedback({
+      recordId: r.id,
+      rating: 'correction',
+      note: 'x',
+      proposedContent: 'old',
+    });
+    db.update(r.id, {content: 'Newer user edit'}, 2);
+    assert.throws(() => db.decideFeedback(stale.id, 'accept'), /Version conflict/);
+    assert.equal(db.listFeedback().find((f) => f.id === stale.id)?.status, 'pending');
+    assert.equal(db.decideFeedback(stale.id, 'dismiss').status, 'dismissed');
+    assert.equal(db.get(r.id)?.content, 'Newer user edit');
+  }));
+test('learning inbox keeps project-private records out of other scopes', () =>
+  withDb((db) => {
+    const a = db.saveProject({name: 'Alpha', description: '', assignments: []});
+    const b = db.saveProject({name: 'Beta', description: '', assignments: []});
+    const priv = db.create({...fixture(), keyId: 'alpha-only', projectId: a.id});
+    assert.throws(
+      () => db.addFeedback({recordId: priv.id, projectId: b.id, rating: 'correction', note: 'x'}),
+      /not found/,
+    );
+    db.addFeedback({recordId: priv.id, projectId: a.id, rating: 'correction', note: 'ok'});
+    assert.equal(db.listFeedback(a.id).length, 1);
+    assert.equal(db.listFeedback(b.id).length, 0);
+  }));
 test('review checks produce pass/fail and manual counts', () =>
   withDb((db) => {
     seed(db);

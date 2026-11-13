@@ -153,11 +153,13 @@ export function previewLibraryImport(db: BrainDB, value: unknown) {
     const conflict =
       existing &&
       (existing.kind !== r.kind || existing.domain !== r.domain || existing.status !== r.status);
-    let action: 'create' | 'keep' | 'conflict' = 'create';
+    let action: 'create' | 'keep' | 'conflict' | 'forgotten' = 'create';
     if (conflict) {
       action = 'conflict';
     } else if (existing) {
       action = 'keep';
+    } else if (db.hasDeletionReceipt(r.keyId!)) {
+      action = 'forgotten';
     }
     return {
       id: r.id,
@@ -201,6 +203,11 @@ export function importLibrary(db: BrainDB, value: unknown, ids: unknown, fingerp
           'Existing key has a different type, capability or status: ' + row.keyId,
         );
       }
+      if (plan.action === 'forgotten') {
+        throw new BrainError(
+          'You deleted this item before; it is not restored by import: ' + row.title,
+        );
+      }
       if (plan.action === 'keep') {
         mapped.set(id, plan.existingId!);
         kept++;
@@ -215,7 +222,9 @@ export function importLibrary(db: BrainDB, value: unknown, ids: unknown, fingerp
           db.saveDomain(d.name, made.id, made.name, d.combinable);
         }
       }
-      const record = db.create({...row, requiredIds, supportingLinks});
+      // Remembered (inferred) records arrive as drafts so import never silently activates them.
+      const status = row.tags.includes('remembered') ? 'draft' : row.status;
+      const record = db.create({...row, status, requiredIds, supportingLinks});
       mapped.set(id, record.id);
       created++;
       return record.id;

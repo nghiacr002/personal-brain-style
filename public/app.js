@@ -3,7 +3,6 @@ const $ = (id) => document.getElementById(id);
 const main = $('main'), editor = $('editor'), revisions = $('revisions');
 const labels = {
     skills: 'Skill discovery',
-    fusion: 'Fusion',
     domains: 'Capabilities',
     projects: 'Projects',
     baseline: 'Startup index',
@@ -15,7 +14,7 @@ const labels = {
     review: 'Review Standards',
     tool: 'MCP Tool Catalog',
     discover: 'Style discovery',
-    feedback: 'Feedback',
+    feedback: 'Learning',
     history: 'Activity',
     activation: 'Agent setup',
     trace: 'Trace Explorer',
@@ -133,8 +132,8 @@ const HELP = {
         example: 'Start Claude, ask to draw a diagram and inspect its recorded hook.prompt.context event.',
     },
     feedback: {
-        what: 'Human feedback about accepted work, corrections and rejected output.',
-        how: 'Record feedback against a style record or generally; later use it to propose and approve rule revisions.',
+        what: 'The learning loop: learn from your work and projects, give feedback, consent to changes, and let agents reuse them.',
+        how: 'Agents relay corrections and your remember/forget requests; Learn from your projects compares selected projects and proposes shared-style updates. Review each proposal with its evidence, apply it globally or to one project, consolidate related items, or dismiss it so it is not suggested again. Applying writes a new style version (undo from History).',
         why: 'Prevent the same mistake from repeating across agents.',
         limitations: 'Feedback is not model fine-tuning and does not change active preferences automatically.',
         example: 'Record that a diagram had unnecessary crossing lines; edit the approved diagram rule.',
@@ -476,6 +475,9 @@ function libraryActionLabel(action) {
     if (action === 'keep') {
         return 'Keep existing item unchanged';
     }
+    if (action === 'forgotten') {
+        return 'You deleted this before — not restored';
+    }
     return 'Conflicting key — cannot import';
 }
 function syncLibrarySelection() {
@@ -506,7 +508,7 @@ async function readLibraryFile(file) {
         libraryImportBundle = bundle;
         libraryImportPreview = preview;
         $('libraryImportItems').innerHTML = preview.items
-            .map((r) => `<label class="dependency-choice"><input type="checkbox" data-library-import="${esc(r.id)}" ${r.action === 'create' ? 'checked' : ''} ${r.action === 'conflict' ? 'disabled' : ''}/><span><strong>${esc(r.title)}</strong><small>${esc(kindLabel(r.kind))} · ${esc(r.keyId)} · ${libraryActionLabel(r.action)}${r.linkedIds.length ? ` · ${r.linkedIds.length} linked items` : ''}</small></span></label><details><summary>Inspect ${esc(r.title)}</summary><p>${esc(r.summary)}</p><pre>${esc(r.content)}</pre></details>`)
+            .map((r) => `<label class="dependency-choice"><input type="checkbox" data-library-import="${esc(r.id)}" ${r.action === 'create' ? 'checked' : ''} ${r.action === 'conflict' || r.action === 'forgotten' ? 'disabled' : ''}/><span><strong>${esc(r.title)}</strong><small>${esc(kindLabel(r.kind))} · ${esc(r.keyId)} · ${libraryActionLabel(r.action)}${r.linkedIds.length ? ` · ${r.linkedIds.length} linked items` : ''}</small></span></label><details><summary>Inspect ${esc(r.title)}</summary><p>${esc(r.summary)}</p><pre>${esc(r.content)}</pre></details>`)
             .join('');
     }
     catch (e) {
@@ -905,9 +907,6 @@ async function render() {
     if (active === 'overview') {
         return overview();
     }
-    if (active === 'fusion') {
-        return fusionScreen();
-    }
     if (active === 'domains') {
         return domainsScreen();
     }
@@ -1141,6 +1140,7 @@ function projectAgentGuide(id) {
     <div class="repository-field"><label for="repositoryFolder">Repository folder</label><div class="folder-input"><input id="repositoryFolder" placeholder="Absolute path to your repository" spellcheck="false" autocomplete="off" /><button type="button" class="button ghost" id="browseRepositoryFolder" data-action="repository-browse">Browse folders</button></div></div>
     <div class="row-actions"><button type="button" class="button primary" data-action="repository-link">Save folder</button><button type="button" class="button ghost" data-action="repository-test">Check connection</button></div><p id="repositoryResult" role="status" aria-live="polite"></p>
     <div class="repository-configure"><div><h2>Project styles</h2><p>Use the same AI discovery and style selection workflow as project creation. Review changes before saving; global styles stay unchanged.</p></div><button class="button primary" data-action="project-edit">Discover & personalize with AI</button></div>
+    <div class="repository-configure"><div><h2>Share approved preferences with the repository</h2><p>Write this project's approved preferences to <code>.personal-brain/preferences.md</code>. You see the exact file first.</p><input type="hidden" id="handoffProject" value="${esc(id)}"></div><button type="button" class="button ghost" data-action="handoff-preview">Preview file</button></div><div id="handoffOut"></div>
     <details><summary>Agent connection details</summary><p>Open this folder in your connected agent. Its project configuration selects the styles automatically.</p><p>Project ID: <code>${esc(id)}</code></p><a href="#/activation">Manage agent setup</a></details></section>`;
 }
 let removalPreview = null;
@@ -1925,10 +1925,18 @@ async function analyzeOnboarding() {
             return;
         }
         document.querySelectorAll('.wizard-recommendation').forEach((el) => el.remove());
+        let autoSelected = 0;
         for (const recommendation of result.recommendations) {
             const row = Array.from(form.querySelectorAll('[data-assignment-row]')).find((r) => r.dataset.assignmentRow === recommendation.id);
             if (!row) {
                 continue;
+            }
+            const checkbox = row.querySelector('input[name="assignment"]');
+            if (!selectedProject && !checkbox.checked && !checkbox.disabled) {
+                checkbox.checked = true;
+                autoSelected++;
+                projectFormDirty = true;
+                syncProjectSelection();
             }
             const proposal = document.createElement('details');
             proposal.className = 'wizard-recommendation';
@@ -1959,7 +1967,7 @@ async function analyzeOnboarding() {
             });
         }
         $('onboardingFindings').innerHTML =
-            `<p><strong>${result.recommendations.length} styles suggested.</strong> Review each AI suggestion on its style card and choose Use suggestion to add it to your project draft. Nothing is saved yet.</p><ul>${result.recommendations.map((r) => `<li><strong>${esc(items.find((i) => i.id === r.id)?.title || r.id)}</strong> — ${esc(r.reason)}</li>`).join('')}</ul><details><summary>Evidence and limitations</summary><p>Read: ${result.files.map(esc).join(', ')}. This is a bounded scan, not a complete code review.</p>${result.limited ? '<p>The file index was truncated.</p>' : ''}${result.issues.map((i) => `<p>${esc(i.message)}</p>`).join('')}</details>`;
+            `<p><strong>${result.recommendations.length} styles suggested.</strong> ${selectedProject ? 'Review each AI suggestion on its style card and choose Use suggestion to add it to your project draft.' : `${autoSelected} suitable styles automatically added. Review or change your selections in Configure. Existing selections and customizations are kept; conflicting styles are not added. AI guideline drafts are not applied automatically.`} Nothing is saved yet.</p><ul>${result.recommendations.map((r) => `<li><strong>${esc(items.find((i) => i.id === r.id)?.title || r.id)}</strong> — ${esc(r.reason)}</li>`).join('')}</ul><details><summary>Evidence and limitations</summary><p>Read: ${result.files.map(esc).join(', ')}. This is a bounded scan, not a complete code review.</p>${result.limited ? '<p>The file index was truncated.</p>' : ''}${result.issues.map((i) => `<p>${esc(i.message)}</p>`).join('')}</details>`;
     }
     catch (error) {
         if ($('projectForm') === form) {
@@ -2279,11 +2287,324 @@ function discover() {
     }
     layout('Style discovery', 'Find styles, skills and tools for one task.', '', `${diagnosticScope()}<div class="split-box discovery-grid"><section class="card panel"><h2>Find the right skill ${infoButton('discover')}</h2><p>Describe the task in natural language.</p><div class="field space-top-20"><label for="discoveryTask">Task</label><textarea id="discoveryTask" rows="4">Draw an editable IoT platform architecture diagram with clear service boundaries</textarea></div><button class="button primary" data-action="discover">Discover capabilities</button></section><section class="card panel"><h2>Discovery results</h2><div class="code-output" id="discoveryResults">Run a discovery search to inspect matching skills, styles, and tools.</div></section></div>`);
 }
+const inboxFilter = { status: 'pending' };
+const sourceLabel = { user: 'From you', agent: 'From agent', projects: 'From your projects' };
+const rewrittenFieldLabels = [
+    ['summary', 'Summary'],
+    ['useWhen', 'Use when'],
+    ['tags', 'Discovery keywords'],
+    ['principles', 'Principles'],
+    ['examples', 'Examples'],
+    ['reviewCriteria', 'Review criteria'],
+];
+function projectEvidence(f) {
+    const fields = rewrittenFieldLabels
+        .map(([k, label]) => {
+        const v = f.fields[k];
+        const text = Array.isArray(v) ? v.join('\n') : v || '';
+        return text ? `<h4>${label}</h4><pre>${esc(text)}</pre>` : '';
+    })
+        .join('');
+    return `<details><summary>Learned from ${f.sources.length} source style(s)</summary><ul>${f.sources.map((s) => `<li>${esc(s.title)}${s.version ? ` · v${s.version}` : ''} · ${esc(s.project)}</li>`).join('')}</ul></details>${fields ? `<details><summary>Also updates summary, keywords, principles and criteria</summary>${fields}<p class="hint">Mandatory requirements, checks, required links and skills stay as they are.</p></details>` : ''}<p class="hint">Applying creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p>`;
+}
+const handoffState = (p) => {
+    if (p.unchanged) {
+        return 'file is already up to date';
+    }
+    return p.existingHash ? 'replaces the existing file' : 'new file';
+};
+let handoffPending = null;
+const diagnosisLabel = {
+    revision: 'Proposed change',
+    execution: 'Rule exists — check it was loaded and followed',
+    missing: 'No rule targeted — may need a new style',
+};
+const actionLabel = {
+    revise: 'Revise style',
+    remember: 'Remember new style',
+    forget: 'Forget style',
+};
+const OBLIGATION_WORD = /^(must|never|always|required|shall|mandatory|don't|do)$/i;
+function wordDiff(before, after) {
+    const a = before.split(/(\s+)/);
+    const b = after.split(/(\s+)/);
+    const lost = (w) => (OBLIGATION_WORD.test(w) ? ' class="lost"' : '');
+    if (a.length * b.length > 4_000_000) {
+        return `<del>${esc(before)}</del><ins>${esc(after)}</ins>`;
+    }
+    const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = a.length - 1; i >= 0; i--) {
+        for (let j = b.length - 1; j >= 0; j--) {
+            dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
+    }
+    let out = '';
+    let i = 0;
+    let j = 0;
+    while (i < a.length || j < b.length) {
+        if (i < a.length && j < b.length && a[i] === b[j]) {
+            out += esc(a[i++]);
+            j++;
+        }
+        else if (j < b.length && (i === a.length || dp[i][j + 1] >= dp[i + 1][j])) {
+            out += `<ins>${esc(b[j++])}</ins>`;
+        }
+        else {
+            out += `<del${lost(a[i])}>${esc(a[i++])}</del>`;
+        }
+    }
+    return out;
+}
+function evidenceBar(e) {
+    const total = e.independent + e.counter;
+    if (!total) {
+        return '';
+    }
+    const pct = Math.round((e.independent / total) * 100);
+    return `<svg class="evidence-bar" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="${e.independent} correction(s) for, ${e.counter} accepted outcome(s) against"><rect class="ev-for" width="${pct}" height="6"/><rect class="ev-against" x="${pct}" width="${100 - pct}" height="6"/></svg>`;
+}
+function inboxItem(r, projectName) {
+    const t = r.target;
+    const warnings = [
+        r.fixtureFailures.length
+            ? 'Regression fixtures fail (cannot apply): ' + r.fixtureFailures.join(' | ')
+            : '',
+        r.stale ? 'Style changed since this was proposed — applying will conflict.' : '',
+        r.lostObligations.length ? 'Drops mandatory statements: ' + r.lostObligations.join(' | ') : '',
+        r.evidence.competing ? `${r.evidence.competing} other pending proposal(s) for this style.` : '',
+        r.analysis?.conflicts.length
+            ? 'Conflicting guidance (cannot apply — resolve in the source styles, then analyze again): ' +
+                r.analysis.conflicts.join(' | ')
+            : '',
+    ].filter(Boolean);
+    let change = '';
+    if (r.action === 'forget') {
+        change = `<p>Archive <b>${esc(t?.title || 'missing style')}</b>. Reversible from History.</p>`;
+    }
+    else if (r.proposedContent != null) {
+        const title = r.proposal
+            ? 'New style: ' + esc(r.proposal.title) + ' · ' + esc(r.proposal.domain)
+            : esc(t?.title || 'Style') + ` · v${r.baseVersion} → proposed`;
+        const body = t && r.action === 'revise'
+            ? `<pre class="diff">${wordDiff(t.content, r.proposedContent)}</pre><details><summary>Show current and proposed separately</summary><h4>Current</h4><pre>${esc(t.content)}</pre><h4>Proposed</h4><pre>${esc(r.proposedContent)}</pre></details>`
+            : `<pre class="diff"><ins>${esc(r.proposedContent)}</ins></pre>`;
+        change = `<p class="diff-title"><b>${title}</b></p>${body}`;
+    }
+    const projectOnly = r.action === 'revise' && r.projectId && t?.shared && r.proposedContent != null
+        ? `<button class="button small" data-feedback-decision="accept" data-feedback-scope="project" data-feedback-id="${r.id}">Project only</button>`
+        : '';
+    const applyLabel = r.action === 'revise' && r.proposedContent == null ? 'Acknowledge' : 'Apply';
+    const apply = r.analysis?.conflicts.length
+        ? ''
+        : `<button class="button small primary" data-feedback-decision="accept" data-feedback-id="${r.id}">${applyLabel}</button>`;
+    const actions = r.status === 'pending'
+        ? `<div class="row-actions">${apply}${projectOnly}${r.evidenceIds.length ? `<button class="button small" data-feedback-decision="split" data-feedback-id="${r.id}">Split</button>` : ''}<button class="button ghost small" data-feedback-decision="dismiss" data-feedback-id="${r.id}">Dismiss</button></div>`
+        : `<p class="hint">${esc(r.status)}${r.appliedVersion ? ` · applied as v${r.appliedVersion}` : ''}</p>`;
+    const tools = r.recordId && t
+        ? `<details class="space-top-18"><summary>Why is this style applied or missing?</summary><button class="button ghost small" data-explain="${r.recordId}" data-explain-project="${r.projectId || ''}">Explain</button><pre id="explain-${r.id}" data-explain-out="${r.recordId}"></pre></details>${r.action === 'revise'
+            ? `<details><summary>Regression fixtures for ${esc(t.title)}</summary><p class="hint">Phrases a revision must keep, and phrases it must not introduce. One per line. A failing fixture blocks Apply.</p><div class="field"><label for="fxKeep-${r.id}">Must keep</label><textarea id="fxKeep-${r.id}" rows="3" data-fixture-keep="${r.recordId}"></textarea></div><div class="field"><label for="fxAvoid-${r.id}">Must not contain</label><textarea id="fxAvoid-${r.id}" rows="2" data-fixture-avoid="${r.recordId}"></textarea></div><button class="button small" data-fixture-load="${r.id}" data-fixture-record="${r.recordId}" data-fixture-project="${r.projectId || ''}">Load</button> <button class="button small" data-fixture-save="${r.id}" data-fixture-record="${r.recordId}" data-fixture-project="${r.projectId || ''}">Save fixtures</button></details>`
+            : ''}`
+        : '';
+    const evidence = r.recordId
+        ? `<div class="evidence">${evidenceBar(r.evidence)}<p class="hint">${r.evidence.independent} correction(s) · ${r.evidence.counter} accepted outcome(s) under the current rule${r.evidenceIds.length ? ` · consolidates ${r.evidenceIds.length} item(s)` : ''}</p></div>`
+        : '';
+    return `<div class="feedback-item diag-${r.diagnosis}"><div class="spread-row"><label class="inline-check"><input type="checkbox" data-inbox-select="${r.id}" aria-label="Select item"> ${ch(actionLabel[r.action])} ${ch(sourceLabel[r.source])}${r.projectId ? ' ' + ch(projectName(r.projectId)) : ' ' + ch('Global')}</label><span class="hint">${esc(formatTime(r.createdAt))}</span></div><p class="hint">${esc(diagnosisLabel[r.diagnosis])}</p><p>${esc(r.note)}</p>${warnings.map((w) => `<p class="bad">${esc(w)}</p>`).join('')}${evidence}${change}${r.analysis ? projectEvidence(r.analysis) : ''}${actions}${tools}</div>`;
+}
+function comparisonResult(run) {
+    if (run.status === 'ready') {
+        return run.proposals ? `${run.proposals} proposal(s)` : 'nothing needed changing';
+    }
+    const what = run.status === 'cancelled' ? 'stopped' : 'failed' + (run.error ? ' — ' + esc(run.error) : '');
+    return `<span class="bad">${what}</span>`;
+}
+function ago(iso) {
+    const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
+    if (minutes < 1) {
+        return 'just now';
+    }
+    return minutes < 60 ? `${minutes} min ago` : formatTime(iso);
+}
+const checkResult = {
+    started: 'started a comparison',
+    unchanged: 'no project styles changed since the last comparison',
+    'nothing-to-compare': 'no project has customized styles yet',
+    'no-agent': 'no Codex or Claude command-line tool found',
+    busy: 'a comparison was still running',
+    failed: 'could not start a comparison',
+    off: 'automatic comparison was off',
+    running: 'a comparison was running',
+};
+function learningState(p) {
+    if (p.state === 'running') {
+        return ['running', 'Comparing now'];
+    }
+    if (p.state === 'off') {
+        return ['off', 'Off'];
+    }
+    return p.state === 'no-agent' || p.error ? ['attention', 'Needs attention'] : ['on', 'On'];
+}
+function nextCheck(p) {
+    if (p.state === 'off' || p.state === 'running') {
+        return '—';
+    }
+    if (!p.lastCheck) {
+        return 'within a minute of starting Personal Brain';
+    }
+    const due = Date.parse(p.lastCheck.at) + p.intervalMinutes * 60000 - Date.now();
+    if (due < -2 * p.intervalMinutes * 60000) {
+        return '<span class="bad">overdue — background checks only run while Personal Brain is running; restart it</span>';
+    }
+    return due <= 0 ? 'any moment' : `in about ${Math.ceil(due / 60000)} min`;
+}
+function autoLearningStatus(health) {
+    const p = health.projects;
+    const [tone, label] = learningState(p);
+    const agents = health.integrations;
+    const failures = agents.reduce((n, i) => n + i.failures, 0);
+    const describe = {
+        running: `comparing ${p.customizedProjects} project(s) with ${esc(agentName(p.running?.agent || ''))} · <span id="learnElapsed">${p.running ? elapsed(p.running.createdAt) : ''}</span> <button class="link-btn" data-action="learning-stop" data-run="${esc(p.running?.id || '')}">Stop</button>`,
+        watching: `watching ${p.customizedProjects} project(s) with ${p.customizedStyles} customized style(s); compares them again when they change`,
+        'nothing-to-compare': 'no project has customized a shared style yet, so there is nothing to compare. It starts by itself once one does.',
+        'no-agent': 'install and sign in to the Codex or Claude command-line tool so projects can be compared',
+        off: 'projects are not compared. <button class="link-btn" data-action="learning-toggle" data-on="1">Turn on</button>',
+    };
+    const row = (term, value) => `<dt>${term}</dt><dd>${value}</dd>`;
+    const lastCheck = p.lastCheck
+        ? `${ago(p.lastCheck.at)} — ${esc(checkResult[p.lastCheck.result] || p.lastCheck.result)}`
+        : 'not yet';
+    const lastRun = p.last
+        ? `${esc(formatTime(p.last.createdAt))} · ${esc(agentName(p.last.agent))} · ${(p.last.projectIds || []).length} project(s) — ${comparisonResult(p.last)}`
+        : 'none yet';
+    const fromAgents = agents.length
+        ? `${agents.map((i) => `${esc(i.agent)} (last ${ago(i.lastAt)})`).join(', ')}${failures ? ` · <span class="bad">${failures} failed</span>` : ''}`
+        : 'none has sent a correction yet. <button class="link-btn" data-view="activation">Connect an agent</button>';
+    const canCompare = p.state === 'watching' || p.state === 'nothing-to-compare';
+    return `<section id="learnStatus" class="card panel learning-status" aria-live="polite"><div class="spread-row"><h2>Automatic learning <span class="learn-badge ${tone}">${label}</span></h2>${canCompare ? '<button class="button small soft" data-action="learning-check">Compare now</button>' : ''}</div><dl>${row('Projects', describe[p.state] || '')}${row('Last check', lastCheck)}${row('Next check', nextCheck(p))}${row('Last comparison', lastRun)}${row('Agents', fromAgents)}</dl>${p.error ? `<p class="bad">${esc(p.error)}</p>` : ''}</section>`;
+}
+function bindAutoStatus(health) {
+    clearTimeout(learnPoll);
+    const wasRunning = health.projects.state === 'running';
+    learnPoll = setTimeout(async () => {
+        if (active !== 'feedback') {
+            return;
+        }
+        const latest = await api('/api/learning').catch(() => null);
+        if (!latest || active !== 'feedback') {
+            return;
+        }
+        const card = document.getElementById('learnStatus');
+        if (wasRunning !== (latest.projects.state === 'running') || !card) {
+            await feedback();
+            return;
+        }
+        card.outerHTML = autoLearningStatus(latest);
+        bindAutoStatus(latest);
+    }, wasRunning ? 2500 : 30000);
+}
 async function feedback() {
-    const records = await api('/api/feedback');
-    layout('Feedback Inbox', 'Record feedback to guide future style updates.', '', `<div class="columns"><div class="card panel"><h2>Feedback history ${infoButton('feedback')}</h2><div class="feedback-list space-top-18">${pageItems(records)
-        .map((r) => `<div class="feedback-item"><div class="spread-row">${ch(r.rating)}<span class="hint">${esc(formatTime(r.createdAt))}</span></div><p>${esc(r.note)}</p></div>`)
-        .join('') || empty('No feedback', 'Corrections will appear here')}</div>${pagination(records.length)}</div><div class="card panel"><h2>Capture a correction</h2><p>Feedback does not rewrite your global style automatically.</p><div class="field space-top-20"><label>Feedback type</label><select id="fbRating"><option value="correction">Correction</option><option value="accepted">Accepted outcome</option><option value="rejected">Rejected outcome</option></select></div><div class="field"><label>Feedback</label><textarea id="fbNote" rows="6" placeholder="Explain your preference or correction"></textarea></div><button class="button primary" data-action="feedback">Record feedback</button></div></div>`);
+    const q = new URLSearchParams(Object.entries(inboxFilter).filter(([, v]) => v));
+    const [records, health, projects] = await Promise.all([
+        api('/api/feedback?' + q),
+        api('/api/learning'),
+        api('/api/projects'),
+    ]);
+    if (active !== 'feedback') {
+        return;
+    }
+    const projectName = (id) => projects.find((p) => p.id === id)?.name || 'Project';
+    const option = (value, label, current) => `<option value="${esc(value)}"${value === current ? ' selected' : ''}>${esc(label)}</option>`;
+    const step = (name, value, label, cls = '') => `<li class="flow-step${cls}"><span class="flow-name">${name}</span><b>${value}</b><span>${esc(label)}</span></li>`;
+    const late = (health.oldestPendingDays ?? 0) >= 7 ? ' late' : '';
+    const flow = `<section class="learning-flow" aria-label="Learning loop"><ol>${step('Learn', health.pending + health.accepted + health.dismissed, 'lessons captured')}${step('Feedback', health.pending, 'waiting for your OK', health.pending ? ' attention' + late : '')}${step('Consent', health.accepted, `applied · ${health.dismissed} dismissed`)}${step('Reuse', health.applied - health.reverted, health.reverted ? `in use · ${health.reverted} reverted` : 'in use by agents', health.reverted ? ' warn' : '')}</ol></section>`;
+    const tab = (status, label) => `<button class="button small${inboxFilter.status === status ? ' primary' : ' soft'}" data-learn-tab="${status}" aria-pressed="${inboxFilter.status === status}">${label}</button>`;
+    const tabs = `<div class="row-actions" role="group" aria-label="Show">${tab('pending', `Waiting (${health.pending})`)}${tab('accepted', 'Applied')}${tab('dismissed', 'Dismissed')}</div>`;
+    const bulk = inboxFilter.status === 'pending' && records.length > 1
+        ? `<div class="row-actions learn-bulk"><label class="inline-check"><input type="checkbox" id="learnSelectAll"> Select all</label><button class="button small" data-inbox-bulk="accept">Apply selected</button><button class="button ghost small" data-inbox-bulk="dismiss">Dismiss selected</button></div>`
+        : '';
+    const emptyText = {
+        pending: [
+            'Nothing needs your OK',
+            'Learning keeps running. New proposals from your agents and projects will appear here.',
+        ],
+        accepted: ['Nothing applied yet', 'Changes you apply are listed here.'],
+        dismissed: [
+            'Nothing dismissed',
+            'Dismissed proposals are listed here and not suggested again.',
+        ],
+    };
+    const [emptyTitle, emptyHint] = emptyText[inboxFilter.status] || emptyText.pending;
+    const auto = health.recentAutomatic.length
+        ? `<h3 class="space-top-18">Recent automatic actions</h3>${health.recentAutomatic.map((a) => `<p class="hint">${esc(formatTime(a.at))} · ${esc(a.detail)}</p>`).join('')}`
+        : '';
+    const settings = `<details class="card panel learning-settings space-top-18"><summary><span aria-hidden="true">⚙</span> Settings</summary><div class="field space-top-20"><label for="learnMode">Learning</label><select id="learnMode">${option('suggest', 'On — ask me before changing anything', health.mode)}${option('explicit', 'On — save my own remember/forget requests right away', health.mode)}${option('off', 'Off — stop learning', health.mode)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAutoProjects"${health.autoProjects ? ' checked' : ''}> Compare my projects automatically when their styles change</label><div class="field"><label for="learnAgent">Agent used to compare projects</label><select id="learnAgent">${option('', 'Automatic (Codex, else Claude)', health.agent)}${option('codex', 'Codex', health.agent)}${option('claude', 'Claude', health.agent)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAuto"${health.autoConsolidate ? ' checked' : ''}> Merge identical proposals into one</label><div class="field"><label for="learnRetention">Forget decided items after (days, 0 = never)</label><input id="learnRetention" type="number" min="0" max="3650" value="${health.retentionDays}"></div><fieldset class="field"><legend>Don't learn from these projects</legend>${projects.map((p) => `<label class="inline-check"><input type="checkbox" data-learn-pause="${p.id}"${health.pausedProjects.includes(p.id) ? ' checked' : ''}> ${esc(p.name)}</label>`).join('') || '<p class="hint">No projects</p>'}</fieldset><button class="button primary" data-action="learning-settings">Save settings</button><p class="hint">${health.suppressions} dismissed idea(s) won't be suggested again.</p>${health.suppressions ? '<button class="button ghost small" data-action="learning-clear-suppressions">Allow dismissed ideas again</button>' : ''}${auto}</details>`;
+    const askAutoLearning = `<section class="card panel learning-ask" aria-labelledby="learnAskTitle"><h2 id="learnAskTitle">Learn from your projects automatically?</h2><p>When a project's customized styles change, Personal Brain asks your Codex or Claude command-line tool to compare them and suggest updates to your shared styles. This uses your agent account. Nothing changes until you apply a suggestion, and you can change this later in Settings.</p><div class="row-actions"><button class="button primary" data-learn-auto-answer="on">Turn on</button><button class="button ghost" data-learn-auto-answer="off">Keep it off</button></div></section>`;
+    const tell = `<details class="card panel learning-tell space-top-18"><summary>Tell Personal Brain something yourself</summary><div class="field space-top-20"><label for="fbNote">What should agents do differently?</label><textarea id="fbNote" rows="4" placeholder="e.g. Never compress code into one line"></textarea></div><button class="button primary small" data-action="feedback">Send</button></details>`;
+    layout('Learning', 'Personal Brain learns from your agents and projects on its own. You only say yes or no to each proposed change.', '', `${health.autoProjectsAsked ? '' : askAutoLearning}${autoLearningStatus(health)}${flow}<section class="card panel"><div class="spread-row"><h2>Proposed changes ${infoButton('feedback')}</h2>${tabs}</div>${bulk}<div class="feedback-list space-top-18">${pageItems(records)
+        .map((r) => inboxItem(r, projectName))
+        .join('') || empty(emptyTitle, emptyHint)}</div>${pagination(records.length)}</section>${tell}${settings}`);
+    main.querySelectorAll('[data-learn-tab]').forEach((b) => b.addEventListener('click', async () => {
+        inboxFilter.status = b.dataset.learnTab;
+        page = 1;
+        await feedback();
+    }));
+    $('learnSelectAll')?.addEventListener('change', (ev) => {
+        const on = ev.target.checked;
+        main.querySelectorAll('[data-inbox-select]').forEach((c) => (c.checked = on));
+    });
+    main.querySelectorAll('[data-learn-auto-answer]').forEach((b) => b.addEventListener('click', async () => {
+        const on = b.dataset.learnAutoAnswer === 'on';
+        try {
+            await api('/api/learning/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    mode: health.mode,
+                    retentionDays: health.retentionDays,
+                    pausedProjects: health.pausedProjects,
+                    autoProjects: on,
+                }),
+            });
+            toast(on
+                ? 'Automatic learning from projects is on'
+                : 'Automatic learning from projects stays off');
+        }
+        catch (e) {
+            toast(e instanceof Error ? e.message : String(e));
+        }
+        await feedback();
+    }));
+    bindAutoStatus(health);
+}
+const OBLIGATION_ERROR = 'Proposal drops mandatory statements';
+async function decideInboxItem(id, decision, scope) {
+    const send = (acknowledgeRemovals = false) => api(`/api/feedback/${id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, scope, acknowledgeRemovals }),
+    });
+    try {
+        await send();
+    }
+    catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (!message.startsWith(OBLIGATION_ERROR) || !confirm(message + '\n\nApply anyway?')) {
+            throw e;
+        }
+        await send(true);
+    }
+}
+async function bulkInbox(kind) {
+    const ids = Array.from(document.querySelectorAll('[data-inbox-select]:checked')).map((i) => i.dataset.inboxSelect);
+    if (!ids.length) {
+        throw new Error('Select items first');
+    }
+    const results = await api('/api/feedback/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ ids, decision: kind }),
+    });
+    const failed = results.filter((r) => !r.ok);
+    toast(failed.length
+        ? `${results.length - failed.length} done, ${failed.length} failed: ${failed[0].error}`
+        : `${results.length} item(s) ${kind === 'accept' ? 'applied' : 'dismissed'}`);
+    await feedback();
 }
 async function activity() {
     const records = await api('/api/audit');
@@ -2291,303 +2612,11 @@ async function activity() {
         .map((r) => `<div class="activity-line"><span class="activity-icon">↺</span><div class="activity-text"><b>${esc(r.action)} · ${esc(r.detail)}</b><p>${esc(r.target)}</p></div><span class="activity-time">${esc(formatTime(r.createdAt))}</span></div>`)
         .join('') || empty('No activity', 'Create a record to start your revision history')}${pagination(records.length)}</div>`);
 }
-let fusionCurrent = '', fusionSelected = '', fusionStarting = false;
-let fusionProjects = null, fusionAgent = 'codex', fusionPoll;
-const fusionGuidanceLabels = [
-    ['summary', 'Summary'],
-    ['useWhen', 'Use when'],
-    ['tags', 'Discovery keywords'],
-    ['principles', 'Principles'],
-    ['examples', 'Examples'],
-    ['externalSkills', 'Required skills'],
-    ['reviewCriteria', 'Review criteria'],
-];
-const fusionApplyLabels = {
-    published: 'Published',
-    rejected: 'Rejected',
-    open: 'Publish update',
-};
-const fusionRunTones = { ready: 'ok', failed: 'bad' };
-function fusionProposalBadge(decision, proposal) {
-    if (decision === 'published') {
-        return { label: 'Published', tone: 'ok' };
-    }
-    if (decision === 'rejected') {
-        return { label: 'Rejected', tone: '' };
-    }
-    return proposal.conflicts.length
-        ? { label: 'Has conflicts', tone: 'bad' }
-        : { label: 'To review', tone: 'warn' };
-}
-function fusionStepClass(stepNumber, currentStep) {
-    if (stepNumber < currentStep) {
-        return 'done';
-    }
-    return stepNumber === currentStep ? 'current' : '';
-}
-const fusionAgentName = (a) => (a === 'claude' ? 'Claude' : 'Codex');
-const fusionStatus = {
-    running: 'Analyzing',
-    ready: 'Ready to review',
-    failed: 'Failed',
-    cancelled: 'Cancelled',
-};
+let learnPoll;
+const agentName = (a) => (a === 'claude' ? 'Claude' : 'Codex');
 function elapsed(from) {
     const s = Math.max(0, Math.round((Date.now() - new Date(from).getTime()) / 1000));
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
-}
-async function fusionScreen() {
-    clearTimeout(fusionPoll);
-    const [projects, runs] = await Promise.all([
-        api('/api/projects'),
-        api('/api/fusion'),
-    ]);
-    if (fusionCurrent && !runs.some((r) => r.id === fusionCurrent)) {
-        fusionCurrent = '';
-    }
-    const job = fusionCurrent
-        ? await api('/api/fusion/' + encodeURIComponent(fusionCurrent))
-        : null;
-    if (active !== 'fusion') {
-        return;
-    }
-    const decision = (id) => {
-        if ((job?.applied || []).includes(id)) {
-            return 'published';
-        }
-        return (job?.rejected || []).includes(id) ? 'rejected' : 'open';
-    };
-    if (job?.proposals.length && !job.proposals.some((p) => p.targetId === fusionSelected)) {
-        fusionSelected =
-            job.proposals.find((p) => decision(p.targetId) === 'open')?.targetId ||
-                job.proposals[0].targetId;
-    }
-    const chosen = fusionProjects ?? projects.map((p) => p.id);
-    const chosenStyles = projects
-        .filter((p) => chosen.includes(p.id))
-        .reduce((n, p) => n + (p.assignments || []).length, 0);
-    let step = 3;
-    if (!job || fusionStarting) {
-        step = 1;
-    }
-    else if (job.status === 'running') {
-        step = 2;
-    }
-    const steps = ['Choose projects', 'Agent compares styles', 'Review and publish']
-        .map((label, i) => `<li class="${fusionStepClass(i + 1, step)}" ${i + 1 === step ? 'aria-current="step"' : ''}><span>${i + 1}</span>${label}</li>`)
-        .join('');
-    const picker = `<form id="fusionForm" class="fusion-start">
-  <div class="spread-row"><h2>Which projects should the agent learn from?</h2><div class="row-actions"><button type="button" class="link-btn" data-fusion-all="1">Select all</button><button type="button" class="link-btn" data-fusion-all="0">Clear</button></div></div>
-  <fieldset class="fusion-project-grid"><legend class="sr-only">Projects</legend>${projects.map((p) => `<label class="fusion-project ${chosen.includes(p.id) ? 'is-chosen' : ''}"><input type="checkbox" name="fusionProject" value="${esc(p.id)}" ${chosen.includes(p.id) ? 'checked' : ''} /><span><strong>${esc(p.name)}</strong><small>${(p.assignments || []).length} selected styles</small></span></label>`).join('') || '<p>No projects yet. Create a project first, then come back to compare its styles.</p>'}</fieldset>
-  <div class="fusion-run-row">
-   <fieldset class="seg"><legend class="sr-only">Agent</legend>${['codex', 'claude'].map((a) => `<label><input type="radio" name="fusionAgent" value="${a}" ${fusionAgent === a ? 'checked' : ''} /><span>${fusionAgentName(a)}</span></label>`).join('')}</fieldset>
-   <button class="button primary" type="submit" ${chosen.length ? '' : 'disabled'}>${chosen.length ? `Analyze ${chosen.length} project${chosen.length === 1 ? '' : 's'}` : 'Choose a project'}</button>
-   <span class="hint">${chosen.length ? `${chosenStyles} selected styles will be compared. Takes up to five minutes.` : 'Choose at least one project to start.'}</span>
-  </div>
-  <p id="fusionError" class="form-error" role="alert"></p>
-  <details class="fusion-privacy"><summary>What is sent to the agent</summary><p>The selected projects' styles and their required styles are sent to your signed-in ${fusionAgentName(fusionAgent)} CLI. Repository files and traces are not sent. Nothing changes until you publish a proposal.</p></details>
- </form>`;
-    let runPanel = '';
-    if (job && !fusionStarting) {
-        const open = job.proposals.filter((p) => decision(p.targetId) === 'open').length;
-        const head = `<div class="spread-row"><div><h2>${esc(fusionStatus[job.status] || job.status)}</h2><p class="hint">${esc(fusionAgentName(job.agent))} · ${esc(projects
-            .filter((p) => (job.projectIds || []).includes(p.id))
-            .map((p) => p.name)
-            .join(', ') || 'Projects removed')} · started ${esc(formatTime(job.createdAt))}</p></div><button type="button" class="button ghost" data-fusion-new>New analysis</button></div>`;
-        if (job.status === 'running') {
-            runPanel = `${head}<div class="fusion-progress" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>Comparing styles…</strong><p class="hint">Running for <span id="fusionElapsed">${elapsed(job.createdAt)}</span>. You can leave this page; the run continues and appears in Recent analyses.</p></div><button class="button ghost" id="fusionCancel">Cancel analysis</button></div>`;
-        }
-        else if (job.status !== 'ready') {
-            runPanel = `${head}<div class="notice" role="alert"><strong>${job.status === 'cancelled' ? 'The analysis was cancelled.' : 'The analysis did not finish.'}</strong>${job.error ? `<p>${esc(job.error)}</p>` : ''}<p>Check that the ${esc(fusionAgentName(job.agent))} CLI is installed and signed in, then try again.</p><button type="button" class="button primary" data-fusion-retry>Try again</button></div>`;
-        }
-        else if (!job.proposals.length) {
-            runPanel = `${head}${empty('No changes proposed', 'Your shared styles already cover what these projects do. Try again after projects add or personalize styles.')}`;
-        }
-        else {
-            const list = job.proposals
-                .map((p) => {
-                const badge = fusionProposalBadge(decision(p.targetId), p);
-                return `<button type="button" data-fusion-proposal="${esc(p.targetId)}" aria-pressed="${p.targetId === fusionSelected}"><strong>${esc(p.title)}</strong><span class="tag ${badge.tone}">${badge.label}</span></button>`;
-            })
-                .join('');
-            const detail = job.proposals
-                .filter((p) => p.targetId === fusionSelected)
-                .map((p) => {
-                const old = job.targets.find((r) => r.id === p.targetId);
-                const d = decision(p.targetId);
-                const supporting = fusionGuidanceLabels
-                    .map(([k, heading]) => {
-                    const value = p[k] ?? old?.[k];
-                    const text = typeof value === 'string' ? value : (value ?? []).join('\n');
-                    return `<h4>${esc(heading)}</h4><pre>${esc(text)}</pre>`;
-                })
-                    .join('');
-                return `<article class="fusion-proposal"><p class="eyebrow">Updates ${esc(old?.title)} · v${esc(old?.version)} → v${Number(old?.version) + 1}</p><h3>${esc(p.title)}</h3><p class="fusion-rationale">${esc(p.rationale)}</p>
-     ${p.conflicts.length ? `<div class="notice" role="alert"><strong>Resolve these conflicts in the source styles, then analyze again:</strong><ul>${p.conflicts.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></div>` : ''}
-     <div class="fusion-compare"><section><h4>Current guidelines</h4><pre>${esc(old?.content)}</pre></section><section><h4>Proposed guidelines</h4><pre>${esc(p.content)}</pre></section></div>
-     <details><summary>Learned from ${p.sourceIds.length} source style${p.sourceIds.length === 1 ? '' : 's'}</summary><ul>${p.sourceIds
-                    .map((id) => {
-                    const r = job.sources.find((r) => r.id === id);
-                    return `<li>${esc(r?.title)} · v${esc(r?.version)} · ${esc(projects.find((x) => x.id === (r?.contextProjectId || r?.projectId))?.name || 'Shared')}</li>`;
-                })
-                    .join('')}</ul></details>
-     <details><summary>Proposed summary, keywords, principles and criteria</summary>${supporting}<p class="hint">Mandatory requirements, automated checks, required links and skills stay as they are.</p></details>
-     <footer class="fusion-decision"><p class="hint">Publishing creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p><div class="row-actions"><button class="button ghost" data-fusion-reject="${esc(p.targetId)}" ${d !== 'open' ? 'disabled' : ''}>Reject</button><button class="button primary" data-fusion-apply="${esc(p.targetId)}" ${p.conflicts.length || d !== 'open' ? 'disabled' : ''}>${fusionApplyLabels[d]}</button></div></footer></article>`;
-            })
-                .join('');
-            runPanel = `${head}<p class="fusion-counts" role="status">${job.proposals.length} proposal${job.proposals.length === 1 ? '' : 's'} · ${open} to review · ${(job.applied || []).length} published · ${(job.rejected || []).length} rejected</p><div class="fusion-workbench"><nav class="fusion-proposal-list" aria-label="Proposals">${list}</nav><div class="fusion-detail">${detail}</div></div>`;
-        }
-    }
-    const history = runs.length
-        ? `<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Started</th><th scope="col">Projects</th><th scope="col">Agent</th><th scope="col">Result</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead><tbody>${runs.map((r) => `<tr ${r.id === fusionCurrent ? 'class="is-selected"' : ''}><td>${esc(formatTime(r.createdAt))}</td><td>${esc((r.projectIds || []).map((id) => projects.find((p) => p.id === id)?.name || 'Removed project').join(', '))}</td><td>${esc(fusionAgentName(r.agent))}</td><td><span class="tag ${fusionRunTones[r.status] ?? ''}">${esc(fusionStatus[r.status] || r.status)}</span>${r.status === 'ready' ? ` <small>${r.proposals ?? 0} proposals · ${r.decided ?? 0} decided</small>` : ''}</td><td><button class="button ghost small" data-fusion-run="${esc(r.id)}" aria-pressed="${r.id === fusionCurrent}">${r.id === fusionCurrent ? 'Viewing' : 'Open'}</button></td></tr>`).join('')}</tbody></table></div>`
-        : '<p class="hint">Your analyses will appear here.</p>';
-    layout('Fusion', 'Turn what works in your projects into better shared styles. You review every proposal before anything changes.', '', `
- <ol class="fusion-steps" aria-label="Fusion steps">${steps}</ol>
- <section class="card panel fusion-main">${job && !fusionStarting ? runPanel : picker}</section>
- <section class="fusion-history"><div class="section-heading"><h2>Recent analyses</h2><span class="hint">${runs.length} run${runs.length === 1 ? '' : 's'}</span></div>${history}</section>`);
-    const form = document.getElementById('fusionForm');
-    if (form) {
-        const sync = () => {
-            fusionProjects = Array.from(form.querySelectorAll('input[name="fusionProject"]:checked')).map((x) => x.value);
-            fusionAgent =
-                form.querySelector('input[name="fusionAgent"]:checked')?.value || 'codex';
-        };
-        form.addEventListener('change', async (ev) => {
-            sync();
-            const focus = ev.target.value;
-            await fusionScreen();
-            main
-                .querySelector(`#fusionForm input[value="${CSS.escape(focus)}"]`)
-                ?.focus();
-        });
-        main.querySelectorAll('[data-fusion-all]').forEach((b) => b.addEventListener('click', async () => {
-            fusionProjects = b.dataset.fusionAll === '1' ? projects.map((p) => p.id) : [];
-            await fusionScreen();
-        }));
-        form.addEventListener('submit', async (ev) => {
-            ev.preventDefault();
-            sync();
-            const button = form.querySelector('button[type="submit"]');
-            button.disabled = true;
-            button.textContent = 'Starting…';
-            try {
-                const r = await api('/api/fusion', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        agent: fusionAgent,
-                        projectIds: fusionProjects ?? projects.map((p) => p.id),
-                    }),
-                });
-                fusionCurrent = r.id;
-                fusionStarting = false;
-                await fusionScreen();
-            }
-            catch (e) {
-                $('fusionError').textContent = e instanceof Error ? e.message : String(e);
-                button.disabled = false;
-                button.textContent = 'Try again';
-            }
-        });
-    }
-    main.querySelectorAll('[data-fusion-new]').forEach((b) => b.addEventListener('click', async () => {
-        fusionStarting = true;
-        await fusionScreen();
-    }));
-    main.querySelectorAll('[data-fusion-retry]').forEach((b) => b.addEventListener('click', async () => {
-        fusionProjects = job?.projectIds || null;
-        fusionAgent = job?.agent || 'codex';
-        fusionStarting = true;
-        await fusionScreen();
-    }));
-    if (job?.status === 'running' && !fusionStarting) {
-        const id = fusionCurrent;
-        const poll = async () => {
-            if (active !== 'fusion' || fusionCurrent !== id || fusionStarting) {
-                return;
-            }
-            try {
-                const current = await api('/api/fusion/' + encodeURIComponent(id));
-                if (active !== 'fusion' || fusionCurrent !== id) {
-                    return;
-                }
-                if (current.status === 'running') {
-                    const t = document.getElementById('fusionElapsed');
-                    if (t) {
-                        t.textContent = elapsed(current.createdAt);
-                    }
-                    fusionPoll = setTimeout(poll, 2500);
-                }
-                else {
-                    await fusionScreen();
-                }
-            }
-            catch (e) {
-                toast(String(e));
-            }
-        };
-        fusionPoll = setTimeout(poll, 2500);
-    }
-    main.querySelectorAll('[data-fusion-proposal]').forEach((b) => b.addEventListener('click', async () => {
-        fusionSelected = b.dataset.fusionProposal;
-        await fusionScreen();
-        main
-            .querySelector(`[data-fusion-proposal="${CSS.escape(fusionSelected)}"]`)
-            ?.focus();
-    }));
-    const next = () => {
-        fusionSelected =
-            job?.proposals.find((p) => p.targetId !== fusionSelected && decision(p.targetId) === 'open')
-                ?.targetId || fusionSelected;
-    };
-    main.querySelectorAll('[data-fusion-reject]').forEach((b) => b.addEventListener('click', async () => {
-        b.disabled = true;
-        try {
-            await api('/api/fusion/' + fusionCurrent + '/reject', {
-                method: 'POST',
-                body: JSON.stringify({ targetId: b.dataset.fusionReject }),
-            });
-            next();
-            toast('Proposal rejected');
-            await fusionScreen();
-        }
-        catch (e) {
-            toast(e instanceof Error ? e.message : String(e));
-            b.disabled = false;
-        }
-    }));
-    main.querySelectorAll('[data-fusion-apply]').forEach((b) => b.addEventListener('click', async () => {
-        if (!confirm('Publish this proposal? Projects using the shared style get the new version. Project-only copies are not changed.')) {
-            return;
-        }
-        b.disabled = true;
-        try {
-            await api('/api/fusion/' + fusionCurrent + '/apply', {
-                method: 'POST',
-                body: JSON.stringify({ targetId: b.dataset.fusionApply }),
-            });
-            next();
-            toast('Shared style updated');
-            await fusionScreen();
-        }
-        catch (e) {
-            toast(e instanceof Error ? e.message : String(e));
-            b.disabled = false;
-        }
-    }));
-    $('fusionCancel')?.addEventListener('click', async () => {
-        try {
-            await api('/api/fusion/' + fusionCurrent + '/cancel', { method: 'POST', body: '{}' });
-            await fusionScreen();
-        }
-        catch (e) {
-            toast(String(e));
-        }
-    });
-    main.querySelectorAll('[data-fusion-run]').forEach((b) => b.addEventListener('click', async () => {
-        fusionCurrent = b.dataset.fusionRun;
-        fusionStarting = false;
-        await fusionScreen();
-    }));
 }
 let traceProject = 'all', traceAgent = 'all', traceChannel = 'all', traceRecord = 'all', traceRun = '', traceDemo = false;
 function traceQuery() {
@@ -2980,11 +3009,24 @@ async function showHistory(id) {
     const origin = global
         ? `<details><summary>Compare private preference with global v${global.version} (base ${record.sourceVersion ?? 'unknown'})</summary><h3>Original base</h3><pre>${base ? esc(comparison(base)) : 'Base snapshot unavailable; do not infer what changed.'}</pre><h3>Current global</h3><pre>${esc(comparison(global))}</pre><h3>Current private</h3><pre>${esc(comparison(record))}</pre><p>No automatic rebase is performed. Restore history or edit deliberately after comparing.</p></details>`
         : '';
+    const decisions = await api('/api/feedback?status=&recordId=' + encodeURIComponent(id)).catch(() => []);
+    const fromInbox = new Set(decisions.map((d) => d.appliedVersion).filter(Boolean));
+    const versions = history.map((r) => ({
+        at: r.at,
+        html: `<li class="history-entry tl-version${r.action === 'restore' ? ' tl-restore' : ''}"><div><b>Version ${r.version} · ${r.action === 'restore' ? 'reverted' : esc(r.action)}${fromInbox.has(r.version) ? ' · from Learning' : ''}</b><p>${esc(formatTime(r.at))}</p><p>${esc(r.snapshot.summary.slice(0, 100))}</p></div>${r.version < record.version ? `<button class="button ghost small" data-restore="${id}" data-version="${r.version}">Restore</button>` : '<span class="chip">Current</span>'}</li>`,
+    }));
+    const events = decisions
+        .filter((d) => d.status !== 'superseded')
+        .map((d) => ({
+        at: d.decidedAt || d.createdAt,
+        html: `<li class="tl-event tl-${d.status}"><b>${esc(d.status === 'accepted' ? 'Consent: applied' : 'Feedback: ' + d.status)}</b> <span class="hint">${esc(formatTime(d.decidedAt || d.createdAt))}</span><p>${esc(d.note.slice(0, 140))}</p></li>`,
+    }));
     $('historyContent').innerHTML =
         origin +
-            history
-                .map((r) => `<div class="history-entry"><div><b>Version ${r.version} · ${esc(r.action)}</b><p>${esc(formatTime(r.at))}</p><p>${esc(r.snapshot.summary.slice(0, 100))}</p></div>${r.version < record.version ? `<button class="button ghost small" data-restore="${id}" data-version="${r.version}">Restore</button>` : '<span class="chip">Current</span>'}</div>`)
-                .join('');
+            `<ol class="history-timeline">${[...versions, ...events]
+                .sort((x, y) => y.at.localeCompare(x.at))
+                .map((e) => e.html)
+                .join('')}</ol>`;
     revisions.showModal();
 }
 async function restoreRecord(id, version) {
@@ -3409,6 +3451,52 @@ async function delegated(ev) {
             await restoreRecord(button.dataset.restore, Number(button.dataset.version));
             return;
         }
+        if (button.dataset.feedbackId) {
+            button.disabled = true;
+            try {
+                await decideInboxItem(button.dataset.feedbackId, button.dataset.feedbackDecision, button.dataset.feedbackScope);
+                toast('Saved');
+            }
+            finally {
+                await feedback();
+            }
+            return;
+        }
+        if (button.dataset.explain) {
+            const q = button.dataset.explainProject
+                ? '?projectId=' + encodeURIComponent(button.dataset.explainProject)
+                : '';
+            const out = button.parentElement.querySelector('pre');
+            out.textContent = JSON.stringify(await api(`/api/learning/explain/${button.dataset.explain}${q}`), null, 2);
+            return;
+        }
+        if (button.dataset.fixtureLoad || button.dataset.fixtureSave) {
+            const id = button.dataset.fixtureLoad || button.dataset.fixtureSave;
+            const q = button.dataset.fixtureProject
+                ? '?projectId=' + encodeURIComponent(button.dataset.fixtureProject)
+                : '';
+            const url = `/api/learning/fixtures/${button.dataset.fixtureRecord}${q}`;
+            const keep = $('fxKeep-' + id);
+            const avoid = $('fxAvoid-' + id);
+            const lines = (t) => t.value
+                .split('\n')
+                .map((x) => x.trim())
+                .filter(Boolean);
+            const fixtures = await api(url, button.dataset.fixtureSave
+                ? { method: 'PUT', body: JSON.stringify({ keep: lines(keep), avoid: lines(avoid) }) }
+                : {});
+            keep.value = fixtures.keep.join('\n');
+            avoid.value = fixtures.avoid.join('\n');
+            if (button.dataset.fixtureSave) {
+                toast('Fixtures saved');
+                await feedback();
+            }
+            return;
+        }
+        if (button.dataset.inboxBulk) {
+            await bulkInbox(button.dataset.inboxBulk);
+            return;
+        }
         switch (button.dataset.action) {
             case 'skills-rescan':
                 button.disabled = true;
@@ -3550,10 +3638,85 @@ async function delegated(ev) {
                 }
                 await api('/api/feedback', {
                     method: 'POST',
-                    body: JSON.stringify({ rating: $('fbRating').value, note }),
+                    body: JSON.stringify({ rating: 'correction', note }),
                 });
-                toast('Feedback recorded for review');
+                toast('Thanks — it will appear as a proposal when it changes a style');
                 await feedback();
+                break;
+            }
+            case 'learning-settings': {
+                await api('/api/learning/settings', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        mode: $('learnMode').value,
+                        retentionDays: Number($('learnRetention').value),
+                        pausedProjects: Array.from(document.querySelectorAll('[data-learn-pause]:checked')).map((i) => i.dataset.learnPause),
+                        autoConsolidate: $('learnAuto').checked,
+                        autoProjects: $('learnAutoProjects').checked,
+                        agent: $('learnAgent').value,
+                    }),
+                });
+                toast('Learning settings saved');
+                await feedback();
+                break;
+            }
+            case 'handoff-preview': {
+                const projectId = $('handoffProject').value;
+                const preview = await api(`/api/projects/${projectId}/handoff`);
+                handoffPending = { projectId, ...preview };
+                $('handoffOut').innerHTML =
+                    `<p class="hint">${esc(preview.path)} · ${preview.styles} preference(s) · ${handoffState(preview)}</p><pre class="code-output">${esc(preview.content)}</pre>${preview.unchanged ? '' : '<button class="button primary small" data-action="handoff-write">Write this file</button>'}`;
+                break;
+            }
+            case 'handoff-write': {
+                if (!handoffPending) {
+                    throw new Error('Preview the file first');
+                }
+                const { projectId, contentHash, existingHash, path } = handoffPending;
+                if (!confirm(`Write ${path} into the project repository? Review and commit it yourself.`)) {
+                    break;
+                }
+                await api(`/api/projects/${projectId}/handoff`, {
+                    method: 'POST',
+                    body: JSON.stringify({ contentHash, existingHash }),
+                });
+                handoffPending = null;
+                $('handoffOut').innerHTML = `<p class="good">Wrote ${esc(path)}</p>`;
+                break;
+            }
+            case 'learning-check': {
+                const { result } = await api('/api/learning/check', {
+                    method: 'POST',
+                    body: '{}',
+                });
+                toast('Checked: ' + (checkResult[result] || result));
+                await feedback();
+                break;
+            }
+            case 'learning-stop': {
+                await api(`/api/learning/runs/${button.dataset.run}/cancel`, { method: 'POST', body: '{}' });
+                await feedback();
+                break;
+            }
+            case 'learning-toggle': {
+                const current = await api('/api/learning');
+                await api('/api/learning/settings', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        mode: current.mode,
+                        retentionDays: current.retentionDays,
+                        pausedProjects: current.pausedProjects,
+                        autoProjects: button.dataset.on === '1',
+                    }),
+                });
+                await feedback();
+                break;
+            }
+            case 'learning-clear-suppressions': {
+                if (confirm('Dismissed ideas may be suggested again. Continue?')) {
+                    await api('/api/learning/suppressions', { method: 'DELETE' });
+                    await feedback();
+                }
                 break;
             }
         }

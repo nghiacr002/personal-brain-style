@@ -8,7 +8,7 @@ Task resolution makes applicability, conflicts and provenance visible. It does n
 
 ## How it works
 
-Choose shared styles, adapt them privately to your repository, and let your agent retrieve the instructions needed for each task. Fusion brings reusable lessons back to the shared library after your review.
+Choose shared styles, adapt them privately to your repository, and let your agent retrieve the instructions needed for each task. A learning loop — learn, feedback, consent, reuse — brings reusable lessons back to the shared library, and nothing changes without your consent.
 
 ```mermaid
 flowchart TD
@@ -24,19 +24,21 @@ flowchart TD
     Work --> Review["Review against prepared instructions"]
     Review -->|Record evidence and gaps|Trace["Local reviews and activity traces"]
 
-    Project -->|Compare selected projects|Fusion["Fusion analysis with Codex or Claude"]
-    Fusion --> Proposals["Proposed global style revisions"]
-    Proposals -->|Human review and publish|Library
+    Agent -->|Learn: corrections, remember and forget|Proposals
+    Project -->|Learn: compare selected projects|Analysis["Project analysis with Codex or Claude"]
+    Analysis --> Proposals["Feedback: proposed style changes on the Learning page"]
+    Proposals -->|Consent: you apply or dismiss|Library
+    Library -->|Reuse: agents load approved versions|MCP
 
     classDef shared fill:#fff1e6,stroke:#a9431e,color:#292524;
     classDef project fill:#eef3e5,stroke:#526b2d,color:#292524;
     classDef agent fill:#eaf2f8,stroke:#36637d,color:#292524;
     class Library,Proposals shared;
     class Project,Repo,Trace project;
-    class Personalize,MCP,Agent,Skills,Work,Review,Fusion agent;
+    class Personalize,MCP,Agent,Skills,Work,Review,Analysis agent;
 ```
 
-**Legend:** orange = shared styles and proposals; green = project context and records; blue = agent workflow. Arrows show information flow or an explicit action. Styles and review evidence are stored locally in SQLite. Fusion sends selected instructions to the chosen agent provider; publishing updates shared styles without overwriting private copies. Recorded reviews do not prove that an agent followed every instruction.
+**Legend:** orange = shared styles and proposals; green = project context and records; blue = agent workflow. Arrows show information flow or an explicit action. Styles and review evidence are stored locally in SQLite. Learning from projects sends selected instructions to the chosen agent provider; applying a proposal updates shared styles without overwriting private copies. Recorded reviews do not prove that an agent followed every instruction.
 
 ## Export and import library items
 
@@ -91,6 +93,8 @@ personal-brain connect all        # all three
 
 Restart your agent and approve hooks where required (Codex: `/hooks`). The UI provides repository linking and project personalization instructions. External skills are references; they must be installed separately.
 
+Once hooks are active, Brain preference edits do not require restarting the agent. Each submitted message checks a per-session fingerprint of the current effective instructions, including project overrides and dependencies. Changes trigger a reload notice even for “continue” or “ok”; unchanged sessions receive no extra refresh notice. The notice tells the agent to rediscover the ongoing task and reload current instructions before continuing. Hosts without a session ID receive that reminder on every prompt. Updates take effect at the next prompt, not midway through an answer; the agent still has to follow the reload instructions. This applies to hooks running this version, not an older pinned installation.
+
 From a source checkout, `bash scripts/activate-personal-brain.sh --apply` or `--repair` installs Claude/Codex hooks and the OpenCode plugin. With no arguments it previews all three; `--status` reports their installation state. `--remove` removes the hooks and OpenCode plugin but preserves Claude/Codex MCP registrations. Restart OpenCode after installing or removing its plugin. For just one agent, use `personal-brain connect opencode` (or `codex` / `claude`).
 
 `hooks install|remove|status claude|codex|opencode|both|all` still manages only the hooks or plugin; `personal-brain doctor` prints the MCP registration commands. OpenCode uses one managed plugin file, `~/.config/opencode/plugins/personal-brain.js`; the generated plugin supports the V2 setup API and retains the V1 server entry point (V1 1.18.29+). Plugin loading and MCP connection were verified with OpenCode 2.2.5; model-driven behaviour and V1 runtime remain unverified. The Agent setup card status means the hook or plugin file is installed, not that the agent loaded it.
@@ -123,15 +127,17 @@ The `--desktop` option does not install Claude Code/Codex hooks. Existing activa
 
 ## Using the UI
 
-The sidebar groups pages into **Workspace** (Overview, Projects, Library, Fusion), **Setup** (Agent setup, Capabilities) and **Diagnostics** (Trace Explorer, Skill discovery, Style discovery, Startup index). Diagnostics is collapsed and opens when one of its pages is active. The footer shows the version and UI build time.
+The sidebar groups pages into **Workspace** (Overview, Projects, Library, Learning), **Setup** (Agent setup, Capabilities) and **Diagnostics** (Trace Explorer, Skill discovery, Style discovery, Startup index). Diagnostics is collapsed and opens when one of its pages is active. The footer shows the version and UI build time.
 
 The Library type **Templates** holds reusable document outlines, code scaffolds and prompt starters. Each row has a Copy action; agents find templates through MCP discovery. In data and the API the record kind remains `example`.
 
 Trace Explorer, under Diagnostics, updates live every 5 seconds. See [Trace Explorer](docs/TRACE.md).
 
-## Fusion and project instructions
+## Learning loop and project instructions
 
-Use **Fusion** to compare effective project instructions and review proposed shared-style revisions. Agents can use `brain_prepare` to load a version-bound task instruction set, then `brain_review` to check the same set before completion. See [Fusion and instruction workflow](docs/FUSION-AND-INSTRUCTIONS.md) for research decisions, examples and verification limits.
+Learning runs on its own in one loop: **Learn → Feedback → Consent → Reuse**. Agents relay corrections and your explicit remember/forget requests as they work, and — if you turn it on when the Learning page first asks (it is off by default) — whenever a project's customized styles change, Personal Brain asks Codex or Claude to compare them and propose shared-style updates (no agent call when nothing changed). The **Learning** page shows what it is doing and lists proposed changes; your only step is to apply or dismiss each one. Applying creates a new style version that agents reuse on their next task, and History can restore. Proposals from your projects re-check that their sources and the shared style are unchanged, and never overwrite project-private copies.
+
+Agents can use `brain_prepare` to load a version-bound task instruction set, then `brain_review` to check the same set before completion. See [Learning and instruction workflow](docs/LEARNING-AND-INSTRUCTIONS.md) for research decisions, examples and verification limits.
 
 ## Data and upgrades
 
@@ -156,7 +162,7 @@ src/
   cli.ts          CLI entry point for local and packaged execution
   core/           Models, validation, ranking metadata and SQLite storage
   projects/       Project scope, repository evidence and skill discovery
-  instructions/   Task preparation, compliance, review and Fusion
+  instructions/   Task preparation, compliance, review and learning from projects
   agents/         MCP transport, agent hooks, OpenCode plugin, connect launcher and tool bridge
   server/         Local HTTP API and static file serving
   styles/         Release style catalog (global-style-catalog.ts), seeds and versioned upgrades
@@ -170,7 +176,6 @@ dist/             Generated npm package contents (do not edit)
 ```
 
 Keep agent and HTTP adapters thin; place shared behavior in the relevant source module. Update importing tests when moving a module. Keep the `src/cli.ts` entry point stable for existing agent registrations. The package build recursively compiles source modules and preserves their directory layout.
-
 
 ```
 
@@ -210,13 +215,13 @@ MIT licensed. See [platform verification and remaining Windows/macOS checks](doc
 
 Source: [nghiacr002/personal-brain-style](https://github.com/nghiacr002/personal-brain-style). Report reproducible problems through [GitHub Issues](https://github.com/nghiacr002/personal-brain-style/issues).
 
-Package discovery keywords are maintained in `package.json`; npm displays them after the next published version. They describe MCP, agent instructions, skills, project styles and Fusion.
+Package discovery keywords are maintained in `package.json`; npm displays them after the next published version. They describe MCP, agent instructions, skills, project styles and the learning loop.
 
 ### Create project-private styles through MCP
 
 Agents can call `brain_create_project_style` with an explicit `projectId`, the current `expectedProjectVersion` from `brain_projects`, and a `style` containing `keyId` (a stable lowercase slug), `domain`, `title`, `summary` and `content`. Optional fields include skill references, templates (`examples`), review criteria and required style IDs. The capability must already exist.
 
-The style is private to that project and selected by default. Use `select: false` to save an unselected alternative. If that capability is Pick one and already has a selected style, update it with `brain_update_project_style` or change the selection in Configure project. Matching uses the immutable `keyId`, not the display title. A global match is selected and personalized for the project; a private match is updated rather than duplicated. Different projects can own the same private key until publishing establishes its global identity. Publishing reuses an existing global key and never overwrites its content; private variants retain their content and link to the global style. Global edits belong in the Library or Fusion review workflow. New keys are generated from the title when omitted. The editor displays the key and locks it after creation. Existing conflicting legacy records retain distinct keys and their original content/history. Restart an existing MCP connection to discover the new tool; the ChatGPT read-only connection does not expose it.
+The style is private to that project and selected by default. Use `select: false` to save an unselected alternative. If that capability is Pick one and already has a selected style, update it with `brain_update_project_style` or change the selection in Configure project. Matching uses the immutable `keyId`, not the display title. A global match is selected and personalized for the project; a private match is updated rather than duplicated. Different projects can own the same private key until publishing establishes its global identity. Publishing reuses an existing global key and never overwrites its content; private variants retain their content and link to the global style. Global edits belong in the Library or the Learning page. New keys are generated from the title when omitted. The editor displays the key and locks it after creation. Existing conflicting legacy records retain distinct keys and their original content/history. Restart an existing MCP connection to discover the new tool; the ChatGPT read-only connection does not expose it.
 
 ## Instruction delivery and quality
 

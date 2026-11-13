@@ -18,13 +18,16 @@ import {
 } from '../styles/global-style-seed.ts';
 import {installDevelopmentStructureStyle} from '../styles/development-structure-style.ts';
 import {
-  fusionHistory,
-  fusionJob,
-  startFusion,
-  applyFusion,
-  rejectFusion,
-  cancelFusion,
-} from '../instructions/fusion.ts';
+  learningRuns,
+  learningRun,
+  startLearningRun,
+  cancelLearningRun,
+  syncLearningRuns,
+  learningRunDetails,
+  decideLearningItem,
+  projectLearningStatus,
+  autoLearnFromProjects,
+} from '../instructions/project-learning.ts';
 import {installResearchStyle} from '../styles/research-style.ts';
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import {readFileSync, existsSync, statSync} from 'node:fs';
@@ -38,6 +41,7 @@ import {
   recommendProjectStyles,
 } from '../projects/onboarding.ts';
 import {selectFolder} from '../projects/folder-browser.ts';
+import {handoffPreview, handoffWrite} from '../projects/handoff.ts';
 import {scanGaps, scanProjectGaps} from '../projects/gaps.ts';
 import {
   discoverProject,
@@ -384,29 +388,19 @@ export function createBrainHttpServer(db: BrainDB) {
           const x = await body(req);
           return json(res, 200, db.saveProject(x.project, projectMatch[1], x.expectedVersion));
         }
-        if (path === '/api/fusion' && method === 'GET') {
-          return json(res, 200, fusionHistory(db));
+        if (path === '/api/learning/runs' && method === 'GET') {
+          return json(res, 200, learningRuns(db));
         }
-        if (path === '/api/fusion' && method === 'POST') {
-          return json(res, 202, startFusion(db, await body(req)));
+        if (path === '/api/learning/runs' && method === 'POST') {
+          return json(res, 202, startLearningRun(db, await body(req)));
         }
-        const fusion = path.match(/^\/api\/fusion\/([a-f0-9-]{36})(\/(?:apply|reject|cancel))?$/);
-        if (fusion && method === 'GET' && !fusion[2]) {
-          return json(res, 200, fusionJob(db, fusion[1]));
+        // Proposals from a run are reviewed as learning items (/api/feedback/:id/decision).
+        const run = path.match(/^\/api\/learning\/runs\/([a-f0-9-]{36})(\/cancel)?$/);
+        if (run && method === 'GET' && !run[2]) {
+          return json(res, 200, learningRun(db, run[1]));
         }
-        if (fusion && method === 'POST' && fusion[2] === '/cancel') {
-          return json(res, 200, cancelFusion(db, fusion[1]));
-        }
-        if (fusion && method === 'POST' && fusion[2]) {
-          return json(
-            res,
-            200,
-            (fusion[2] === '/reject' ? rejectFusion : applyFusion)(
-              db,
-              fusion[1],
-              (await body(req)).targetId,
-            ),
-          );
+        if (run && method === 'POST' && run[2] === '/cancel') {
+          return json(res, 200, cancelLearningRun(db, run[1]));
         }
         if (path === '/api/summary' && method === 'GET') {
           return json(res, 200, db.summary());
@@ -639,10 +633,106 @@ export function createBrainHttpServer(db: BrainDB) {
           );
         }
         if (path === '/api/feedback' && method === 'GET') {
-          return json(res, 200, db.listFeedback());
+          const q = (key: string) => url.searchParams.get(key) || undefined;
+          syncLearningRuns(db);
+          return json(
+            res,
+            200,
+            db
+              .inbox({
+                projectId: q('projectId'),
+                status: q('status'),
+                diagnosis: q('diagnosis'),
+                recordId: q('recordId'),
+                source: q('source'),
+              })
+              .map((f) =>
+                f.source === 'projects' ? {...f, analysis: learningRunDetails(db, f)} : f,
+              ),
+          );
         }
         if (path === '/api/feedback' && method === 'POST') {
-          return json(res, 201, db.addFeedback(await body(req)));
+          const x = await body(req);
+          // Consolidation links (evidenceIds) are server-managed and never accepted from the client.
+          const {rating, note, recordId, projectId, proposedContent, action, proposal} = x;
+          return json(
+            res,
+            201,
+            db.addFeedback({
+              rating,
+              note,
+              recordId,
+              projectId,
+              proposedContent,
+              action,
+              proposal,
+              source: 'user',
+            }),
+          );
+        }
+        if (path === '/api/feedback/bulk' && method === 'POST') {
+          const x = await body(req);
+          return json(
+            res,
+            200,
+            db.decideMany(x.ids, x.decision, {}, (id, d, o) => decideLearningItem(db, id, d, o)),
+          );
+        }
+        if (path === '/api/feedback/consolidate' && method === 'POST') {
+          const x = await body(req);
+          return json(res, 201, db.consolidateFeedback(x.ids, x.content));
+        }
+        if (path === '/api/feedback/purge' && method === 'POST') {
+          const x = await body(req);
+          return json(res, 200, db.purgeFeedback(x.ids));
+        }
+        const decision = path.match(/^\/api\/feedback\/([a-f0-9-]{36})\/decision$/);
+        if (decision && method === 'POST') {
+          const x = await body(req);
+          return json(res, 200, decideLearningItem(db, decision[1], x.decision, x));
+        }
+        if (path === '/api/learning' && method === 'GET') {
+          syncLearningRuns(db);
+          return json(res, 200, {...db.learningHealth(), projects: projectLearningStatus(db)});
+        }
+        if (path === '/api/learning/check' && method === 'POST') {
+          // "Check now": same automatic step, ignoring the unchanged-projects shortcut.
+          return json(res, 202, {result: autoLearnFromProjects(db, true)});
+        }
+        if (path === '/api/learning/settings' && method === 'PUT') {
+          return json(res, 200, db.saveLearningSettings(await body(req)));
+        }
+        const fixtures = path.match(/^\/api\/learning\/fixtures\/([a-f0-9-]{36})$/);
+        if (fixtures) {
+          const r = db.get(fixtures[1]);
+          if (r?.projectId && r.projectId !== url.searchParams.get('projectId')) {
+            throw new BrainError('Record not found', 'NOT_FOUND', 404);
+          }
+          if (method === 'GET') {
+            return json(res, 200, db.fixtures(fixtures[1]));
+          }
+          if (method === 'PUT') {
+            return json(res, 200, db.saveFixtures(fixtures[1], await body(req)));
+          }
+        }
+        const explain = path.match(/^\/api\/learning\/explain\/([a-f0-9-]{36})$/);
+        if (explain && method === 'GET') {
+          return json(
+            res,
+            200,
+            db.explainRecord(explain[1], url.searchParams.get('projectId') || undefined),
+          );
+        }
+        const handoff = path.match(/^\/api\/projects\/([a-f0-9-]{36})\/handoff$/);
+        if (handoff && method === 'GET') {
+          return json(res, 200, handoffPreview(db, handoff[1]));
+        }
+        if (handoff && method === 'POST') {
+          const x = await body(req);
+          return json(res, 200, handoffWrite(db, handoff[1], x.contentHash, x.existingHash));
+        }
+        if (path === '/api/learning/suppressions' && method === 'DELETE') {
+          return json(res, 200, db.clearSuppressions());
         }
         if (path === '/api/audit' && method === 'GET') {
           return json(res, 200, db.auditLog());

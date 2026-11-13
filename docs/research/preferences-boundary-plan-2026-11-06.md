@@ -8,7 +8,7 @@ Date: 2026-11-06. Baseline: `f86c2fd`, package `1.3.0-beta.3`. Audience: product
 
 Judge the design on preference portability, relevance to the actual task, explicit precedence, preservation of user edits, understandable delivery evidence, and maintenance cost. Consistent delivery is testable; identical model behavior is not guaranteed.
 
-This audit covers record modeling, catalog content, project customization, discovery, dependency expansion, preparation, skill resolution, MCP delivery, hooks, review and Fusion. UI findings are from source, not rendered inspection. It is a bounded product-boundary review, not a complete security or architecture audit.
+This audit covers record modeling, catalog content, project customization, discovery, dependency expansion, preparation, skill resolution, MCP delivery, hooks, review and learning from projects. UI findings are from source, not rendered inspection. It is a bounded product-boundary review, not a complete security or architecture audit.
 
 Evidence is current repository source and a focused test run. The graph generation is dated 2026-11-03 and still references pre-reorganization paths. Coverage reported current paths as untracked or changed; relevant source was read directly. No exhaustive caller claim relies on that graph. The earlier [product research](product-improvements-2026-11-05.md) is context, not current validation of its external claims.
 
@@ -34,7 +34,7 @@ A preference may legitimately describe process: “read callers before changing 
 - [Hooks](../../src/agents/hooks.ts): compact indexes rather than unconditional full bodies.
 - [Skill discovery](../../src/projects/skill-discovery.ts): external references, bounded reads, digest-based ambiguity reporting and project-installation precedence.
 - [Artifact review](../../src/instructions/artifact-review.ts): agent claims remain unverified; file presence does not prove semantic correctness or editability.
-- [Fusion](../../src/instructions/fusion.ts): source evidence, conflict rejection, explicit publishing and version checks.
+- [Learning from projects](../../src/instructions/project-learning.ts): source evidence, conflict rejection, explicit publishing and version checks.
 
 ## Findings, ordered by product impact
 
@@ -48,7 +48,7 @@ These are gaps against the proposed product boundary, not all regressions agains
 | F4 / Major | [rankRecord](../../src/core/database.ts) scores lexical matches across metadata and long content. Hooks additionally apply domain bonuses and per-kind quotas. [Quality test](../../tests/instruction-quality.test.ts) achieved 22/30 hit@3 in this run. Live discovery for this audit returned a test-plan template first. | Selection can over-trigger and differs by entry point. Share candidate selection logic, expose reasons and measure false positives as well as expected hits. Live observation is illustrative; catalog benchmark is reproducible. |
 | F5 / Major | [MCP](../../src/agents/mcp.ts) exposes only bootstrap/discover/get/style in ChatGPT mode, while returning common compliance instructions. It intentionally does not expose local skills, prepare or review. | Some instructions request unavailable operations. Preserve read-only boundaries and provide a capability-aware workflow with an explicit manual fallback. |
 | F6 / Moderate | [Skill references](../../src/core/models.ts) are strings. [matchSkill](../../src/projects/skill-discovery.ts) strips a trailing condition and matches names/digests, without a requesting-host parameter. Scanner roots cover shared, Codex and Claude locations. | Installation does not establish usability in the current host. Keep exact selection and ambiguity warnings; introduce structured conditions and host-aware resolution only where needed. Verify OpenCode-specific paths before extending the scanner. |
-| F7 / Moderate | [Fusion](../../src/instructions/fusion.ts) learns “repeatable methods” from skill/review/example records into global preferences; it preserves every current criterion and skill reference. | Growth is easier than simplification. Restrict suggestions to reusable preferences and distinguish new preference evidence from repeated global text. Simplification must remain a separately reviewed operation. |
+| F7 / Moderate | [Learning from projects](../../src/instructions/project-learning.ts) learns “repeatable methods” from skill/review/example records into global preferences; it preserves every current criterion and skill reference. | Growth is easier than simplification. Restrict suggestions to reusable preferences and distinguish new preference evidence from repeated global text. Simplification must remain a separately reviewed operation. |
 | F8 / Moderate | [personalizeRecord](../../src/core/database.ts) copies full records and rewires ancestors; `sourceStyleId` records identity but does not itself capture the exact global base revision used. [UI](../../web/app.ts) also supports text-only assignment overrides. | Two customization paths can drift and make rebasing hard to explain. First expose source/current/private differences; preserve both legacy paths until a tested migration exists. |
 | F9 / Moderate | [UI](../../web/app.ts) labels references “Required external skills,” lists procedural skill records alongside styles, and represents templates in multiple forms. | Users cannot easily tell their preference from its implementation aid. Clarify authoring and inspection labels without initially deleting supported record kinds. |
 
@@ -107,13 +107,13 @@ Create one host-aware instruction renderer using existing adapters. It must adve
 
 Reach: database ranking, hooks, MCP, hook-install/OpenCode output, desktop/ChatGPT contracts, compliance text, diagnostic UI and documentation. Exit: the same explicit task scope yields the same effective preferences across adapters, with differences limited to available tools and verification evidence. Validate provider-specific prompts in fixtures and then run live smoke checks; fixture success is not live compliance.
 
-### 5. Make customization and Fusion understandable
+### 5. Make customization and learning from projects understandable
 
 Show global origin, private revision, effective value and why it applies. Capture the source revision for future private edits; existing unknown ancestry stays explicitly unknown. Offer comparison before any rebase. Avoid silently absorbing repository facts into reusable global preferences.
 
-Change Fusion's proposal objective from accumulating methods to identifying reusable user preferences. Keep manual publish, source attribution, stale-version checks and conflict rejection. Any removal of a requirement or skill needs a dedicated reviewed diff and rationale; do not simply relax current guards.
+Change the project analysis's proposal objective from accumulating methods to identifying reusable user preferences. Keep manual publish, source attribution, stale-version checks and conflict rejection. Any removal of a requirement or skill needs a dedicated reviewed diff and rationale; do not simply relax current guards.
 
-Reach: database personalization, onboarding prompts, Fusion validation/UI, record history, project editor, private-style and Fusion tests. Exit: rejecting proposals leaves private/global records untouched; edited private content survives catalog upgrades; global updates can be understood without automatic propagation.
+Reach: database personalization, onboarding prompts, learning from projects validation/UI, record history, project editor, private-style and project-learning tests. Exit: rejecting proposals leaves private/global records untouched; edited private content survives catalog upgrades; global updates can be understood without automatic propagation.
 
 ### 6. Broaden the catalog only after the pilot passes
 
@@ -144,7 +144,7 @@ These cases are proposed, not executed new tests. Existing suites are the starti
 | PB-07: dependency or decision changes after prepare | Review refuses stale set | instruction-set |
 | PB-08: legacy string references and text overrides | Existing behavior survives load/save/export/import | database / style-import / private-styles |
 | PB-09: migration with private edits/deleted defaults | Edits and deletions preserved; failed write atomic | global-style-seed / private-styles |
-| PB-10: Fusion sees one project's tooling | No automatic global technology preference; evidence and review required | fusion-trace |
+| PB-10: Learning from projects sees one project's tooling | No automatic global technology preference; evidence and review required | project-learning-trace |
 | PB-11: irrelevant or small task | No unrelated mandatory template; false positives measured | instruction-quality |
 | PB-12: check asserted but not run | Remains not verified; non-applicability has distinct reason | artifact-review |
 

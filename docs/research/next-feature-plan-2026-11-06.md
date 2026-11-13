@@ -14,7 +14,7 @@ Research date: 2026-11-06. Sources are current official documentation plus this 
 | Personal Brain already resolves conditional guidance, structured choices, checklist items and provenance. HTTP and MCP expose it. | `src/instructions/resolve.ts`, `src/server/http.ts`, `src/agents/mcp.ts` | Reuse the shared resolver. No second rules engine is needed. |
 | The current discovery UI renders a raw JSON result and does not call the preference-resolution endpoint. | `web/app.ts`: `discover()` and discovery action; source search for `/api/preferences/resolve` | The valuable backend behavior has no approachable task workflow. |
 | Retrieval remains imperfect. | Current run of `tests/instruction-quality.test.ts`: 23/30 expected styles in top three, seven misses | Candidates must be editable. Never imply that the first suggestions are the complete requirement set. |
-| Feedback, Fusion, library transfer and private/global comparisons already exist in some form. | Current UI/source and README; implemented earlier in this conversation | Extend those foundations later instead of introducing duplicate concepts now. |
+| Feedback, learning from projects, library transfer and private/global comparisons already exist in some form. | Current UI/source and README; implemented earlier in this conversation | Extend those foundations later instead of introducing duplicate concepts now. |
 
 Confidence: high that the UI gap exists and the resolver can support the core workflow; medium that this is the highest-value next feature. No usability interviews, competitor hands-on trials, retention metrics or model-output comparison were performed.
 
@@ -27,7 +27,7 @@ These priorities are judgments, not measured scores. Effort assumes one develope
 | Rank | Feature | User benefit | Effort | Decision |
 |---|---|---|---|---|
 | 1 | Task preference preview | Understand and correct what applies before work starts | Medium: roughly 3–5 development days | Build next |
-| 2 | Review a correction as a preference change | Turn repeated feedback into an explicit, versioned proposal with accept/reject | Medium–large | Follow preview; reuse existing Feedback/Fusion, do not silently learn from every conversation |
+| 2 | Review a correction as a preference change | Turn repeated feedback into an explicit, versioned proposal with accept/reject | Medium–large | Follow preview; reuse existing Feedback/learning from projects, do not silently learn from every conversation |
 | 3 | Save reusable selection presets | Reuse a small bundle of preferences across projects | Small–medium | Later; first determine whether current project selection/defaults already solve the need |
 | 4 | Native instruction-file export | Use selected preferences in another tool without a live MCP connection | Medium | Later; require explicit scope, owned files and drift handling so exports do not become competing sources of truth |
 | 5 | Cross-machine library synchronization | Keep multiple installations aligned | Large | Defer; selective transfer now covers the basic need, while synchronization adds conflict/deletion/identity policy |

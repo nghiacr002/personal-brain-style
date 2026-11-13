@@ -1,6 +1,6 @@
 {
   "name": "personal-brain-style",
-  "version": "1.3.0-beta.5",
+  "version": "1.3.0-beta.6",
   "type": "module",
   "description": "Your working preferences, applied consistently across AI tools. Local preference studio with discovery and MCP integrations.",
   "license": "MIT",
@@ -40,7 +40,7 @@
   "files": [
     "dist/",
     "docs/CHATGPT.md",
-    "docs/FUSION-AND-INSTRUCTIONS.md",
+    "docs/LEARNING-AND-INSTRUCTIONS.md",
     "docs/PLATFORM-SUPPORT.md"
   ],
   "publishConfig": {
@@ -60,7 +60,7 @@
     "prompt-management",
     "project-styles",
     "local-first",
-    "fusion"
+    "learning-loop"
   ],
   "repository": {
     "type": "git",

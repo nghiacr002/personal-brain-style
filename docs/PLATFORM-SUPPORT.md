@@ -15,16 +15,16 @@ Use native Node.js 22.13+ (Node 24 recommended). `npm start` starts the browser 
 | Skill discovery | Home/project/agent/plugin roots; deduplication; missing/ambiguous references; bounded reads | Native Windows installed-client inventories |
 | Claude hooks | Direct executable plus argument array, avoiding shell quoting | Requires a Claude Code release supporting exec-form hooks; live host test |
 | Codex hooks | Windows PowerShell encoded invocation; POSIX quoting elsewhere | Live Codex Windows invocation and stdin flow |
-| Connect / MCP registration | `connect`/`disconnect` install hooks or plugin and run `claude mcp add --transport stdio --scope user …` or `codex mcp add …` with an argument array (no shell; Windows npm `.cmd` shims resolve to node + script, as for Fusion); existing entry removed first; prints the command when the agent CLI is not on PATH | Live registration on Windows |
+| Connect / MCP registration | `connect`/`disconnect` install hooks or plugin and run `claude mcp add --transport stdio --scope user …` or `codex mcp add …` with an argument array (no shell; Windows npm `.cmd` shims resolve to node + script, as for project analysis); existing entry removed first; prints the command when the agent CLI is not on PATH | Live registration on Windows |
 | npx-pinned launcher | An npx copy registers hooks, plugin and MCP through `npx --yes personal-brain-style@<version>`, so clearing the npx cache does not break them; global and source copies use absolute paths | Windows `npx.cmd` resolution in agent hosts; per-call startup time |
 | OpenCode plugin | One managed file in `~/.config/opencode/plugins/` default-exports V2 `id`/`setup`, registers MCP through `ctx.mcp.transform` and context through session hooks; retains the V1 `server` entry point and refuses unmanaged files | OpenCode 2.2.5 plugin load and MCP connection verified locally; model-driven behaviour and V1 runtime not verified |
-| Fusion / tool bridge | Windows native executables or recognized npm Node shims, no shell interpolation | Authenticated provider calls; unusual custom shims require explicit node.exe + script configuration |
-| Fusion cancellation | Cleanup waits for process close; fixture lifecycle checks | Provider-specific spawned descendants are not independently supervised |
+| Project analysis / tool bridge | Windows native executables or recognized npm Node shims, no shell interpolation | Authenticated provider calls; unusual custom shims require explicit node.exe + script configuration |
+| Project-analysis cancellation | Cleanup waits for process close; fixture lifecycle checks | Provider-specific spawned descendants are not independently supervised |
 | ChatGPT tunnel | Bash helper and validation fixtures | Windows Git Bash/tunnel-client interoperability; no native PowerShell tunnel helper |
 
 ## Automated verification
 
-`.github/workflows/platform-checks.yml` runs the build, tests and packaged installation on Windows and macOS with Node 22 and 24. It has been added locally; no GitHub run is claimed. POSIX shell-fixture tests for CLI registration and the tunnel helper are explicitly skipped on Windows and run in the macOS job. Fusion has a Windows npm-shim fixture as well as its POSIX fixture.
+`.github/workflows/platform-checks.yml` runs the build, tests and packaged installation on Windows and macOS with Node 22 and 24. It has been added locally; no GitHub run is claimed. POSIX shell-fixture tests for CLI registration and the tunnel helper are explicitly skipped on Windows and run in the macOS job. Project analysis has a Windows npm-shim fixture as well as its POSIX fixture.
 
 Local macOS sandbox testing cannot bind HTTP listening sockets. Tests that require a listener must run outside this sandbox or in CI; they are not disabled to hide that restriction.
 

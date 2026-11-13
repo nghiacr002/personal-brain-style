@@ -105,6 +105,22 @@ export type Feedback = {
   rating: 'accepted' | 'rejected' | 'correction';
   note: string;
   createdAt: string;
+  projectId: string | null;
+  /** Agent and project-analysis items are proposals only; approval happens in the user interface. */
+  source: 'user' | 'agent' | 'projects';
+  sourceEventId: string | null;
+  proposedContent: string | null;
+  baseVersion: number | null;
+  /** revision: content change proposed; execution: rule exists but was not followed; missing: no rule targeted. */
+  diagnosis: 'revision' | 'execution' | 'missing';
+  status: 'pending' | 'accepted' | 'dismissed' | 'superseded';
+  decidedAt: string | null;
+  appliedVersion: number | null;
+  /** revise edits recordId; remember creates a record from proposal; forget archives recordId. */
+  action: 'revise' | 'remember' | 'forget';
+  proposal: {title: string; domain: string} | null;
+  /** Source items folded into this candidate by consolidation. */
+  evidenceIds: string[];
 };
 export class BrainError extends Error {
   code: string;

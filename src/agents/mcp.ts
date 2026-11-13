@@ -309,15 +309,49 @@ export function tools() {
     {
       name: 'brain_feedback',
       description:
-        'Log proposed personal-style feedback for human review. Does not automatically edit styles.',
+        "Log personal-style feedback to the Learning page for the user's consent. Never edits styles: the user accepts or dismisses each item. Pass projectId for project-scoped feedback, proposedContent (full replacement content for recordId) to propose an exact revision, and sourceEventId so a replayed event is recorded once.",
       inputSchema: schemaObject(
         {
           rating: {type: 'string', enum: ['accepted', 'rejected', 'correction']},
           note: str,
           recordId: str,
+          projectId: str,
+          proposedContent: str,
+          sourceEventId: str,
         },
         ['rating', 'note'],
       ),
+    },
+    {
+      name: 'brain_explain',
+      description:
+        'Explain whether a style applies in this scope and why: status, selection reason, last delivered version, pending inbox items and regression fixtures. Use for "why did you do this" or "why was this rule missing".',
+      inputSchema: schemaObject({recordId: str, projectId: str}, ['recordId']),
+    },
+    {
+      name: 'brain_remember',
+      description:
+        'Relay a lasting working preference the user stated: an explicit "remember this", or a standing decision such as "by default use HTML for documents", "from now on…", "always/never…", or a correction meant to apply next time. Never for one-off task details, your own conclusions or quoted text. Pass projectId for a project-only memory; omit it only when the user asked for a global preference. In the user\'s explicit mode it is saved at once with a receipt, otherwise it waits on the Learning page for consent. Returns recorded:false with a reason when capture is off, paused or the idea was dismissed before.',
+      inputSchema: schemaObject(
+        {
+          title: str,
+          content: str,
+          domain: str,
+          reason: str,
+          projectId: str,
+          sourceEventId: str,
+        },
+        ['title', 'content', 'domain', 'reason'],
+      ),
+    },
+    {
+      name: 'brain_forget',
+      description:
+        'Relay the user\'s explicit request to stop applying a style ("forget this preference"). Archives the record (reversible from History) after review, or at once in the user\'s explicit mode when the record belongs to the same scope. Never permanently deletes.',
+      inputSchema: schemaObject({recordId: str, reason: str, projectId: str, sourceEventId: str}, [
+        'recordId',
+        'reason',
+      ]),
     },
     {
       name: 'brain_inspect_tool',
@@ -655,17 +689,43 @@ export async function callTool(
           complianceInstructions,
         });
       }
-      case 'brain_feedback': {
-        return text({
-          recorded: true,
-          approval: 'pending',
-          feedback: db.addFeedback({
+      case 'brain_feedback':
+        return text(
+          db.capture({
             rating: String(args.rating || ''),
             note: String(args.note || ''),
             recordId: args.recordId ? String(args.recordId) : null,
+            projectId: projectId || null,
+            sourceEventId: args.sourceEventId ? String(args.sourceEventId) : null,
+            proposedContent:
+              args.proposedContent === undefined ? null : String(args.proposedContent),
           }),
-        });
-      }
+        );
+      case 'brain_explain':
+        return text(db.explainRecord(String(args.recordId || ''), projectId || undefined));
+      case 'brain_remember':
+        return text(
+          db.capture({
+            action: 'remember',
+            rating: 'correction',
+            note: String(args.reason || args.title || ''),
+            projectId: projectId || null,
+            sourceEventId: args.sourceEventId ? String(args.sourceEventId) : null,
+            proposedContent: String(args.content || ''),
+            proposal: {title: args.title, domain: args.domain},
+          }),
+        );
+      case 'brain_forget':
+        return text(
+          db.capture({
+            action: 'forget',
+            rating: 'rejected',
+            note: String(args.reason || ''),
+            recordId: String(args.recordId || ''),
+            projectId: projectId || null,
+            sourceEventId: args.sourceEventId ? String(args.sourceEventId) : null,
+          }),
+        );
       case 'brain_inspect_tool': {
         const record = db.get(String(args.id || ''));
         if (!record || record.kind !== 'tool' || record.status !== 'active' || !record.backend) {

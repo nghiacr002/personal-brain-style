@@ -6,7 +6,7 @@ import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {BrainDB} from '../src/core/database.ts';
 import {seed} from '../src/styles/seed.ts';
-import {simulateHook, taskContext} from '../src/agents/hooks.ts';
+import {instructionRefreshContext, simulateHook, taskContext} from '../src/agents/hooks.ts';
 import {manageHookConfig} from '../src/agents/hook-install.ts';
 import {pathToFileURL} from 'node:url';
 
@@ -100,7 +100,9 @@ test('UserPromptSubmit injects relevant drawing skill, not unrelated prompt', ()
   try {
     seed(db);
     for (const agent of ['claude', 'codex'] as const) {
+      simulateHook(db, agent, 'session', {session_id: 'intent-test'});
       const raw = simulateHook(db, agent, 'prompt', {
+        session_id: 'intent-test',
         prompt: 'Draw a system architecture diagram in draw.io',
       });
       const ctx = JSON.parse(raw).hookSpecificOutput.additionalContext as string;
@@ -108,7 +110,10 @@ test('UserPromptSubmit injects relevant drawing skill, not unrelated prompt', ()
       assert.match(ctx, /Editable draw.io architecture style/);
       assert.doesNotMatch(ctx, /orthogonal connectors/);
       assert.match(ctx, /brain_get/);
-      assert.equal(simulateHook(db, agent, 'prompt', {prompt: 'hello'}), '');
+      assert.equal(
+        simulateHook(db, agent, 'prompt', {session_id: 'intent-test', prompt: 'hello'}),
+        '',
+      );
     }
     const reviews =
       taskContext(db, 'Review the business requirements and check acceptance criteria') || '';
@@ -197,6 +202,115 @@ test('real hook CLI reads JSON stdin and outputs host hook format', () => {
     assert.doesNotMatch(result.hookSpecificOutput.additionalContext, /orthogonal connectors/);
     assert.match(result.hookSpecificOutput.additionalContext, /INDEX ONLY/);
   } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('real hook processes persist refresh state and warn when scope is unavailable', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-process-refresh-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    seed(db);
+    const invoke = (agent: string, phase: string, projectId = '') => {
+      const result = spawnSync(
+        process.execPath,
+        [resolve('scripts/run.mjs'), resolve('src/cli.ts'), 'hook', agent, phase],
+        {
+          cwd: dir,
+          env: {...process.env, PB_HOME: dir, PB_PROJECT_ID: projectId},
+          input: JSON.stringify({thread_id: 'live-session', prompt: 'ok'}),
+          encoding: 'utf8',
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    for (const agent of ['codex', 'claude']) {
+      invoke(agent, 'session');
+      assert.equal(invoke(agent, 'prompt'), '');
+    }
+    const record = db.scopedRecords()[0];
+    db.update(record.id, {...record, content: record.content + '\nChanged'}, record.version);
+    for (const agent of ['codex', 'claude']) {
+      assert.match(invoke(agent, 'prompt'), /INSTRUCTION REFRESH/);
+      assert.equal(invoke(agent, 'prompt'), '');
+      assert.match(invoke(agent, 'prompt', 'missing-project'), /REFRESH UNAVAILABLE/);
+    }
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('short prompts refresh changed instructions independently for each active agent session', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-short-refresh-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    seed(db);
+    const record = db.scopedRecords()[0];
+    for (const agent of ['codex', 'claude'] as const) {
+      simulateHook(db, agent, 'session', {session_id: 'shared-id'});
+      assert.equal(simulateHook(db, agent, 'prompt', {session_id: 'shared-id', prompt: 'ok'}), '');
+    }
+    db.update(
+      record.id,
+      {...record, content: record.content + '\nNew instruction'},
+      record.version,
+    );
+    for (const agent of ['codex', 'claude'] as const) {
+      const input = {session_id: 'shared-id', prompt: 'ok'};
+      const result = JSON.parse(simulateHook(db, agent, 'prompt', input));
+      assert.match(result.hookSpecificOutput.additionalContext, /INSTRUCTION REFRESH/);
+      assert.match(result.hookSpecificOutput.additionalContext, /full task intent/);
+      assert.equal(simulateHook(db, agent, 'prompt', input), '');
+      assert.match(simulateHook(db, agent, 'prompt', {prompt: 'ok'}), /INSTRUCTION REFRESH/);
+      assert.match(simulateHook(db, agent, 'prompt', {prompt: 'ok'}), /INSTRUCTION REFRESH/);
+    }
+    const current = db.get(record.id)!;
+    db.update(current.id, {...current, status: 'archived'}, current.version);
+    assert.match(
+      simulateHook(db, 'codex', 'prompt', {session_id: 'shared-id', prompt: 'continue'}),
+      /INSTRUCTION REFRESH/,
+    );
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('refresh detects overrides and scope switches without reacting to unrelated projects', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-scope-refresh-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    seed(db);
+    const record = db.scopedRecords()[0];
+    const project = db.saveProject({
+      name: 'Scoped',
+      description: '',
+      assignments: [{recordId: record.id, override: null}],
+    });
+    const refresh = () => instructionRefreshContext(db, 'codex', 'prompt', 'session', project.id);
+    assert.match(refresh()!, /INSTRUCTION REFRESH/);
+    assert.equal(refresh(), null);
+    db.saveProject({name: 'Unrelated', description: '', assignments: []});
+    assert.equal(refresh(), null);
+    db.saveProject(
+      {...project, assignments: [{recordId: record.id, override: 'Project override'}]},
+      project.id,
+      project.version,
+    );
+    assert.match(refresh()!, /INSTRUCTION REFRESH/);
+    assert.equal(refresh(), null);
+    assert.match(
+      instructionRefreshContext(db, 'codex', 'prompt', 'session')!,
+      /Current scope: global/,
+    );
+    assert.match(refresh()!, /INSTRUCTION REFRESH/);
+    const updated = db.project(project.id);
+    db.saveProject({...updated, assignments: []}, updated.id, updated.version);
+    assert.match(refresh()!, /INSTRUCTION REFRESH/);
+  } finally {
+    db.close();
     rmSync(dir, {recursive: true, force: true});
   }
 });
@@ -337,5 +451,21 @@ test('opencode plugin installs once, refuses foreign files and removes cleanly',
     assert.equal(existsSync(file), false);
   } finally {
     rmSync(home, {recursive: true, force: true});
+  }
+});
+
+test('prompt hook asks the agent to capture standing preferences, not one-off tasks', () => {
+  const db = new BrainDB(':memory:');
+  try {
+    for (const said of [
+      'when making document, let use default output is html',
+      'From now on write commit messages under 50 characters',
+      'từ nay tài liệu mặc định là html',
+    ]) {
+      assert.match(taskContext(db, said) || '', /PERSONAL BRAIN LEARN[\s\S]*brain_remember/, said);
+    }
+    assert.doesNotMatch(taskContext(db, 'Fix the login bug') || '', /PERSONAL BRAIN LEARN/);
+  } finally {
+    db.close();
   }
 });

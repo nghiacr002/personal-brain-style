@@ -27,7 +27,7 @@ These IDs are documentation references derived from code, not newly approved bus
 | CAP-03 | Deliver compact hooks and scoped MCP discovery/retrieval | [hooks](../../src/agents/hooks.ts), [MCP](../../src/agents/mcp.ts) |
 | CAP-04 | Bind task instructions to versions and record bounded artifact review | [instruction sets](../../src/instructions/instruction-set.ts), [review](../../src/instructions/artifact-review.ts) |
 | CAP-05 | Link repositories and discover evidence and installed skills | [onboarding](../../src/projects/onboarding.ts), [skill discovery](../../src/projects/skill-discovery.ts) |
-| CAP-06 | Propose and explicitly apply reusable style improvements | [Fusion](../../src/instructions/fusion.ts) |
+| CAP-06 | Propose and explicitly apply reusable style improvements | [Learning from projects](../../src/instructions/project-learning.ts) |
 | CAP-07 | Inspect invocation evidence without ordinary prompt capture | [trace storage](../../src/core/database.ts), [trace guide](../TRACE.md) |
 | CAP-08 | Distribute a compiled npm package and connect supported hosts | [package manifest](../../package.json), [launcher](../../src/agents/launcher.ts), [package build](../../scripts/build-package.mjs) |
 
@@ -66,11 +66,11 @@ Working-style system"]
 
 | External actor/system | Interface | Purpose and boundary |
 |---|---|---|
-| Local user | Browser HTTP on loopback | Manage styles, projects, history, Fusion and diagnostics |
+| Local user | Browser HTTP on loopback | Manage styles, projects, history, learning from projects and diagnostics |
 | Claude Code, Codex, OpenCode | MCP JSON-RPC over stdio; hook JSON | Retrieve scoped instructions; hooks emit advisory context |
 | Claude Desktop | Configured local stdio MCP process | Desktop access to the same catalog |
 | ChatGPT through tunnel client | Project-pinned MCP stdio behind external tunnel | Four read-only tools; no local skill-file access through this mode |
-| Codex/Claude analysis subprocess | JSON input/output through local CLI | User-triggered onboarding suggestions and Fusion proposals |
+| Codex/Claude analysis subprocess | JSON input/output through local CLI | User-triggered onboarding suggestions and project-analysis proposals |
 | Registered MCP backend | Child-process stdio | Optional, explicitly enabled tool invocation |
 | Local repositories and skill folders | Bounded filesystem reads | Evidence, repository link and installed-skill inventory |
 | npm | Package distribution | Install compiled application; no registry needed for ordinary local catalog reads |
@@ -85,7 +85,7 @@ In scope: the current application and its packaging, adapters, data and explicit
 | SQLite snapshots plus revision rows | CAP-01 | Simple local deployment and restore-to-new-version; database backup remains an operator responsibility |
 | Metadata discovery followed by explicit full retrieval | CAP-03 | Reduces routine context, but matching remains lexical and may omit relevant records |
 | Copy shared styles when personalising a project | CAP-02 | Preserves global/other-project content; dependent ancestors may also need private copies |
-| Version/digest checks before review and Fusion application | CAP-04, CAP-06 | Rejects stale state; cannot prove the chosen style scope was complete |
+| Version/digest checks before review and project-analysis application | CAP-04, CAP-06 | Rejects stale state; cannot prove the chosen style scope was complete |
 | Human/agent-selected proposal application | CAP-06 | Analysis results do not silently mutate shared styles |
 | Compiled npm distribution | CAP-08 | Installed entry paths target JavaScript; package smoke tests check that contract |
 
@@ -131,7 +131,7 @@ The database is a shared file, not a network database container. External skill 
 1. **Instruction delivery:** [retrieve sequence](diagrams/retrieve.mmd). The host resolves project scope, discovers metadata, loads selected records/dependencies, and optionally loads an installed skill. Invalid scope or unavailable selections return errors.
 2. **Project personalisation:** [personalise sequence](diagrams/personalize.mmd). A version-checked update copies a shared record and affected ancestors, rewires selections and commits atomically. Other projects retain their shared versions.
 3. **Prepare and review:** [prepare sequence](diagrams/prepare.mmd) and [review sequence](diagrams/review.mmd). The agent chooses roots; preparation fingerprints effective instructions. Review rejects drift, verifies bounded artifact presence and records manual uncertainty.
-4. **Fusion:** [Fusion sequence](diagrams/fusion.mmd). A user starts analysis, reviews proposals, then applies or rejects each. Application rechecks source/target versions and unresolved conflicts before changing shared records.
+4. **Learning from projects:** [Learning-from-projects sequence](diagrams/learning-from-projects.mmd). A user starts analysis, reviews proposals, then applies or rejects each. Application rechecks source/target versions and unresolved conflicts before changing shared records.
 
 The [LLD](../design/lld-personal-brain-core.md) additionally describes hooks, record edits/restores, onboarding, removal and the optional tool bridge.
 
@@ -176,13 +176,13 @@ The default data location is `~/.personal-brain-style/brain.sqlite`; `PB_HOME` s
 
 **Remote access.** ChatGPT mode exposes only bootstrap/discover/get/style, refuses scope changes and does not load installed local skill files. It still creates invocation telemetry; read-only means no style-management tools, not zero disk writes. Tunnel credentials remain in process environment in the [helper](../../scripts/connect-chatgpt.sh).
 
-**External execution.** The MCP bridge requires both an enabled backend and `PB_ENABLE_TOOL_PROXY=1`. It uses `shell:false`, timeout and response-buffer limits, but inherits the environment and is not a sandbox. Onboarding/Fusion explicitly launch model CLIs with tool restrictions; source evidence may contain sensitive text despite path exclusions. Those workflows can send input to the configured host provider.
+**External execution.** The MCP bridge requires both an enabled backend and `PB_ENABLE_TOOL_PROXY=1`. It uses `shell:false`, timeout and response-buffer limits, but inherits the environment and is not a sandbox. Onboarding and project analysis explicitly launch model CLIs with tool restrictions; source evidence may contain sensitive text despite path exclusions. Those workflows can send input to the configured host provider.
 
 **Data and consistency.** Record writes pair current snapshots, revisions and audit rows within SQLite savepoints. Project edits use record and project version checks. Restoring a revision creates a new current version. Explicit removal can delete historical revisions and traces; revisions are not an immutable external audit ledger.
 
-**Observability.** Trace events show emitted/retrieved instructions and record versions. Ordinary telemetry stores whitelisted metadata and keyed prompt fingerprints, not prompts or responses. Explicit compliance reports and Fusion snapshots have additional content; do not describe the entire database as metadata-only. Separate hook and MCP processes may lack a common session ID.
+**Observability.** Trace events show emitted/retrieved instructions and record versions. Ordinary telemetry stores whitelisted metadata and keyed prompt fingerprints, not prompts or responses. Explicit compliance reports and project-analysis snapshots have additional content; do not describe the entire database as metadata-only. Separate hook and MCP processes may lack a common session ID.
 
-**Resilience.** Atomic local updates and backup support exist; no automated off-device backup, replication, retention policy, operational SLO or tested disaster recovery guarantee is established. Failed Fusion jobs do not automatically retry.
+**Resilience.** Atomic local updates and backup support exist; no automated off-device backup, replication, retention policy, operational SLO or tested disaster recovery guarantee is established. Failed learning runs do not automatically retry.
 
 ## 9. Decisions
 
@@ -193,7 +193,7 @@ No formal ADR index was found. The following evidence index records existing cho
 | OBS-01 | Local SQLite WAL | [BrainDB constructor](../../src/core/database.ts) |
 | OBS-02 | Native stdio MCP and compact hooks | [MCP](../../src/agents/mcp.ts), [hooks](../../src/agents/hooks.ts) |
 | OBS-03 | Private copies and optimistic versions | [personalizeRecord](../../src/core/database.ts) |
-| OBS-04 | Explicit proposal review/application | [Fusion](../../src/instructions/fusion.ts) |
+| OBS-04 | Explicit proposal review/application | [Learning from projects](../../src/instructions/project-learning.ts) |
 | OBS-05 | Manual checks remain unverified | [artifact review](../../src/instructions/artifact-review.ts) |
 
 A future change to process boundaries, storage, security model or remote access should introduce a formal decision record. This document does not authorise such a change.
@@ -234,7 +234,7 @@ Current execution results and exact commands are in the verification report. A t
 | Effective record | Selected record with project override and required dependency context |
 | Private copy | Project-owned record preserving a shared source link |
 | Instruction set | Stored task/project/version fingerprint, not a compliance certificate |
-| Fusion | User-triggered consolidation proposals for existing shared styles |
+| Learning from projects | User-triggered consolidation proposals for existing shared styles |
 | MCP | Model Context Protocol; this implementation uses newline-delimited stdio JSON-RPC |
 | WAL | SQLite write-ahead logging |
 | HLD / LLD / ADR | High-level design / low-level design / architecture decision record |

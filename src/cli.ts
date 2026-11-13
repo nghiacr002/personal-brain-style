@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {BrainDB, defaultHome, dbPath} from './core/database.ts';
 import {seedGlobalStyles, installCatalogAdditions} from './styles/global-style-seed.ts';
 import {createBrainHttpServer} from './server/http.ts';
+import {autoLearnFromProjects, LEARNING_CHECK_MINUTES} from './instructions/project-learning.ts';
 import {mcpMain, MCP_PROTOCOL_VERSION} from './agents/mcp.ts';
 import {executeHook, simulateHook} from './agents/hooks.ts';
 import {manageHookConfig} from './agents/hook-install.ts';
@@ -70,6 +71,16 @@ if (arg === 'desktop') {
 } else if (arg === 'serve' || arg === 'setup') {
   const port = Number(process.env.PB_PORT || 4177);
   const server = createBrainHttpServer(db);
+  // Learning runs by itself while the app is open: compare projects whenever their styles change.
+  const learn = () => {
+    try {
+      autoLearnFromProjects(db);
+    } catch (e) {
+      console.error('Automatic learning check failed:', e instanceof Error ? e.message : e);
+    }
+  };
+  setTimeout(learn, 30_000).unref();
+  setInterval(learn, LEARNING_CHECK_MINUTES * 60_000).unref();
   server.listen(port, '127.0.0.1', () => {
     console.log(
       `\n  Personal Brain — Personal Style Studio\n  http://127.0.0.1:${port}\n  Data: ${dbPath()}\n`,

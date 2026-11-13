@@ -94,7 +94,14 @@ Tools exposed:
 - `brain_get`: read a selected active entry.
 - `brain_style`: read preferences for a domain.
 - `brain_review`: run deterministic text checks.
-- `brain_feedback`: record pending feedback for human approval.
+- `brain_feedback`: record feedback or an exact proposed revision for the user's consent on the Learning page (`sourceEventId` deduplicates replays).
+- `brain_remember` / `brain_forget`: relay the user's explicit remember/forget request. Pending review in `suggest` mode; committed in the caller's own scope in `explicit` mode. Forget archives (reversible), never purges.
+- `brain_explain`: why a style is applied or missing in a scope (status, selection, last delivered version, pending items, fixtures).
+- Regression fixtures per style (must keep / must not contain) block applying a failing revision, with no override.
+- Deleting a shared style stores a hashed deletion receipt; library import marks it "forgotten" and will not restore it. Imported `remembered` styles arrive as drafts.
+- Optional automation folds identical pending proposals into one (split to undo); actions are listed under "Recent automatic actions".
+- Implementation handoff writes `.personal-brain/preferences.md` into a linked repository only after the user previews the exact file (hash-checked, no symlinks).
+- Learning page (web UI), one loop of learn → feedback → consent → reuse: proposals come from agents, from you, and from automatic project comparison (when customized project styles change, an agent compares them; applying re-checks sources and never overwrites private copies). Apply globally or project-only, consolidate/split, dismiss (suppresses recurrence by hash), bulk decisions with per-item results, evidence purge, retention expiry and capture pause per project. Applying checks the base version and blocks proposals that drop mandatory statements unless acknowledged.
 - `brain_inspect_tool`: list tool names and JSON schemas from an explicitly enabled external MCP server.
 - `brain_call_tool`: optionally invoke an approved external MCP server and a specific tool.
 

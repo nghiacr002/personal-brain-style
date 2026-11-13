@@ -12,6 +12,18 @@ import {homedir} from 'node:os';
 import {validateRequirements} from './requirements.ts';
 import {discoveryMetadata} from './discovery-metadata.ts';
 import {
+  DEFAULT_RETENTION_DAYS,
+  LEARNING_MODES,
+  type LearningMode,
+  looksLikeCredential,
+  lostObligations,
+  suppressionFingerprint,
+  checkFixtures,
+  fixtureFailures,
+  keyReceipt,
+  type Fixtures,
+} from './learning.ts';
+import {
   BrainError,
   DOMAINS,
   type Project,
@@ -228,6 +240,34 @@ export function rankRecord(record: BrainRecord, query: string): number {
   return recordMatch(record, query).score;
 }
 
+const diagnose = (
+  action: Feedback['action'],
+  proposal: unknown,
+  record: BrainRecord | null,
+): Feedback['diagnosis'] => {
+  if (action === 'remember') {
+    return 'missing';
+  }
+  if (action === 'forget' || proposal != null) {
+    return 'revision';
+  }
+  return record?.status === 'active' ? 'execution' : 'missing';
+};
+type FeedbackInput = {
+  recordId?: string | null;
+  rating: string;
+  note: string;
+  projectId?: string | null;
+  source?: Feedback['source'];
+  sourceEventId?: string | null;
+  proposedContent?: string | null;
+  action?: Feedback['action'];
+  proposal?: {title?: unknown; domain?: unknown} | null;
+  evidenceIds?: string[];
+  /** Project analysis pins the version it saw, so a newer edit shows as stale. */
+  baseVersion?: number;
+};
+export type DecisionOptions = {content?: unknown; scope?: unknown; acknowledgeRemovals?: unknown};
 export class BrainDB {
   db: DatabaseSync;
   constructor(filePath: string = dbPath()) {
@@ -257,6 +297,40 @@ export class BrainDB {
     ) {
       this.db.exec('ALTER TABLE domains ADD COLUMN combinable INTEGER NOT NULL DEFAULT 0');
     }
+    const feedbackColumns = new Set(
+      (
+        this.db.prepare("SELECT name FROM pragma_table_info('feedback')").all() as {name: string}[]
+      ).map((c) => c.name),
+    );
+    for (const [name, type] of [
+      ['project_id', 'TEXT'],
+      ['source', "TEXT NOT NULL DEFAULT 'user'"],
+      ['source_event_id', 'TEXT'],
+      ['proposed_content', 'TEXT'],
+      ['base_version', 'INTEGER'],
+      ['diagnosis', "TEXT NOT NULL DEFAULT 'missing'"],
+      ['status', "TEXT NOT NULL DEFAULT 'pending'"],
+      ['decided_at', 'TEXT'],
+      ['applied_version', 'INTEGER'],
+      ['action', "TEXT NOT NULL DEFAULT 'revise'"],
+      ['proposal', 'TEXT'],
+      ['evidence_ids', 'TEXT'],
+    ]) {
+      if (!feedbackColumns.has(name)) {
+        this.db.exec(`ALTER TABLE feedback ADD COLUMN ${name} ${type}`);
+      }
+    }
+    this.db.exec(
+      'CREATE UNIQUE INDEX IF NOT EXISTS feedback_event ON feedback(source_event_id) WHERE source_event_id IS NOT NULL',
+    );
+    // Carry runs and items saved by earlier versions into the learning loop. Runs are recognized by
+    // their stored shape (proposals + decisions), items by a source value this version no longer writes.
+    this.db.exec(`UPDATE OR IGNORE meta SET key='learning-run:'||json_extract(value,'$.id')
+        WHERE json_valid(value) AND json_type(value,'$.proposals')='array' AND json_type(value,'$.applied')='array'
+          AND key<>'learning-run:'||json_extract(value,'$.id');
+      UPDATE feedback SET source='projects',
+          source_event_id='learning-run:'||substr(source_event_id,instr(source_event_id,':')+1)
+        WHERE source NOT IN ('user','agent','projects');`);
     for (const id of DOMAINS) {
       if (!this.db.prepare('SELECT 1 FROM meta WHERE key=?').get('deleted-domain:' + id)) {
         this.db.prepare('INSERT OR IGNORE INTO domains(id,name) VALUES(?,?)').run(id, id);
@@ -598,6 +672,14 @@ export class BrainDB {
       .prepare("SELECT value FROM meta WHERE key='new_project_style_defaults_v1'")
       .get() as {value: string} | undefined;
     const ids: string[] = row ? JSON.parse(row.value) : [];
+    const architecture = this.db
+      .prepare(
+        "SELECT id FROM records WHERE json_extract(snapshot,'$.keyId')='solution-architecture' AND json_extract(snapshot,'$.projectId') IS NULL AND json_extract(snapshot,'$.status')='active'",
+      )
+      .get() as {id: string} | undefined;
+    if (architecture && !ids.includes(architecture.id)) {
+      ids.push(architecture.id);
+    }
     const slots = new Set<string>();
     return ids.filter((id) => {
       const r = this.get(id);
@@ -764,6 +846,13 @@ export class BrainDB {
       }
       for (const recordId of ids) {
         const removed = this.get(recordId);
+        // Deletion receipt: a hash of the key only, so a later import cannot silently restore it.
+        if (removed?.keyId && !removed.projectId) {
+          this.db
+            .prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)')
+            .run('deleted-key:' + keyReceipt(removed.keyId), new Date().toISOString());
+        }
+        this.db.prepare('DELETE FROM meta WHERE key=?').run('learning-fixtures:' + recordId);
         if (
           removed?.projectId &&
           removed.tags.includes('auto-project-discovery') &&
@@ -808,7 +897,7 @@ export class BrainDB {
         .get() as {value: string} | undefined;
       for (const row of this.db
         .prepare(
-          "SELECT key,value FROM meta WHERE key LIKE 'fusion:%' OR key LIKE 'instruction-set:%'",
+          "SELECT key,value FROM meta WHERE key LIKE 'learning-run:%' OR key LIKE 'instruction-set:%'",
         )
         .all() as {key: string; value: string}[]) {
         const snapshot: {
@@ -862,12 +951,18 @@ export class BrainDB {
           .run('deleted-domain:' + id, '1');
       }
       if (kind === 'project') {
-        for (const prefix of ['repository:', 'project-style-baseline:', 'discovery-paused:']) {
+        for (const prefix of [
+          'repository:',
+          'project-style-baseline:',
+          'discovery-paused:',
+          'learning-paused:',
+        ]) {
           this.db.prepare('DELETE FROM meta WHERE key=?').run(prefix + id);
         }
         this.db
           .prepare("DELETE FROM trace_events WHERE json_extract(metadata,'$.projectId')=?")
           .run(id);
+        this.db.prepare('DELETE FROM feedback WHERE project_id=?').run(id);
       }
       if (kind === 'reset') {
         this.db
@@ -1137,35 +1232,757 @@ export class BrainDB {
       at: r.at,
     }));
   }
-  addFeedback(input: {recordId?: string | null; rating: string; note: string}): Feedback {
+  addFeedback(input: FeedbackInput): Feedback {
     if (!['accepted', 'rejected', 'correction'].includes(input.rating)) {
       throw new BrainError('Invalid rating');
     }
     if (!input.note || input.note.length > 10000) {
       throw new BrainError('Feedback note required, max 10000 characters');
     }
-    if (input.recordId && !this.get(input.recordId)) {
+    if (input.sourceEventId && input.sourceEventId.length > 200) {
+      throw new BrainError('Source event ID max 200 characters');
+    }
+    const action = input.action || 'revise';
+    if (!['revise', 'remember', 'forget'].includes(action)) {
+      throw new BrainError('Invalid learning action');
+    }
+    const proposed = input.proposedContent ?? null;
+    if (proposed !== null && (!proposed.trim() || proposed.length > 100000)) {
+      throw new BrainError('Proposed content required, max 100000 characters');
+    }
+    let proposal: Feedback['proposal'] = null;
+    if (action === 'remember') {
+      const title = String(input.proposal?.title || '').trim();
+      if (input.recordId || proposed === null || !title || title.length > 200) {
+        throw new BrainError('Remember needs content and a title (max 200), and no target record');
+      }
+      if (!this.hasDomain(input.proposal?.domain)) {
+        throw new BrainError('Register this domain before using it');
+      }
+      proposal = {title, domain: String(input.proposal!.domain)};
+    } else if (!input.recordId && (proposed !== null || action === 'forget')) {
+      throw new BrainError('A proposed change must target a record');
+    } else if (action === 'forget' && proposed !== null) {
+      throw new BrainError('Forget does not take proposed content');
+    }
+    if ([input.note, proposed || '', proposal?.title || ''].some(looksLikeCredential)) {
+      throw new BrainError('This looks like a credential. Remove secrets before saving feedback.');
+    }
+    if (input.projectId) {
+      this.project(input.projectId);
+    }
+    const record = input.recordId ? this.get(input.recordId) : null;
+    // Project-private records are invisible outside their project, so treat them as missing.
+    if (input.recordId && (!record || (record.projectId && record.projectId !== input.projectId))) {
       throw new BrainError('Referenced record not found', 'NOT_FOUND', 404);
     }
-    const f: Feedback = {
-      id: randomUUID(),
-      recordId: input.recordId || null,
-      rating: input.rating as Feedback['rating'],
-      note: input.note,
-      createdAt: new Date().toISOString(),
-    };
-    this.db
-      .prepare('INSERT INTO feedback(id,record_id,rating,note,created_at) VALUES(?,?,?,?,?)')
-      .run(f.id, f.recordId, f.rating, f.note, f.createdAt);
-    this.audit('feedback', f.recordId || 'general', f.rating);
-    return f;
+    return this.transaction(() => {
+      if (input.sourceEventId) {
+        const existing = this.feedbackRows('WHERE source_event_id=?', input.sourceEventId)[0];
+        if (existing) {
+          return existing;
+        }
+      }
+      const f: Feedback = {
+        id: randomUUID(),
+        recordId: record?.id || null,
+        rating: input.rating as Feedback['rating'],
+        note: input.note,
+        createdAt: new Date().toISOString(),
+        projectId: input.projectId || null,
+        source: input.source || 'user',
+        sourceEventId: input.sourceEventId || null,
+        proposedContent: proposed,
+        baseVersion: input.baseVersion ?? record?.version ?? null,
+        diagnosis: diagnose(action, proposed, record),
+        status: 'pending',
+        decidedAt: null,
+        appliedVersion: null,
+        action,
+        proposal,
+        evidenceIds: input.evidenceIds || [],
+      };
+      this.db
+        .prepare(
+          'INSERT INTO feedback(id,record_id,rating,note,created_at,project_id,source,source_event_id,proposed_content,base_version,diagnosis,status,action,proposal,evidence_ids) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        )
+        .run(
+          f.id,
+          f.recordId,
+          f.rating,
+          f.note,
+          f.createdAt,
+          f.projectId,
+          f.source,
+          f.sourceEventId,
+          f.proposedContent,
+          f.baseVersion,
+          f.diagnosis,
+          f.status,
+          f.action,
+          f.proposal ? JSON.stringify(f.proposal) : null,
+          JSON.stringify(f.evidenceIds),
+        );
+      this.audit(
+        'feedback',
+        f.recordId || 'general',
+        `${f.action} ${f.diagnosis} from ${f.source}`,
+      );
+      return f;
+    });
   }
-  listFeedback(): Feedback[] {
+  learningSettings() {
+    const value = (key: string) =>
+      (
+        this.db.prepare('SELECT value FROM meta WHERE key=?').get(key) as
+          {value: string} | undefined
+      )?.value;
+    const retention = value('learning-retention-days');
+    return {
+      mode: (value('learning-mode') as LearningMode | undefined) || 'suggest',
+      retentionDays: retention === undefined ? DEFAULT_RETENTION_DAYS : Number(retention),
+      pausedProjects: (
+        this.db
+          .prepare("SELECT substr(key,17) AS id FROM meta WHERE key LIKE 'learning-paused:%'")
+          .all() as {id: string}[]
+      ).map((r) => r.id),
+      suppressions: (
+        this.db
+          .prepare("SELECT count(*) AS n FROM meta WHERE key LIKE 'learning-suppressed:%'")
+          .get() as {n: number}
+      ).n,
+      // Merging identical local proposals costs nothing, so it is on by default.
+      autoConsolidate: value('learning-auto-consolidate') !== '0',
+      // Comparing projects calls the user's agent CLI, so it stays off until the user answers once.
+      autoProjects: value('learning-auto-projects') === '1',
+      autoProjectsAsked: value('learning-auto-projects') !== undefined,
+      agent: (value('learning-agent') || '') as '' | 'codex' | 'claude',
+    };
+  }
+  saveLearningSettings(raw: unknown) {
+    const x = (raw || {}) as {
+      mode?: unknown;
+      retentionDays?: unknown;
+      pausedProjects?: unknown;
+      autoConsolidate?: unknown;
+      autoProjects?: unknown;
+      agent?: unknown;
+    };
+    for (const key of ['autoConsolidate', 'autoProjects'] as const) {
+      if (x[key] !== undefined && typeof x[key] !== 'boolean') {
+        throw new BrainError(key + ' must be true or false');
+      }
+    }
+    if (x.agent !== undefined && !['', 'codex', 'claude'].includes(x.agent as string)) {
+      throw new BrainError('Agent must be codex, claude or empty for automatic');
+    }
+    if (!LEARNING_MODES.includes(x.mode as LearningMode)) {
+      throw new BrainError('Mode must be off, suggest or explicit');
+    }
+    const days = Number(x.retentionDays);
+    if (!Number.isInteger(days) || days < 0 || days > 3650) {
+      throw new BrainError('Retention must be 0-3650 days (0 keeps decided evidence)');
+    }
+    if (!Array.isArray(x.pausedProjects) || x.pausedProjects.some((id) => typeof id !== 'string')) {
+      throw new BrainError('Paused projects must be a list of project IDs');
+    }
+    return this.transaction(() => {
+      for (const id of x.pausedProjects as string[]) {
+        this.project(id);
+      }
+      const set = this.db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)');
+      set.run('learning-mode', String(x.mode));
+      set.run('learning-retention-days', String(days));
+      if (x.autoConsolidate !== undefined) {
+        set.run('learning-auto-consolidate', x.autoConsolidate ? '1' : '0');
+      }
+      if (x.autoProjects !== undefined) {
+        set.run('learning-auto-projects', x.autoProjects ? '1' : '0');
+      }
+      if (x.agent !== undefined) {
+        set.run('learning-agent', String(x.agent));
+      }
+      this.db.prepare("DELETE FROM meta WHERE key LIKE 'learning-paused:%'").run();
+      for (const id of x.pausedProjects as string[]) {
+        set.run('learning-paused:' + id, '1');
+      }
+      this.audit('learning-settings', 'learning', `${x.mode}, ${days} days`);
+      return this.learningSettings();
+    });
+  }
+  /** Agent entry point: honors capture mode, project pause and dismissed-idea suppression. */
+  capture(input: FeedbackInput): {recorded: boolean; reason?: string; feedback?: Feedback} {
+    const settings = this.learningSettings();
+    if (settings.mode === 'off') {
+      return {recorded: false, reason: 'Learning capture is off'};
+    }
+    if (input.projectId && settings.pausedProjects.includes(input.projectId)) {
+      return {recorded: false, reason: 'Learning capture is paused for this project'};
+    }
+    if (this.isSuppressed(input)) {
+      return {recorded: false, reason: 'You dismissed a matching suggestion before'};
+    }
+    let feedback = this.addFeedback({...input, source: 'agent'});
+    if (settings.autoConsolidate) {
+      feedback = this.autoConsolidate(feedback);
+    }
+    const record = feedback.recordId ? this.get(feedback.recordId) : null;
+    // Explicit mode commits remember/forget only inside the caller's own scope; anything wider waits for review.
+    const sameScope =
+      feedback.action === 'remember' ||
+      (feedback.action === 'forget' && (record?.projectId || null) === feedback.projectId);
+    if (settings.mode === 'explicit' && feedback.status === 'pending' && sameScope) {
+      try {
+        return {recorded: true, feedback: this.decideFeedback(feedback.id, 'accept')};
+      } catch (e) {
+        // Keep the request in the inbox so the user can resolve the conflict.
+        return {recorded: true, reason: 'Saved for review: ' + (e as Error).message, feedback};
+      }
+    }
+    return {recorded: true, feedback};
+  }
+  private fingerprintOf(
+    f: Pick<FeedbackInput, 'action' | 'recordId' | 'proposedContent' | 'note'>,
+  ) {
+    const action = f.action || 'revise';
+    return suppressionFingerprint(
+      action,
+      f.recordId || null,
+      action === 'forget' ? '' : (f.proposedContent ?? f.note),
+    );
+  }
+  private isSuppressed(f: FeedbackInput) {
+    return !!this.db
+      .prepare('SELECT 1 FROM meta WHERE key=?')
+      .get('learning-suppressed:' + this.fingerprintOf(f));
+  }
+  clearSuppressions() {
+    const n = Number(
+      this.db.prepare("DELETE FROM meta WHERE key LIKE 'learning-suppressed:%'").run().changes,
+    );
+    this.audit('learning-suppressions-cleared', 'learning', String(n));
+    return {cleared: n};
+  }
+  /** User decision on an inbox item. Accepting writes a new record revision against the item's base version. */
+  decideFeedback(id: string, decision: unknown, options: DecisionOptions = {}): Feedback {
+    if (decision !== 'accept' && decision !== 'dismiss' && decision !== 'split') {
+      throw new BrainError('Decision must be accept, dismiss or split');
+    }
+    if (options.content !== undefined && typeof options.content !== 'string') {
+      throw new BrainError('Edited content must be text');
+    }
+    if (options.scope !== undefined && options.scope !== 'project') {
+      throw new BrainError('Scope may only be narrowed to project');
+    }
+    return this.transaction(() => {
+      const f = this.feedbackRows('WHERE id=?', id)[0];
+      if (!f) {
+        throw new BrainError('Feedback not found', 'NOT_FOUND', 404);
+      }
+      if (f.status !== 'pending') {
+        throw new BrainError('Feedback was already decided', 'CONFLICT', 409);
+      }
+      if (f.source === 'projects') {
+        // Project-analysis proposals carry source evidence only decideLearningItem can re-check.
+        throw new BrainError('Project-analysis proposals are decided through decideLearningItem');
+      }
+      const decidedAt = new Date().toISOString();
+      if (decision === 'split') {
+        if (!f.evidenceIds.length) {
+          throw new BrainError('Only a consolidated proposal can be split');
+        }
+        this.db
+          .prepare("UPDATE feedback SET status='dismissed',decided_at=? WHERE id=?")
+          .run(decidedAt, id);
+        for (const sourceId of f.evidenceIds) {
+          this.db
+            .prepare(
+              "UPDATE feedback SET status='pending',decided_at=NULL WHERE id=? AND status='superseded'",
+            )
+            .run(sourceId);
+        }
+        this.audit('feedback-split', f.recordId || 'general', String(f.evidenceIds.length));
+        return {...f, status: 'dismissed', decidedAt};
+      }
+      let appliedVersion: number | null = null;
+      let recordId: string | null = null;
+      if (decision === 'accept') {
+        ({appliedVersion, recordId} = this.applyFeedback(f, options));
+      } else {
+        // Dismissal suppresses recurrence of the same idea; only a hash is kept.
+        this.db
+          .prepare('INSERT OR IGNORE INTO meta(key,value) VALUES(?,?)')
+          .run('learning-suppressed:' + this.fingerprintOf(f), decidedAt);
+      }
+      return this.closeFeedback(
+        f,
+        decision === 'accept' ? 'accepted' : 'dismissed',
+        appliedVersion,
+        recordId,
+      );
+    });
+  }
+  feedbackItem(id: string): Feedback | undefined {
+    return this.feedbackRows('WHERE id=?', id)[0];
+  }
+  /** Records a decision on a pending item and on the items it consolidated. */
+  closeFeedback(
+    f: Feedback,
+    status: 'accepted' | 'dismissed',
+    appliedVersion: number | null,
+    recordId: string | null = null,
+  ): Feedback {
+    const decidedAt = new Date().toISOString();
+    this.db
+      .prepare(
+        'UPDATE feedback SET status=?,decided_at=?,applied_version=?,record_id=COALESCE(?,record_id) WHERE id=?',
+      )
+      .run(status, decidedAt, appliedVersion, recordId, f.id);
+    for (const sourceId of f.evidenceIds) {
+      this.db
+        .prepare("UPDATE feedback SET status=?,decided_at=? WHERE id=? AND status='superseded'")
+        .run(status, decidedAt, sourceId);
+    }
+    this.audit(
+      'feedback-' + status,
+      recordId || f.recordId || 'general',
+      appliedVersion ? `v${appliedVersion}` : f.action,
+    );
+    return {...f, status, decidedAt, appliedVersion, recordId: recordId || f.recordId};
+  }
+  /** Blocks a revision that drops obligations (unless acknowledged) or fails regression fixtures. */
+  checkRevision(recordId: string, content: string, acknowledgeRemovals: unknown) {
+    const current = this.get(recordId);
+    const lost = current ? lostObligations(current.content, content) : [];
+    if (lost.length && acknowledgeRemovals !== true) {
+      throw new BrainError(
+        'Proposal drops mandatory statements: ' + lost.join(' | '),
+        'OBLIGATIONS_REMOVED',
+        409,
+      );
+    }
+    const failed = fixtureFailures(this.fixtures(recordId), content);
+    if (failed.length) {
+      // Regression fixtures have no override: edit the proposal or the fixtures first.
+      throw new BrainError(
+        'Regression fixtures failed: ' + failed.join(' | '),
+        'FIXTURES_FAILED',
+        409,
+      );
+    }
+    return current;
+  }
+  private applyFeedback(
+    f: Feedback,
+    options: DecisionOptions,
+  ): {appliedVersion: number | null; recordId: string | null} {
+    if (f.action === 'remember') {
+      const style = {
+        title: f.proposal!.title,
+        domain: f.proposal!.domain,
+        summary: f.note.slice(0, 1200),
+        content: (options.content as string | undefined) ?? f.proposedContent!,
+        tags: ['remembered'],
+      };
+      const record = f.projectId
+        ? this.createProjectStyle(f.projectId, style, this.project(f.projectId).version).record
+        : this.create({
+            ...style,
+            kind: 'preference',
+            priority: 50,
+            status: 'active',
+            checks: [],
+            backend: null,
+          });
+      return {appliedVersion: record.version, recordId: record.id};
+    }
+    if (!f.recordId || f.baseVersion == null) {
+      if (options.content !== undefined) {
+        throw new BrainError('Edited content requires a target record');
+      }
+      return {appliedVersion: null, recordId: null};
+    }
+    if (f.action === 'forget') {
+      // Archive is reversible from History; permanent purge stays in the removal preview flow.
+      return {
+        appliedVersion: this.update(f.recordId, {status: 'archived'}, f.baseVersion).version,
+        recordId: null,
+      };
+    }
+    const content = (options.content as string | undefined) ?? f.proposedContent;
+    if (content == null) {
+      return {appliedVersion: null, recordId: null};
+    }
+    const current = this.checkRevision(f.recordId, content, options.acknowledgeRemovals);
+    if (options.scope === 'project') {
+      if (!f.projectId || current?.projectId) {
+        throw new BrainError('Project-only applies to project feedback on a shared style');
+      }
+      // personalizeRecord checks the base version, so a newer shared edit still conflicts.
+      const copy = this.personalizeRecord(
+        f.projectId,
+        f.recordId,
+        {content},
+        f.baseVersion,
+        this.project(f.projectId).version,
+      ) as BrainRecord;
+      return {appliedVersion: copy.version, recordId: copy.id};
+    }
+    // A newer edit since the proposal was made raises CONFLICT instead of being overwritten.
+    return {
+      appliedVersion: this.update(f.recordId, {content}, f.baseVersion).version,
+      recordId: null,
+    };
+  }
+  /** Bulk decisions run independently so one failure is reported without hiding the others. */
+  decideMany(
+    ids: unknown,
+    decision: unknown,
+    options: DecisionOptions = {},
+    decide: (id: string, decision: unknown, options: DecisionOptions) => Feedback = (i, d, o) =>
+      this.decideFeedback(i, d, o),
+  ) {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 100) {
+      throw new BrainError('Select 1-100 items');
+    }
+    return ids.map((id) => {
+      try {
+        return {id, ok: true, feedback: decide(String(id), decision, options)};
+      } catch (e) {
+        return {id, ok: false, error: e instanceof Error ? e.message : String(e)};
+      }
+    });
+  }
+  /** Fold related pending corrections on one record into a single candidate, keeping every source. */
+  consolidateFeedback(ids: unknown, content?: unknown): Feedback {
+    if (
+      !Array.isArray(ids) ||
+      ids.length < 2 ||
+      ids.length > 50 ||
+      new Set(ids).size !== ids.length
+    ) {
+      throw new BrainError('Select 2-50 distinct items to consolidate');
+    }
+    if (content !== undefined && typeof content !== 'string') {
+      throw new BrainError('Consolidated content must be text');
+    }
+    return this.transaction(() => {
+      const rows = ids.map((id) => this.feedbackRows('WHERE id=?', String(id))[0]);
+      const first = rows[0];
+      if (
+        rows.some(
+          (r) =>
+            !r ||
+            r.status !== 'pending' ||
+            r.source === 'projects' ||
+            r.action !== 'revise' ||
+            !r.recordId ||
+            r.recordId !== first.recordId ||
+            r.projectId !== first.projectId,
+        )
+      ) {
+        throw new BrainError(
+          'Only pending revisions of the same style and scope can be consolidated',
+          'CONFLICT',
+          409,
+        );
+      }
+      const latest = [...rows]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .find((r) => r.proposedContent !== null);
+      const merged = this.addFeedback({
+        rating: 'correction',
+        note: rows
+          .map((r) => r.note)
+          .join('\n---\n')
+          .slice(0, 10000),
+        recordId: first.recordId,
+        projectId: first.projectId,
+        proposedContent: (content as string | undefined) ?? latest?.proposedContent ?? null,
+        evidenceIds: rows.map((r) => r.id),
+      });
+      for (const r of rows) {
+        this.db.prepare("UPDATE feedback SET status='superseded' WHERE id=?").run(r.id);
+      }
+      return merged;
+    });
+  }
+  /** Permanently delete evidence rows. The audit receipt keeps only a count. */
+  purgeFeedback(ids: unknown) {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 200) {
+      throw new BrainError('Select 1-200 items to purge');
+    }
+    const del = this.db.prepare('DELETE FROM feedback WHERE id=?');
+    const n = this.transaction(() =>
+      ids.reduce((sum: number, id) => sum + Number(del.run(String(id)).changes), 0),
+    );
+    this.audit('feedback-purged', 'learning', String(n));
+    return {purged: n};
+  }
+  /** Retention: decided evidence older than the policy is deleted; pending items are never expired. */
+  expireEvidence(now = Date.now()) {
+    const {retentionDays} = this.learningSettings();
+    if (!retentionDays) {
+      return 0;
+    }
+    const cutoff = new Date(now - retentionDays * 86400000).toISOString();
+    const n = Number(
+      this.db
+        .prepare(
+          "DELETE FROM feedback WHERE status!='pending' AND decided_at IS NOT NULL AND decided_at<?",
+        )
+        .run(cutoff).changes,
+    );
+    if (n) {
+      this.audit('feedback-expired', 'learning', String(n));
+    }
+    return n;
+  }
+  /** Inbox listing enriched with target content, evidence counts and conflict signals. */
+  inbox(
+    filter: {
+      projectId?: string;
+      status?: string;
+      diagnosis?: string;
+      recordId?: string;
+      source?: string;
+    } = {},
+  ) {
+    this.expireEvidence();
+    const all = this.feedbackRows('ORDER BY created_at DESC');
+    const shown = all
+      .filter(
+        (f) =>
+          (!filter.projectId || f.projectId === filter.projectId) &&
+          (!filter.status || f.status === filter.status) &&
+          (!filter.diagnosis || f.diagnosis === filter.diagnosis) &&
+          (!filter.recordId || f.recordId === filter.recordId) &&
+          (!filter.source || f.source === filter.source),
+      )
+      .slice(0, 200);
+    return shown.map((f) => {
+      const record = f.recordId ? this.get(f.recordId) : null;
+      const related = all.filter((o) => f.recordId && o.recordId === f.recordId);
+      const independent = new Set(
+        related
+          .filter(
+            (o) => o.rating === 'correction' && o.status !== 'dismissed' && !o.evidenceIds.length,
+          )
+          .map((o) => o.sourceEventId || o.id),
+      ).size;
+      return {
+        ...f,
+        target: record
+          ? {
+              title: record.title,
+              content: record.content,
+              version: record.version,
+              status: record.status,
+              shared: !record.projectId,
+            }
+          : null,
+        stale: !!record && f.baseVersion !== null && record.version !== f.baseVersion,
+        lostObligations:
+          record && f.action === 'revise' && f.proposedContent !== null
+            ? lostObligations(record.content, f.proposedContent)
+            : [],
+        fixtureFailures:
+          record && f.action === 'revise' && f.proposedContent !== null
+            ? fixtureFailures(this.fixtures(record.id), f.proposedContent)
+            : [],
+        evidence: {
+          independent,
+          counter: related.filter((o) => o.rating === 'accepted').length,
+          competing: related.filter(
+            (o) =>
+              o.id !== f.id &&
+              o.status === 'pending' &&
+              o.action === 'revise' &&
+              o.proposedContent !== null,
+          ).length,
+        },
+      };
+    });
+  }
+  /**
+   * Bounded automation: fold an identical pending proposal (same style, scope and text) into one candidate.
+   * Behavior-preserving only; the user can split it back.
+   */
+  private autoConsolidate(f: Feedback): Feedback {
+    if (f.status !== 'pending' || f.action !== 'revise' || f.proposedContent === null) {
+      return f;
+    }
+    const twins = this.feedbackRows(
+      "WHERE status='pending' AND action='revise' AND record_id=? AND proposed_content=? AND id!=?",
+      f.recordId!,
+      f.proposedContent,
+      f.id,
+    ).filter((o) => o.projectId === f.projectId && o.source !== 'projects');
+    if (!twins.length) {
+      return f;
+    }
+    const ids = [...twins.flatMap((t) => (t.evidenceIds.length ? t.evidenceIds : [t.id])), f.id];
+    const merged = this.transaction(() => {
+      for (const t of twins.filter((t) => t.evidenceIds.length)) {
+        this.db
+          .prepare("UPDATE feedback SET status='dismissed',decided_at=? WHERE id=?")
+          .run(new Date().toISOString(), t.id);
+        for (const sourceId of t.evidenceIds) {
+          this.db
+            .prepare("UPDATE feedback SET status='pending' WHERE id=? AND status='superseded'")
+            .run(sourceId);
+        }
+      }
+      return this.consolidateFeedback(ids, f.proposedContent);
+    });
+    this.audit(
+      'learning-auto',
+      merged.recordId || 'general',
+      `consolidated ${ids.length} identical proposals`,
+    );
+    return merged;
+  }
+  hasDeletionReceipt(keyId: string) {
+    return !!this.db
+      .prepare('SELECT 1 FROM meta WHERE key=?')
+      .get('deleted-key:' + keyReceipt(keyId));
+  }
+  fixtures(recordId: string): Fixtures {
+    const row = this.db
+      .prepare('SELECT value FROM meta WHERE key=?')
+      .get('learning-fixtures:' + recordId) as {value: string} | undefined;
+    return row ? JSON.parse(row.value) : {keep: [], avoid: []};
+  }
+  saveFixtures(recordId: string, raw: unknown): Fixtures {
+    const record = this.get(recordId);
+    if (!record) {
+      throw new BrainError('Record not found', 'NOT_FOUND', 404);
+    }
+    let fixtures: Fixtures;
+    try {
+      fixtures = checkFixtures(raw);
+    } catch (e) {
+      throw new BrainError((e as Error).message);
+    }
+    const current = fixtureFailures(fixtures, record.content);
+    if (current.length) {
+      throw new BrainError('Fixtures must pass on the current version: ' + current.join(' | '));
+    }
+    this.db
+      .prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)')
+      .run('learning-fixtures:' + recordId, JSON.stringify(fixtures));
+    this.audit(
+      'learning-fixtures',
+      recordId,
+      `${fixtures.keep.length} keep, ${fixtures.avoid.length} avoid`,
+    );
+    return fixtures;
+  }
+  /** Why a style is or is not applied in a scope, for "why did you do this / why was this missing". */
+  explainRecord(recordId: string, projectId?: string) {
+    const record = this.get(recordId);
+    if (!record || (record.projectId && record.projectId !== projectId)) {
+      throw new BrainError('Record not found', 'NOT_FOUND', 404);
+    }
+    const effective = this.scopedRecords(projectId).find((r) => r.id === recordId);
+    let reason = 'Applied: ' + (effective?.source || '');
+    if (record.status !== 'active') {
+      reason = `Not applied: the style is ${record.status}`;
+    } else if (!effective) {
+      reason = projectId
+        ? 'Not applied: the style is not selected in this project and no selected style requires it'
+        : 'Not applied: project-only style';
+    }
+    const delivered = this.db
+      .prepare(
+        'SELECT occurred_at AS at, agent, event_type AS eventType, record_versions AS versions FROM trace_events WHERE demo=0 AND EXISTS (SELECT 1 FROM json_each(trace_events.record_ids) WHERE value=?) ORDER BY occurred_at DESC LIMIT 1',
+      )
+      .get(recordId) as
+      {at: string; agent: string; eventType: string; versions: string} | undefined;
+    return {
+      id: record.id,
+      title: record.title,
+      version: record.version,
+      status: record.status,
+      scope: record.projectId ? 'project' : 'global',
+      applied: !!effective,
+      reason,
+      appliesWhen: record.appliesWhen || null,
+      lastDelivered: delivered
+        ? {
+            at: delivered.at,
+            agent: delivered.agent,
+            eventType: delivered.eventType,
+            version: JSON.parse(delivered.versions || '{}')[recordId] ?? null,
+          }
+        : null,
+      pendingInbox: this.feedbackRows("WHERE record_id=? AND status='pending'", recordId).length,
+      fixtures: this.fixtures(recordId),
+    };
+  }
+  /** Capture activity per agent integration, from trace events of the learning tools. */
+  private integrationStatus() {
     return this.db
       .prepare(
-        'SELECT id,record_id AS recordId,rating,note,created_at AS createdAt FROM feedback ORDER BY created_at DESC LIMIT 200',
+        "SELECT agent, count(*) AS events, max(occurred_at) AS lastAt, sum(outcome!='ok') AS failures FROM trace_events WHERE demo=0 AND event_type IN ('mcp.brain_feedback','mcp.brain_remember','mcp.brain_forget') GROUP BY agent ORDER BY lastAt DESC",
       )
-      .all() as Feedback[];
+      .all() as Array<{agent: string; events: number; lastAt: string; failures: number}>;
+  }
+  /** Observable learning measures with their denominators. No composite score. */
+  learningHealth() {
+    const rows = this.feedbackRows('');
+    const count = (status: Feedback['status']) => rows.filter((r) => r.status === status).length;
+    const decided = rows.filter((r) => r.decidedAt && r.status !== 'superseded');
+    const applied = rows.filter((r) => r.status === 'accepted' && r.appliedVersion && r.recordId);
+    const reverted = applied.filter((r) =>
+      this.db
+        .prepare("SELECT 1 FROM revisions WHERE record_id=? AND action='restore' AND version>?")
+        .get(r.recordId, r.appliedVersion),
+    ).length;
+    const pending = rows.filter((r) => r.status === 'pending');
+    const hours = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 3600000;
+    return {
+      ...this.learningSettings(),
+      integrations: this.integrationStatus(),
+      recentAutomatic: this.db
+        .prepare(
+          "SELECT created_at AS at, detail FROM audit WHERE action='learning-auto' ORDER BY created_at DESC LIMIT 10",
+        )
+        .all() as Array<{at: string; detail: string}>,
+      pending: pending.length,
+      accepted: count('accepted'),
+      dismissed: count('dismissed'),
+      reviewed: decided.length,
+      applied: applied.length,
+      reverted,
+      averageReviewHours: decided.length
+        ? Math.round(
+            (decided.reduce((s, r) => s + hours(r.createdAt, r.decidedAt!), 0) / decided.length) *
+              10,
+          ) / 10
+        : null,
+      oldestPendingDays: pending.length
+        ? Math.floor(hours(pending.at(-1)!.createdAt, new Date().toISOString()) / 24)
+        : null,
+    };
+  }
+  listFeedback(projectId?: string): Feedback[] {
+    return projectId
+      ? this.feedbackRows('WHERE project_id=? ORDER BY created_at DESC LIMIT 200', projectId)
+      : this.feedbackRows('ORDER BY created_at DESC LIMIT 200');
+  }
+  private feedbackRows(where: string, ...params: string[]): Feedback[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT id,record_id AS recordId,rating,note,created_at AS createdAt,project_id AS projectId,source,source_event_id AS sourceEventId,proposed_content AS proposedContent,base_version AS baseVersion,diagnosis,status,decided_at AS decidedAt,applied_version AS appliedVersion,action,proposal,evidence_ids AS evidenceIds FROM feedback ${where}`,
+        )
+        .all(...params) as Array<Feedback & {proposal: string | null; evidenceIds: string | null}>
+    ).map((r) => ({
+      ...r,
+      proposal: r.proposal ? JSON.parse(r.proposal) : null,
+      evidenceIds: r.evidenceIds ? JSON.parse(r.evidenceIds) : [],
+    }));
   }
   private audit(action: string, target: string, detail: string) {
     this.db

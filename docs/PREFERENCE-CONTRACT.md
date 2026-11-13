@@ -38,6 +38,6 @@ Fresh libraries receive the revised catalog. Existing libraries use **Library â†
 
 Private copies retain their source identity and source version. Existing copies whose base is unknown display that fact. Updating a global preference does not rewrite its private copies. History compares the original base snapshot, current private contract and current global contract before a manual rebase.
 
-Fusion proposes reusable preferences from selected project preferences. It preserves mandatory requirements and rejects obvious newly introduced command/XML recipes. This is a bounded guard, not a semantic proof; proposals still require review. No automatic publication or procedure extraction is introduced.
+Learning from projects proposes reusable preferences from selected project preferences. It preserves mandatory requirements and rejects obvious newly introduced command/XML recipes. This is a bounded guard, not a semantic proof; proposals still require review. No automatic publication or procedure extraction is introduced.
 
 OpenCode root discovery follows its [official skill locations](https://opencode.ai/docs/skills/), including `.config/opencode/skills` and Claude-compatible skill folders. Host permission policies and nested-worktree discovery are not simulated by the inventory.

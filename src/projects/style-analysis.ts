@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BrainError, type BrainRecord} from '../core/models.ts';
 import {executable} from '../agents/executable.ts';
-import {parseFusionOutput} from '../instructions/fusion.ts';
+import {parseAgentJson} from '../instructions/project-learning.ts';
 
 // Largest prompt sent to the CLI agent in one call, in characters.
 export const promptLimit = 200000;
@@ -219,7 +219,7 @@ async function selectStyles(
   if (whole.length <= promptLimit) {
     stats.calls++;
     const text = await runAgent(ctx.agent, whole, ctx.signal);
-    return rowsOf(parseFusionOutput(text), 'recommendations').map((row) => ({
+    return rowsOf(parseAgentJson(text), 'recommendations').map((row) => ({
       id: String(row.id),
       reason: row.reason,
     }));
@@ -234,7 +234,7 @@ async function selectStyles(
       ctx.signal,
     );
     const inBatch = new Set(batch.map((e) => e.id));
-    for (const row of rowsOf(parseFusionOutput(text), 'recommendations').slice(
+    for (const row of rowsOf(parseAgentJson(text), 'recommendations').slice(
       0,
       maxRecommendations,
     )) {
@@ -282,7 +282,7 @@ async function personalize(
         ctx.signal,
       );
       const inBatch = new Set(batch.map((s) => s.id));
-      for (const row of rowsOf(parseFusionOutput(text), 'guidelines')) {
+      for (const row of rowsOf(parseAgentJson(text), 'guidelines')) {
         if (inBatch.has(String(row.id))) {
           drafted.set(String(row.id), row);
         }
@@ -312,7 +312,7 @@ export async function analyzeStyles(
   const single = build(singlePrompt, {...base, styles: ordered.map(fullEntry)});
   if (single.length <= promptLimit) {
     const text = await runAgent(ctx.agent, single, ctx.signal);
-    return {rows: rowsOf(parseFusionOutput(text), 'recommendations'), issues: []};
+    return {rows: rowsOf(parseAgentJson(text), 'recommendations'), issues: []};
   }
   const issues: Issue[] = [];
   const selectStats = {calls: 0, rounds: 0};

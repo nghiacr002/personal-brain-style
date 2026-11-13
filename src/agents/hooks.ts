@@ -76,6 +76,19 @@ function classify(task: string): Domain[] {
   return [...new Set(result)];
 }
 
+// ponytail: keyword cue, not intent detection; the agent judges and the user consents on the Learning page.
+const STANDING =
+  /\b(from now on|going forward|by default|default|always|never|whenever|every time|each time|next time|in future|in the future|i prefer|i'd prefer|i want .{0,40}\b(to be|to use|as)|let'?s? (always )?use|should (always )?use|don'?t (ever )?use|stop using|instead of|remember)\b|luôn|mặc định|từ nay|từ giờ|lần sau|đừng bao giờ|không bao giờ|ghi nhớ|hãy nhớ|thay vì/i;
+
+export const learnNudge =
+  'PERSONAL BRAIN LEARN: this message may state a lasting working preference or decision (a default, an always/never rule, a correction to reuse). ' +
+  'If it is meant to last beyond this task, call brain_remember once (brain_feedback with rating "correction" if brain_remember is unavailable) with the projectId, a short title, the preference as content, its domain, and the user\'s own words as reason; pass no projectId only if the user said it applies everywhere. ' +
+  "Do not ask first: it waits on the Learning page for the user's consent. Skip one-off task details. Then continue the task.";
+
+export function hasPreferenceCue(prompt: string): boolean {
+  return STANDING.test(prompt);
+}
+
 export function startupContext(db: BrainDB, projectId?: string): string {
   // Deliberately small, so full specialty skills can load on demand.
   const baseline = db.bootstrap(1600, projectId);
@@ -127,8 +140,9 @@ export function taskContext(
     counts[r.kind] = (counts[r.kind] || 0) + 1;
     used += size;
   }
+  const nudge = hasPreferenceCue(task) ? `\n\n${learnNudge}` : '';
   if (!selected.length) {
-    return null;
+    return nudge.trim() || null;
   }
   onMatch?.(selected, domains);
   const sections = selected
@@ -139,7 +153,7 @@ export function taskContext(
     `${sections}\n\nLoad relevant records with brain_get, including requiredLinked instructions, skills and review criteria. ` +
     `Reuse instructions only if this conversation already contains the same record ID, version and scope. ` +
     `Read required external skills on demand; never claim unavailable skills were used. ` +
-    `Use brain_discover if these matches are insufficient. Explicit user requirements take precedence. Full instructions have not been injected.\n\n${complianceReminder}`
+    `Use brain_discover if these matches are insufficient. Explicit user requirements take precedence. Full instructions have not been injected.\n\n${complianceReminder}${nudge}`
   );
 }
 
@@ -153,24 +167,63 @@ export function formatHookOutput(
   return JSON.stringify({hookSpecificOutput: {hookEventName: event, additionalContext: context}});
 }
 
+export function instructionRefreshContext(
+  db: BrainDB,
+  agent: AgentKind,
+  phase: HookPhase,
+  sessionId: string | null,
+  projectId: string | undefined = process.env.PB_PROJECT_ID,
+): string | null {
+  const digest = db.fingerprint(
+    JSON.stringify([
+      projectId ?? null,
+      db.scopedRecords(projectId).sort((a, b) => a.id.localeCompare(b.id)),
+    ]),
+  );
+  if (sessionId) {
+    const key = 'hook-instructions:' + db.fingerprint(JSON.stringify([agent, sessionId]));
+    const previous = db.db.prepare('SELECT value FROM meta WHERE key=?').get(key) as
+      {value: string} | undefined;
+    if (previous?.value === digest) {
+      return null;
+    }
+    db.db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)').run(key, digest);
+  }
+  if (phase === 'session') {
+    return null;
+  }
+  return (
+    'PERSONAL BRAIN INSTRUCTION REFRESH\n' +
+    `Current scope: ${projectId ? `project ${projectId}` : 'global'}. ` +
+    'Instructions or scope changed, or this session has no previous instruction snapshot. ' +
+    'Before continuing the ongoing task, call brain_discover using the full task intent, not just this short reply. ' +
+    'Reload applicable instructions and required links with brain_get or brain_prepare in the current scope. ' +
+    'Do not reuse cached instructions or prepared sets until revalidated; stop applying removed or deselected instructions. ' +
+    'Preserve the user’s task and explicit choices. This notice is not the full instruction content.'
+  );
+}
+
 export function simulateHook(
   db: BrainDB,
   agent: AgentKind,
   phase: HookPhase,
   input: unknown,
 ): string {
-  // Both agents support the same event-specific JSON shape.
-  void agent;
   const obj =
     input && typeof input === 'object' && !Array.isArray(input)
       ? (input as Record<string, unknown>)
       : {};
+  const sessionId =
+    [obj.session_id, obj.thread_id].find((id): id is string => typeof id === 'string') ?? null;
+  const refresh = instructionRefreshContext(db, agent, phase, sessionId);
   if (phase === 'session') {
     return formatHookOutput('SessionStart', startupContext(db));
   }
   return formatHookOutput(
     'UserPromptSubmit',
-    taskContext(db, typeof obj.prompt === 'string' ? obj.prompt : ''),
+    [refresh, taskContext(db, typeof obj.prompt === 'string' ? obj.prompt : '')]
+      .filter(Boolean)
+      .join('\n\n'),
   );
 }
 
@@ -198,6 +251,7 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
     const sessionId =
       [obj.session_id, obj.thread_id].find((id): id is string => typeof id === 'string') ?? null;
     const runId = sessionId ? `${agent}:${sessionId.slice(0, 100)}` : `${agent}:hook:unlinked`;
+    const refresh = instructionRefreshContext(db, agent, phase, sessionId, projectId);
     if (phase === 'session') {
       let discoveryNote = '';
       if (
@@ -241,7 +295,7 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
       const prompt = typeof obj.prompt === 'string' ? obj.prompt : '';
       const matches: BrainRecord[] = [];
       const domains: Domain[] = [];
-      const context = taskContext(
+      const matchedContext = taskContext(
         db,
         prompt,
         (found, matched) => {
@@ -250,6 +304,7 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
         },
         projectId,
       );
+      const context = [refresh, matchedContext].filter(Boolean).join('\n\n');
       db.trace({
         agent,
         channel: 'hook',
@@ -265,7 +320,9 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
           promptHash: db.fingerprint(prompt),
           matchedDomains: domains.join(','),
           contextChars: context?.length || 0,
+          preferenceCue: hasPreferenceCue(prompt),
           sessionLinked: !!sessionId,
+          instructionsRefreshed: !!refresh,
         },
       });
       if (context) {
@@ -274,5 +331,13 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
     }
   } catch (e) {
     console.error(`Personal Brain hook skipped: ${e instanceof Error ? e.message : String(e)}`);
+    if (phase === 'prompt') {
+      process.stdout.write(
+        formatHookOutput(
+          'UserPromptSubmit',
+          'PERSONAL BRAIN REFRESH UNAVAILABLE\nCurrent instructions could not be verified. Do not assume cached Brain instructions are current. Resolve the current project scope and reload with brain_discover and brain_get before continuing; report any unavailable preferences.',
+        ) + '\n',
+      );
+    }
   }
 }

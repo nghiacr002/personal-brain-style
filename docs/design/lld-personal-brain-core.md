@@ -38,7 +38,7 @@ IDs below are local documentation identifiers. Every operation has a sequence re
 | OP-03 | `brain_discover(task, projectId)` then `brain_get(id, projectId)`; optional installed-skill load | Metadata shortlist, full scoped dependency closure/checklist, separately loaded skill text | Invalid task/project, unavailable record, missing skill, bounded-read errors |
 | OP-04 | `brain_prepare(projectId, task, recordIds)` | Stored set ID, project version, full effective records and checklist | Task outside 1–1000 chars; roots not 1–20 unique selected IDs; over 300 requirements |
 | OP-05 | `brain_review(projectId, instructionSetId, artifacts, evidence, content?)` | Persisted report with `pass`, `fail` or `not_verified` and review ID | Stale scope/digest, duplicate/stale evidence, unsafe paths or excessive limits |
-| OP-06 | `startFusion({agent, projectIds})`; later `applyFusion`, `rejectFusion`, `cancelFusion` | Persisted job/proposals; apply creates a shared record revision | Bad inputs, busy process, failed CLI, invalid proposals, conflicting guidance, changed source/target |
+| OP-06 | `startLearningRun({agent, projectIds})`; later `applyLearningProposal`, `rejectLearningProposal`, `cancelLearningRun` | Persisted job/proposals; apply creates a shared record revision | Bad inputs, busy process, failed CLI, invalid proposals, conflicting guidance, changed source/target |
 | OP-07 | `createLinkedProject(db, project, folder)` | Project plus `.personal-brain.json` link and repository metadata | Invalid/already-linked folder or invalid closure; rollback and link compensation |
 | OP-08 | `executeHook(db, agent, phase)` with stdin JSON | Event-specific `additionalContext`, or empty output | Malformed input treated as empty; processing errors log to stderr and skip context |
 | OP-09 | `brain_call_tool(id, arguments)` / `brain_inspect_tool(id)` | External MCP result or schemas | Missing/inactive tool, disabled backend/proxy, process failure, timeout, oversized response |
@@ -52,7 +52,7 @@ HTTP JSON success uses route-specific 200/201/202 status. Errors are `{error, me
 |---|---|
 | HTTP catalog | `/api/items`, item/history/restore, `/api/domains`, `/api/summary`, seed routes |
 | HTTP projects | `/api/projects`, resolved/activity/repository/discovery, project item personalisation/publish |
-| HTTP workflows | `/api/onboarding/*`, `/api/folders/select`, `/api/fusion` and apply/reject/cancel |
+| HTTP workflows | `/api/onboarding/*`, `/api/folders/select`, `/api/learning/runs` and cancel (decisions via `/api/feedback/:id/decision`) |
 | HTTP diagnostics | `/api/about`, `/api/activation`, `/api/chatgpt/setup`, `/api/trace`, stats/demo, audit |
 | HTTP review/removal | `/api/review` is text evaluation; `/api/removal/{kind}/{id}` requires preview fingerprint |
 | MCP retrieval | bootstrap, discover, get, style, projects, discover_project, get_installed_skill |
@@ -77,7 +77,7 @@ The MCP server reads one JSON request per line and processes requests in its asy
 | `src/projects/onboarding.ts` | Project/link coordination and optional recommendation CLI | Core, filesystem, subprocess |
 | `src/instructions/instruction-set.ts` | Prepared task fingerprint and freshness check | DB, requirements, crypto |
 | `src/instructions/artifact-review.ts` | Review validation, path containment, report persistence | Instruction set, DB, filesystem |
-| `src/instructions/fusion.ts` | Job lifecycle, proposal validation, explicit shared update | DB, subprocess, temporary files |
+| `src/instructions/project-learning.ts` | Job lifecycle, proposal validation, explicit shared update | DB, subprocess, temporary files |
 | `src/agents/mcp.ts` / `hooks.ts` | Protocol dispatch and advisory context | Core, scope, instructions, skills |
 | `src/agents/launcher.ts` / `bridge.ts` | Host registration/commands and optional backend calls | Process/fs; executable resolution |
 | `src/server/http.ts` | Static assets and local HTTP route dispatch | Core and application modules |
@@ -259,16 +259,16 @@ Note over A,F: Legend: solid arrows = calls, dashed arrows = replies, alt = guar
 
 Manual claims of pass remain `not_verified`; explicit fail remains fail. Artifact-presence checks may pass. Submitted text runs deterministic contains/not_contains/min_length/max_length checks, filtered to reviewed records. Omitted text leaves text checks pending. Any failure wins; otherwise outstanding manual/pending checks keep the overall report unverified. The bounded report is persisted as a `compliance.review` event. There is no independent reviewer approval endpoint.
 
-### OP-06 — Fusion
+### OP-06 — Learning from projects
 
 ```mermaid
 ---
-title: Fusion analysis and explicit application
+title: Learning from projects with explicit consent
 ---
 %% Scope: current implementation, 2026-11-05, evidence in ../design-verification.md
 sequenceDiagram
 actor U as User
-participant S as HTTP / Fusion service
+participant S as HTTP / learning service
 participant D as BrainDB
 participant C as Codex or Claude CLI
 U->>S: Start analysis for project IDs
@@ -297,9 +297,9 @@ Note over U,D: Reject changes only job decisions, cancel kills an active child, 
 Note over U,C: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes
 ```
 
-[Sequence](../architecture/diagrams/fusion.mmd), [job state](../architecture/diagrams/fusion-lifecycle.mmd). Input supports 1–30 selected project IDs, retains each project's effective source separately, excludes tool sources, and targets existing active shared preferences. Only one Fusion process runs per server process; this is not a cross-process distributed lock.
+[Sequence](../architecture/diagrams/learning-from-projects.mmd), [job state](../architecture/diagrams/learning-run-lifecycle.mmd). Input supports 1–30 selected project IDs, retains each project's effective source separately, excludes tool sources, and targets existing active shared preferences. Only one project analysis runs per server process; this is not a cross-process distributed lock.
 
-The job is persisted before analysis. A temporary directory isolates CLI output. Codex runs with read-only/tool restrictions; Claude runs with tools/MCP disabled. Five-minute timeout and one-million-character output limits bound execution. `parseFusionOutput` accepts a single balanced JSON object surrounded by prose/fences, rejects ambiguous extra JSON, then `validateFusion` verifies target/source IDs, bounded fields, preserved required skills/review criteria and conflicts. A valid result is `ready`, including an empty proposal list.
+The job is persisted before analysis. A temporary directory isolates CLI output. Codex runs with read-only/tool restrictions; Claude runs with tools/MCP disabled. Five-minute timeout and one-million-character output limits bound execution. `parselearning from projectsOutput` accepts a single balanced JSON object surrounded by prose/fences, rejects ambiguous extra JSON, then `validateLearning` verifies target/source IDs, bounded fields, preserved required skills/review criteria and conflicts. A valid result is `ready`, including an empty proposal list.
 
 Apply checks job status, undecided target, source project versions/effective records, target shared version and zero conflicts. Shared update and applied marker share a savepoint. Reject only marks the target rejected. Cancel kills a running child. On reading a persisted running job without an in-memory handle, it becomes failed; there is no automatic resume. Completion callbacks do not recreate a deleted job. Proposal completion is tracked with applied/rejected target arrays; there is no separate `completed` job status.
 
@@ -430,13 +430,13 @@ end
 Note over U,D: Legend: solid arrows = calls, dashed arrows = replies, alt = guarded outcomes
 ```
 
-[Sequence](../architecture/diagrams/removal.mmd). Preview fingerprints current relevant state and reports affected records, links and projects. Confirmation recomputes the fingerprint inside a savepoint. A mismatch requires a new preview. Success rewires surviving dependencies, removes affected records/revisions/feedback/audit/trace data, and clears related Fusion/instruction metadata. Project removal preserves shared records; reset restores prior shared selections and removes project-private material. A repository link file can outlive project removal; relinking is a separate filesystem concern. Removal is not revision restore.
+[Sequence](../architecture/diagrams/removal.mmd). Preview fingerprints current relevant state and reports affected records, links and projects. Confirmation recomputes the fingerprint inside a savepoint. A mismatch requires a new preview. Success rewires surviving dependencies, removes affected records/revisions/feedback/audit/trace data, and clears related learning-run/instruction metadata. Project removal preserves shared records; reset restores prior shared selections and removes project-private material. A repository link file can outlive project removal; relinking is a separate filesystem concern. Removal is not revision restore.
 
 ## 6. State and lifecycle
 
 [Record lifecycle](../architecture/diagrams/record-lifecycle.mmd): `draft`, `active`, `archived` are eligibility states, not approval stages. Ordinary validated updates can change them; there is no approval-transition guard. Only active records are retrieved for scoped instructions. Private personalisation must stay active. Required links to inactive records make future resolution fail until selections/dependencies are corrected. Revision action is separately `create`, `update` or `restore`.
 
-[Fusion lifecycle](../architecture/diagrams/fusion-lifecycle.mmd): running → ready/failed/cancelled; apply/reject modifies decision arrays while the job stays ready. Retrying creates a new job.
+[Learning run lifecycle](../architecture/diagrams/learning-run-lifecycle.mmd): running → ready/failed/cancelled; apply/reject modifies decision arrays while the job stays ready. Retrying creates a new job.
 
 Projects have a version counter and assignments rather than a status machine. Instruction sets have no mutable status field: each review derives freshness from current versions/digest. Review reports are persisted results, not a workflow that transitions to human-approved. Feedback ratings are accepted/rejected/correction and do not mutate styles automatically.
 
@@ -466,7 +466,7 @@ stateDiagram-v2
 
 ```mermaid
 ---
-title: Fusion job lifecycle
+title: Learning run lifecycle
 ---
 %% Scope: current implementation, 2026-11-05; evidence in ../design-verification.md
 stateDiagram-v2
@@ -505,14 +505,14 @@ The SQLite file owns durable application state. Types and SQL definitions are in
 | `domains` | ID PK; unique case-insensitive name; combinable flag | Domain operation; disabling combination revalidates project selections |
 | `feedback` | UUID, optional record reference, rating, note, timestamp | Insert and audit are separate statements; not explicitly wrapped by addFeedback |
 | `audit` | UUID, action, target, timestamp, detail | Included in record writes; not an immutable external ledger |
-| `meta` | String key PK, string value | Markers, repository mappings, baselines, HMAC secret, Fusion jobs, prepared sets |
+| `meta` | String key PK, string value | Markers, repository mappings, baselines, HMAC secret, learning runs, prepared sets |
 | `trace_events` | UUID; time/run/agent/channel/type/outcome; JSON IDs/versions/metadata; demo flag | Each trace insert; not atomic with all business operations |
 
 Relationships in JSON (`requiredIds`, assignments, projectId, sourceStyleId) are validated in code; they are not SQL foreign-key constraints. `PRAGMA foreign_keys=ON` does not create constraints absent from the DDL. Revision uniqueness is enforced by SQL. Indexes cover record filters and trace time/run queries; content discovery scans/deserialises scoped snapshots rather than a full-text index.
 
-`transaction` uses SQLite SAVEPOINT/RELEASE and rollback on exceptions, allowing nested operations. Busy timeout is 5000 ms. Prepared sets and job snapshots live in `meta`; Fusion source snapshots can include complete effective style content. Review report JSON can include explicit task/evidence notes. Ordinary trace privacy guarantees must not be extended to these deliberate submissions.
+`transaction` uses SQLite SAVEPOINT/RELEASE and rollback on exceptions, allowing nested operations. Busy timeout is 5000 ms. Prepared sets and job snapshots live in `meta`; project-analysis source snapshots can include complete effective style content. Review report JSON can include explicit task/evidence notes. Ordinary trace privacy guarantees must not be extended to these deliberate submissions.
 
-There is no application record cache requiring invalidation: reads fetch current snapshots. Skill inventories are rescanned; digests detect differing file contents. Fusion's in-memory map contains cancellation handles only; its durable job data is in SQLite. Content/selection drift is checked before apply/review, not hidden by cached objects.
+There is no application record cache requiring invalidation: reads fetch current snapshots. Skill inventories are rescanned; digests detect differing file contents. The project-analysis service's in-memory map contains cancellation handles only; its durable job data is in SQLite. Content/selection drift is checked before apply/review, not hidden by cached objects.
 
 ## 8. Error handling
 
@@ -554,7 +554,7 @@ Tests use Node's test runner, temporary directories and isolated SQLite files. O
 | OP-03 | [projects.test.ts](../../tests/projects.test.ts): “project dependency closure excludes unrelated global records across MCP and hooks”; [skill-discovery.test.ts](../../tests/skill-discovery.test.ts): inventory bounds and changed-file rescan tests |
 | OP-04 | [instruction-set.test.ts](../../tests/instruction-set.test.ts): “prepared instructions bind review to task, project, effective overrides and dependency versions” |
 | OP-05 | [artifact-review.test.ts](../../tests/artifact-review.test.ts): “artifact evidence verifies presence, preserves manual uncertainty and rejects unsafe or stale evidence” |
-| OP-06 | [fusion-trace.test.ts](../../tests/fusion-trace.test.ts): stale-source/rollback test and “Fusion CLI completes, cancels and does not recreate deleted project history” |
+| OP-06 | [project-learning-trace.test.ts](../../tests/project-learning-trace.test.ts): stale-source/rollback test and “project-analysis CLI completes, cancels and does not recreate deleted project history” |
 | OP-07 | [onboarding.test.ts](../../tests/onboarding.test.ts): “wizard creates project and repository link together; failed and conflicting attempts preserve data”; bounded recommendation analysis test |
 | OP-08 | [hooks.test.ts](../../tests/hooks.test.ts): real CLI hook and bounded index tests; [trace.test.ts](../../tests/trace.test.ts): prompt fingerprint privacy test |
 | OP-09 | [mcp.test.ts](../../tests/mcp.test.ts): stdio initialization and exposed tools; enabled external-backend failure/timeout execution is not established by this test and remains a coverage gap |

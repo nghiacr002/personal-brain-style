@@ -47,7 +47,7 @@ All paths below refer to code inspected for this design; arrows describe interac
 | [Retrieval](diagrams/retrieve.mmd) | [MCP dispatch](../../src/agents/mcp.ts), [scope](../../src/projects/project-scope.ts), [skill discovery](../../src/projects/skill-discovery.ts) |
 | [Preparation](diagrams/prepare.mmd) | [prepareInstructions/checkInstructionSet](../../src/instructions/instruction-set.ts) |
 | [Review](diagrams/review.mmd) | [reviewArtifacts](../../src/instructions/artifact-review.ts) |
-| [Fusion](diagrams/fusion.mmd), [Fusion lifecycle](diagrams/fusion-lifecycle.mmd) | [Fusion service](../../src/instructions/fusion.ts) |
+| [Learning from projects](diagrams/learning-from-projects.mmd), [Learning run lifecycle](diagrams/learning-run-lifecycle.mmd) | [learning service](../../src/instructions/project-learning.ts) |
 | [Onboarding](diagrams/onboarding.mmd) | [createLinkedProject](../../src/projects/onboarding.ts), [linkRepository](../../src/projects/project-scope.ts) |
 | [Hooks](diagrams/hook.mmd) | [executeHook/taskContext](../../src/agents/hooks.ts) |
 | [External tool](diagrams/external-tool.mmd) | [bridge](../../src/agents/bridge.ts), [MCP](../../src/agents/mcp.ts) |
@@ -59,7 +59,7 @@ All paths below refer to code inspected for this design; arrows describe interac
 1. The first sequence renders rejected semicolons in message labels. Labels were corrected and all affected sources rendered successfully.
 2. Visual review found crowded context labels and a dense status graph. The context edge was consolidated, container layout adjusted, and record lifecycle expressed as stored-state operations with explicit status rules. Revised sources were rendered and inspected again.
 3. The personalisation error sequence was clarified to include invalid/missing inputs as well as version conflicts (HTTP 400/404/409).
-4. The old overview's broad descriptions were not treated as authority over current code. The new documents distinguish ordinary metadata-only telemetry from explicit review/Fusion content, and automatic hook delivery from user-triggered AI analysis.
+4. The old overview's broad descriptions were not treated as authority over current code. The new documents distinguish ordinary metadata-only telemetry from explicit review and project-analysis content, and automatic hook delivery from user-triggered AI analysis.
 
 ## Evidence limitations and follow-up
 

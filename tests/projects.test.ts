@@ -278,3 +278,96 @@ test('project activity counts identified threads, deduplicates channels and sepa
     rmSync(dir, {recursive: true, force: true});
   }
 });
+
+test('cloning a project copies selections, private styles with their links, fixtures and settings', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-clone-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    const shared = db.create(style('Shared UI'));
+    const writing = db.create(style('Concise writing', 'writing'));
+    const p = db.saveProject({
+      name: 'Portal',
+      description: 'Main',
+      assignments: [
+        {recordId: shared.id, override: 'Navy header'},
+        {recordId: writing.id, override: null},
+      ],
+    });
+    // A private copy of a shared style, then a private style that requires it.
+    const local = db.personalizeRecord(p.id, writing.id, {content: 'Short'}, 1, p.version);
+    const dependent = db.createProjectStyle(
+      p.id,
+      {
+        ...style('Release notes', 'coding'),
+        kind: undefined,
+        status: undefined,
+        backend: undefined,
+        projectId: undefined,
+        requiredIds: [local.id],
+      },
+      db.project(p.id).version,
+    ).record;
+    db.saveFixtures(local.id, {keep: ['Short'], avoid: []});
+    db.saveLearningSettings({...db.learningSettings(), pausedProjects: [p.id]});
+
+    const copy = db.cloneProject(p.id, 'Portal 2');
+    assert.equal(copy.name, 'Portal 2');
+    assert.equal(copy.description, 'Main');
+    const owned = db.list({projectId: copy.id}).filter((r) => r.projectId === copy.id);
+    assert.equal(owned.length, 2);
+    const localCopy = owned.find((r) => r.content === 'Short')!;
+    const dependentCopy = owned.find((r) => r.title === 'Release notes')!;
+    assert.notEqual(localCopy.id, local.id);
+    assert.equal(localCopy.sourceStyleId, writing.id, 'still personalizes the shared style');
+    assert.deepEqual(dependentCopy.requiredIds, [localCopy.id], 'links follow the copies');
+    const copied = new Map([
+      [local.id, localCopy.id],
+      [dependent.id, dependentCopy.id],
+    ]);
+    assert.deepEqual(
+      copy.assignments.map((a) => [a.recordId, a.override]).sort(),
+      db
+        .project(p.id)
+        .assignments.map((a) => [copied.get(a.recordId) ?? a.recordId, a.override])
+        .sort(),
+    );
+    assert.deepEqual(db.fixtures(localCopy.id).keep, ['Short']);
+    assert.ok(db.learningSettings().pausedProjects.includes(copy.id));
+    assert.equal(db.scopedRecords(copy.id).length, db.scopedRecords(p.id).length);
+    // Editing the copy leaves the original untouched.
+    db.update(localCopy.id, {content: 'Shorter'}, 1);
+    assert.equal(db.get(local.id)!.content, 'Short');
+    assert.equal(db.cloneProject(p.id, undefined).name, 'Copy of Portal');
+    assert.throws(() => db.cloneProject(p.id, ''), /Project name/);
+
+    const server = createBrainHttpServer(db);
+    const res = await new Promise<{status: number; data: {name: string}}>((resolve) => {
+      let status = 0;
+      server.emit(
+        'request',
+        {
+          url: `/api/projects/${p.id}/clone`,
+          method: 'POST',
+          headers: {},
+          async *[Symbol.asyncIterator]() {
+            yield JSON.stringify({name: 'Via API'});
+          },
+        },
+        {
+          setHeader() {},
+          writeHead(code: number) {
+            status = code;
+          },
+          end(text: string) {
+            resolve({status, data: JSON.parse(text)});
+          },
+        },
+      );
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.name, 'Via API');
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
+});

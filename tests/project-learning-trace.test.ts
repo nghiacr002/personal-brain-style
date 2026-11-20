@@ -152,6 +152,10 @@ test('Learning from projects rejects fabricated sources/conflicts/stale sources 
     save();
     db.update(local.id, {content: 'Changed'}, local.version);
     assert.throws(() => applyLearningProposal(db, 'test', r.id), /Source style changed/);
+    assert.throws(
+      () => applyLearningProposal(db, 'test', r.id, {content: 'Edited', resolution: 'Reviewed'}),
+      /Source style changed/,
+    );
   } finally {
     db.close();
     rmSync(dir, {recursive: true, force: true});
@@ -224,11 +228,12 @@ test('Learning from projects proposals land in Learning feedback once and are de
     assert.equal(item.proposedContent, 'Reusable methods');
     assert.match(item.note, /Evidence[\s\S]*1 style\(s\) in 1 project/);
     assert.equal(learningRunDetails(db, item)!.sources[0].project, 'Alpha');
+    assert.equal(learningRunDetails(db, item)!.sources[0].projectId, input.projects[0].id);
     assert.throws(() => db.decideFeedback(item.id, 'accept'), /decideLearningItem/);
     assert.throws(() => db.consolidateFeedback([item.id, item.id + 'x']), /distinct|consolidated/);
     assert.throws(
       () => decideLearningItem(db, item.id, 'accept', {scope: 'project'}),
-      /as proposed/,
+      /shared style/,
     );
     const done = decideLearningItem(db, item.id, 'accept');
     assert.equal(done.status, 'accepted');
@@ -246,6 +251,57 @@ test('Learning from projects proposals land in Learning feedback once and are de
     assert.equal(decideLearningItem(db, second.id, 'dismiss').status, 'dismissed');
     assert.deepEqual(learningRun(db, 'job2').rejected, [r.id]);
     assert.equal(db.get(r.id)!.version, 2);
+
+    const mandatory = 'Never expose secrets.';
+    db.update(r.id, {content: mandatory}, 2);
+    proposals[0].conflicts = ['Compact rows vs responsive layout'];
+    put('job3', [db.get(r.id)!]);
+    syncLearningRuns(db);
+    const edited = db.inbox({source: 'projects'}).find((i) => i.status === 'pending')!;
+    const edit = {
+      content: mandatory + ' Wrap controls when needed.',
+      conflictResolution: 'Wrapping takes precedence on narrow screens.',
+    };
+    assert.throws(
+      () => decideLearningItem(db, edited.id, 'accept', {content: edit.content}),
+      /conflicting guidance/,
+    );
+    assert.throws(
+      () =>
+        decideLearningItem(db, edited.id, 'accept', {
+          ...edit,
+          content: 'Wrap controls',
+        }),
+      /mandatory statements/,
+    );
+    assert.throws(
+      () => decideLearningItem(db, edited.id, 'accept', {conflictResolution: 42}),
+      /Conflict resolution/,
+    );
+    db.saveFixtures(r.id, {keep: [], avoid: ['Wrap controls']});
+    assert.throws(() => decideLearningItem(db, edited.id, 'accept', edit), /Regression fixtures/);
+    assert.equal(db.get(r.id)!.version, 3);
+    assert.equal(db.feedbackItem(edited.id)!.status, 'pending');
+    assert.equal(
+      learningRun(db, 'job3').proposals[0].manualReview,
+      undefined,
+      'failed edits roll back',
+    );
+    db.saveFixtures(r.id, {keep: [], avoid: []});
+    const applied = decideLearningItem(db, edited.id, 'accept', edit);
+    assert.equal(applied.status, 'accepted');
+    assert.equal(db.get(r.id)!.content, edit.content);
+    assert.equal(db.feedbackItem(edited.id)!.proposedContent, edit.content);
+    assert.equal(
+      learningRun(db, 'job3').proposals[0].manualReview!.resolution,
+      edit.conflictResolution,
+    );
+    assert.equal(
+      learningRun(db, 'job3').proposals[0].manualReview!.originalContent,
+      'Reusable methods',
+    );
+    assert.equal(db.get(local.id)!.content, 'Private');
+    assert.throws(() => decideLearningItem(db, edited.id, 'accept', edit), /already decided/);
   } finally {
     db.close();
     rmSync(dir, {recursive: true, force: true});
@@ -693,6 +749,95 @@ test('automatic learning compares projects only when they have customizations th
     assert.equal(autoLearnFromProjects(db, true), 'off');
   } finally {
     process.env.PATH = path;
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('Approved global lessons are folded into a main style, archived on apply, and agent reviews count as evidence', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-lesson-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    const base = {
+      kind: 'preference' as const,
+      domain: 'coding',
+      summary: 'S',
+      priority: 50,
+      status: 'active',
+      checks: [],
+      backend: null,
+    };
+    const main = db.create({...base, title: 'Code', content: 'Readable code.', tags: []});
+    const lesson = db.create({
+      ...base,
+      title: 'Tabs',
+      content: 'Use tabs.',
+      tags: ['remembered'],
+    });
+    const input = learningInput(db, []);
+    assert.deepEqual(
+      input.sources.map((s) => s.id),
+      ['global:' + lesson.id],
+    );
+    assert.ok(!input.targets.some((t) => t.id === lesson.id), 'a lesson is not a merge target');
+    const proposals = validateLearning(
+      {
+        proposals: [
+          {
+            targetId: main.id,
+            title: 'Code',
+            summary: 'S',
+            content: 'Readable code. Use tabs.',
+            principles: [],
+            examples: [],
+            externalSkills: [],
+            reviewCriteria: [],
+            rationale: 'global:' + lesson.id,
+            conflicts: [],
+            sourceIds: ['global:' + lesson.id],
+          },
+        ],
+      },
+      input.sources,
+      input.targets,
+    );
+    db.db
+      .prepare('INSERT INTO meta(key,value) VALUES(?,?)')
+      .run(
+        'learning-run:j',
+        JSON.stringify({id: 'j', status: 'ready', ...input, proposals, applied: []}),
+      );
+    syncLearningRuns(db);
+    const [item] = db.inbox({source: 'projects'});
+    assert.match(learningRunDetails(db, item)!.sources[0].project, /Approved lesson/);
+
+    db.trace({
+      agent: 'claude',
+      channel: 'review',
+      eventType: 'compliance.review',
+      outcome: 'not_verified',
+      metadata: {
+        complianceReport: JSON.stringify({
+          results: [
+            {recordId: main.id, recordVersion: 1, status: 'not_verified', agentReported: 'pass'},
+            {recordId: main.id, recordVersion: 1, status: 'fail', agentReported: 'pass'},
+            {recordId: main.id, recordVersion: 1, status: 'not_verified'},
+          ],
+        }),
+      },
+    });
+    assert.deepEqual(db.inbox({source: 'projects'})[0].evidence.reviews, {passed: 1, failed: 1});
+    assert.deepEqual(
+      db.learningHealth().styleChecks.map((r) => [r.title, r.passed, r.failed]),
+      [['Code', 1, 1]],
+    );
+
+    decideLearningItem(db, item.id, 'accept');
+    assert.equal(db.get(main.id)!.content, 'Readable code. Use tabs.');
+    assert.equal(db.get(lesson.id)!.status, 'archived');
+    assert.deepEqual(db.learningHealth().styleChecks, [], 'old-version results do not carry over');
+    assert.throws(() => learningInput(db, []), /Select 1–30 projects/, 'no lessons left');
+  } finally {
     db.close();
     rmSync(dir, {recursive: true, force: true});
   }

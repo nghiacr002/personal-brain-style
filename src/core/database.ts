@@ -1257,7 +1257,12 @@ export class BrainDB {
         throw new BrainError('Remember needs content and a title (max 200), and no target record');
       }
       if (!this.hasDomain(input.proposal?.domain)) {
-        throw new BrainError('Register this domain before using it');
+        throw new BrainError(
+          'Unknown domain. Use one of: ' +
+            this.domains()
+              .map((d) => d.id)
+              .join(', '),
+        );
       }
       proposal = {title, domain: String(input.proposal!.domain)};
     } else if (!input.recordId && (proposed !== null || action === 'forget')) {
@@ -1760,6 +1765,7 @@ export class BrainDB {
           (!filter.source || f.source === filter.source),
       )
       .slice(0, 200);
+    const reviews = this.reviewEvidence();
     return shown.map((f) => {
       const record = f.recordId ? this.get(f.recordId) : null;
       const related = all.filter((o) => f.recordId && o.recordId === f.recordId);
@@ -1793,6 +1799,10 @@ export class BrainDB {
         evidence: {
           independent,
           counter: related.filter((o) => o.rating === 'accepted').length,
+          reviews: (record && reviews.get(`${record.id}@${record.version}`)) || {
+            passed: 0,
+            failed: 0,
+          },
           competing: related.filter(
             (o) =>
               o.id !== f.id &&
@@ -1920,11 +1930,49 @@ export class BrainDB {
       fixtures: this.fixtures(recordId),
     };
   }
+  /**
+   * Requirement results from agents' compliance reviews, per style version. Mostly agent-reported:
+   * the server verifies automated checks only, so this is a signal, not proof.
+   */
+  reviewEvidence(): Map<string, {passed: number; failed: number}> {
+    const rows = this.db
+      .prepare(
+        `SELECT json_extract(r.value,'$.recordId') AS id, json_extract(r.value,'$.recordVersion') AS version,
+          sum(json_extract(r.value,'$.status')='pass' OR (json_extract(r.value,'$.status')!='fail' AND json_extract(r.value,'$.agentReported')='pass')) AS passed,
+          sum(json_extract(r.value,'$.status')='fail' OR (json_extract(r.value,'$.status')!='pass' AND json_extract(r.value,'$.agentReported')='fail')) AS failed
+        FROM trace_events t, json_each(json_extract(t.metadata,'$.complianceReport'),'$.results') r
+        WHERE t.demo=0 AND t.event_type='compliance.review' AND json_valid(json_extract(t.metadata,'$.complianceReport'))
+        GROUP BY 1,2`,
+      )
+      .all() as Array<{id: string; version: number; passed: number; failed: number}>;
+    return new Map(
+      rows.map((r) => [
+        `${r.id}@${r.version}`,
+        {passed: Number(r.passed) || 0, failed: Number(r.failed) || 0},
+      ]),
+    );
+  }
+  /** Active styles whose current version has review results, failing ones first. */
+  private styleChecks() {
+    const out: Array<{id: string; title: string; version: number; passed: number; failed: number}> =
+      [];
+    for (const [key, result] of this.reviewEvidence()) {
+      const [id, version] = key.split('@');
+      const r = this.get(id);
+      if (r && r.status === 'active' && String(r.version) === version) {
+        out.push({id, title: r.title, version: r.version, ...result});
+      }
+    }
+    return out
+      .filter((r) => r.passed + r.failed)
+      .sort((a, b) => b.failed - a.failed || a.passed - b.passed)
+      .slice(0, 8);
+  }
   /** Capture activity per agent integration, from trace events of the learning tools. */
   private integrationStatus() {
     return this.db
       .prepare(
-        "SELECT agent, count(*) AS events, max(occurred_at) AS lastAt, sum(outcome!='ok') AS failures FROM trace_events WHERE demo=0 AND event_type IN ('mcp.brain_feedback','mcp.brain_remember','mcp.brain_forget') GROUP BY agent ORDER BY lastAt DESC",
+        "SELECT agent, count(*) AS events, max(occurred_at) AS lastAt, sum(outcome!='success') AS failures FROM trace_events WHERE demo=0 AND event_type IN ('mcp.brain_feedback','mcp.brain_remember','mcp.brain_forget') GROUP BY agent ORDER BY lastAt DESC",
       )
       .all() as Array<{agent: string; events: number; lastAt: string; failures: number}>;
   }
@@ -1944,6 +1992,7 @@ export class BrainDB {
     return {
       ...this.learningSettings(),
       integrations: this.integrationStatus(),
+      styleChecks: this.styleChecks(),
       recentAutomatic: this.db
         .prepare(
           "SELECT created_at AS at, detail FROM audit WHERE action='learning-auto' ORDER BY created_at DESC LIMIT 10",
@@ -2483,6 +2532,63 @@ export class BrainDB {
         )
         .run(project.id, JSON.stringify(project));
       return project;
+    });
+  }
+  /**
+   * Copies a project's setup: selections and overrides, private styles (re-linked to each other),
+   * their fixtures and per-project settings. The repository link, feedback and activity stay with
+   * the original, since they describe that repository's history.
+   */
+  cloneProject(id: string, name: unknown): Project {
+    return this.transaction(() => {
+      const source = this.project(id);
+      const owned = (
+        this.db
+          .prepare("SELECT snapshot FROM records WHERE json_extract(snapshot,'$.projectId')=?")
+          .all(id) as {snapshot: string}[]
+      ).map((row) => this.parse(row.snapshot));
+      const ids = new Map(owned.map((r) => [r.id, randomUUID()]));
+      const remap = (recordId: string) => ids.get(recordId) ?? recordId;
+      const clone = this.saveProject({
+        name: name === undefined ? 'Copy of ' + source.name : name,
+        description: source.description,
+        assignments: source.assignments.filter((a) => !ids.has(a.recordId)),
+      });
+      const now = new Date().toISOString();
+      const copies = owned.map((r) => ({
+        ...r,
+        id: remap(r.id),
+        projectId: clone.id,
+        requiredIds: r.requiredIds?.map(remap),
+        supportingLinks: r.supportingLinks?.map((l) => ({...l, recordId: remap(l.recordId)})),
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      for (const r of copies) {
+        this.write(r, 'create');
+      }
+      for (const r of copies.filter((c) => c.status === 'active')) {
+        this.validateRequired(r);
+      }
+      const copyMeta = this.db.prepare(
+        'INSERT INTO meta(key,value) SELECT ?, value FROM meta WHERE key=?',
+      );
+      for (const [from, to] of ids) {
+        copyMeta.run('learning-fixtures:' + to, 'learning-fixtures:' + from);
+      }
+      for (const prefix of ['project-style-baseline:', 'learning-paused:', 'discovery-paused:']) {
+        copyMeta.run(prefix + clone.id, prefix + id);
+      }
+      this.audit('project-clone', clone.id, source.id);
+      return this.saveProject(
+        {
+          ...clone,
+          assignments: source.assignments.map((a) => ({...a, recordId: remap(a.recordId)})),
+        },
+        clone.id,
+        clone.version,
+      );
     });
   }
   installRequiredLinks(updates: Map<string, string[]>, marker: string) {

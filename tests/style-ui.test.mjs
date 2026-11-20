@@ -2054,6 +2054,7 @@ const inboxHealth = {
   suppressions: 0,
   autoConsolidate: false,
   integrations: [],
+  styleChecks: [],
   recentAutomatic: [],
   pending: 0,
   accepted: 0,
@@ -2084,7 +2085,12 @@ function inboxContext(fetchJson, timers) {
   };
   let requests = 0;
   const context = vm.createContext({
-    document: {getElementById: element, addEventListener() {}, querySelectorAll: () => []},
+    document: {
+      getElementById: element,
+      addEventListener() {},
+      querySelectorAll: () => [],
+      querySelector: () => null,
+    },
     setTimeout: timers
       ? (fn) => {
           timers.push(fn);
@@ -2192,11 +2198,11 @@ test('Project-analysis items show their source and evidence, and conflicts block
       stale: false,
       lostObligations: [],
       fixtureFailures: [],
-      evidence: {independent: 0, counter: 0, competing: 0},
+      evidence: {independent: 0, counter: 0, competing: 0, reviews: {passed: 3, failed: 1}},
       analysis: {
         agent: 'codex',
         conflicts,
-        sources: [{title: 'Code', version: 2, project: 'Alpha'}],
+        sources: [{title: 'Code', version: 2, project: 'Alpha', projectId: 'p1'}],
         fields: {summary: 'Better', principles: ['Simple']},
       },
     });
@@ -2204,6 +2210,7 @@ test('Project-analysis items show their source and evidence, and conflicts block
   assert.match(clean, /From your projects/);
   assert.match(clean, /Learned from 1 source style/);
   assert.match(clean, /Code · v2 · Alpha/);
+  assert.match(clean, /agent reviews of v\d+: 3 check\(s\) passed, <span class="bad">1 failed/);
   assert.match(clean, /Also updates summary/);
   assert.match(clean, /data-feedback-decision="accept"/);
   assert.ok(
@@ -2212,7 +2219,20 @@ test('Project-analysis items show their source and evidence, and conflicts block
   );
   const blocked = vm.runInContext(`inboxItem(${item(['Tabs vs spaces'])}, () => 'P')`, context);
   assert.match(blocked, /Conflicting guidance/);
-  assert.ok(!blocked.includes('data-feedback-decision="accept"'));
+  // Conflicts don't block: Apply confirms, Edit lets the user adjust first.
+  assert.match(blocked, /data-feedback-decision="accept"/);
+  assert.match(blocked, /<summary class="button small">Edit<\/summary>/);
+  assert.match(blocked, /name="content"[^>]*required/);
+  assert.match(blocked, /name="conflictResolution"/);
+  assert.match(blocked, /data-inbox-blocked="true"/);
+  for (const field of ['stale', 'fixtureFailures']) {
+    const data = JSON.parse(item([]));
+    data[field] = field === 'stale' ? true : ['Missing phrase'];
+    const html = vm.runInContext(`inboxItem(${JSON.stringify(data)}, () => 'P')`, context);
+    assert.match(html, /disabled title=/);
+    assert.doesNotMatch(html, /data-feedback-decision="accept"/);
+    assert.equal(html.includes('data-proposal-editor'), field !== 'stale');
+  }
 });
 
 test('Learning asks once whether to compare projects automatically, and stays off until answered', async () => {
@@ -2253,4 +2273,116 @@ test('Learning asks once whether to compare projects automatically, and stays of
   assert.match(html, /learn-badge off">Off/);
   assert.match(html, /data-action="learning-toggle" data-on="1">Turn on/);
   assert.match(html, /<dt>Last comparison<\/dt><dd>none yet/);
+});
+
+test('bulk Apply skips blocked proposals and directs all-blocked selections to individual review', async () => {
+  const {context} = inboxContext(() => []);
+  vm.runInContext(
+    `
+    var sent = [], notices = [];
+    api = async (url, options) => { sent.push(JSON.parse(options.body)); return [{ok:true}]; };
+    toast = message => notices.push(message);
+    feedback = async () => {};
+    document.querySelectorAll = () => [
+      {dataset:{inboxSelect:'blocked', inboxBlocked:'true'}},
+      {dataset:{inboxSelect:'ready', inboxBlocked:'false'}}
+    ];
+  `,
+    context,
+  );
+  await vm.runInContext(`bulkInbox('accept')`, context);
+  assert.equal(vm.runInContext('JSON.stringify(sent[0].ids)', context), '["ready"]');
+  assert.match(vm.runInContext('notices[0]', context), /1 blocked proposal/);
+  vm.runInContext(
+    `document.querySelectorAll = () => [{dataset:{inboxSelect:'blocked', inboxBlocked:'true'}}]`,
+    context,
+  );
+  await assert.rejects(vm.runInContext(`bulkInbox('accept')`, context), /individual review/);
+  assert.equal(vm.runInContext('sent.length', context), 1);
+  await vm.runInContext(`bulkInbox('dismiss')`, context);
+  assert.equal(vm.runInContext('JSON.stringify(sent[1].ids)', context), '["blocked"]');
+});
+
+test('edited proposal failure preserves the form and focuses its error', async () => {
+  const {context} = inboxContext(() => []);
+  vm.runInContext(
+    `
+    var button = {disabled:false}, error = {textContent:'', focus(){this.focused=true;}}, refreshed = 0, payload;
+    var form = {dataset:{proposalForm:'f1'}, querySelector: selector => selector.startsWith('button') ? button : error};
+    FormData = class {get(key){return key === 'content' ? 'Corrected rule' : 'Responsive wrapping wins';}};
+    api = async (url, options) => {payload = JSON.parse(options.body); throw new Error('Source style changed');};
+    feedback = async () => {refreshed++;};
+  `,
+    context,
+  );
+  await vm.runInContext('applyEditedProposal(form)', context);
+  assert.equal(vm.runInContext('payload.content', context), 'Corrected rule');
+  assert.equal(vm.runInContext('payload.conflictResolution', context), 'Responsive wrapping wins');
+  assert.equal(vm.runInContext('refreshed', context), 0);
+  assert.equal(vm.runInContext('error.focused', context), true);
+  assert.equal(vm.runInContext('button.disabled', context), false);
+  assert.match(vm.runInContext('error.textContent', context), /Source style changed/);
+});
+
+test('Apply confirms conflicts and dropped statements, then retries once each', async () => {
+  const {context} = inboxContext(() => []);
+  vm.runInContext(
+    `
+    var bodies = [], asked = 0;
+    confirm = () => (++asked, true);
+    api = async (url, options) => {
+      const body = JSON.parse(options.body);
+      bodies.push(body);
+      if (!body.conflictResolution) throw new Error('Resolve conflicting guidance in the edited proposal');
+      if (!body.acknowledgeRemovals) throw new Error('Proposal drops mandatory statements: X');
+      return {status: 'accepted'};
+    };
+  `,
+    context,
+  );
+  await vm.runInContext(`decideInboxItem('f1', 'accept')`, context);
+  assert.equal(vm.runInContext('asked', context), 2);
+  assert.equal(vm.runInContext('bodies.length', context), 3);
+  vm.runInContext('confirm = () => false; bodies = []', context);
+  await assert.rejects(vm.runInContext(`decideInboxItem('f1', 'accept')`, context), /conflicting/);
+});
+
+test('Learning shows how styles hold up in agent reviews, failing styles flagged', () => {
+  const {context} = inboxContext(() => []);
+  const html = vm.runInContext(
+    `styleChecksCard([{id:'r1', title:'UI <b>', version:4, passed:2, failed:1}])`,
+    context,
+  );
+  assert.match(html, /How your styles hold up/);
+  assert.match(
+    html,
+    /data-edit="r1">UI &lt;b&gt;<\/button> · v4 · 2 passed · <span class="bad">1 failed/,
+  );
+  assert.equal(vm.runInContext('styleChecksCard([])', context), '');
+});
+
+test('Clone project asks for a name, cancels cleanly, and opens the copy', async () => {
+  const {context} = inboxContext(() => []);
+  vm.runInContext(
+    `
+    var posts = [], answer = null, location = {hash: ''};
+    api = async (url, options) => {
+      if (!options) return {id: 'p1', name: 'Portal'};
+      posts.push([url, JSON.parse(options.body)]);
+      return {id: 'p2', name: JSON.parse(options.body).name};
+    };
+    prompt = (text, value) => answer === undefined ? value : answer;
+    toast = () => {};
+  `,
+    context,
+  );
+  await vm.runInContext(`cloneProject('p1')`, context);
+  assert.equal(vm.runInContext('posts.length', context), 0, 'cancel sends nothing');
+  vm.runInContext('answer = undefined', context);
+  await vm.runInContext(`cloneProject('p1')`, context);
+  assert.equal(
+    vm.runInContext('JSON.stringify(posts[0])', context),
+    '["/api/projects/p1/clone",{"name":"Copy of Portal"}]',
+  );
+  assert.equal(vm.runInContext('location.hash', context), '#/projects/p2');
 });

@@ -1288,6 +1288,19 @@ function skillIssueLabel(warnings) {
         .filter(Boolean)
         .join(' · ');
 }
+async function cloneProject(id) {
+    const source = await api(`/api/projects/${id}`);
+    const name = prompt('Name for the copy. Styles, selections and settings are copied; the repository link, feedback and activity are not.', 'Copy of ' + source.name);
+    if (name === null) {
+        return;
+    }
+    const copy = await api(`/api/projects/${id}/clone`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+    });
+    toast(`Cloned as ${copy.name}. Link it to a repository to use it.`);
+    location.hash = '#/projects/' + encodeURIComponent(copy.id);
+}
 async function projectScreen() {
     if (selectedProject) {
         items = (await api('/api/items?projectId=' + encodeURIComponent(selectedProject.id))).filter((r) => r.status !== 'archived');
@@ -1361,7 +1374,7 @@ async function projectScreen() {
         }
         layout(selectedProject.name, selectedProject.description && selectedProject.description !== selectedProject.name
             ? selectedProject.description
-            : "Manage this project's working styles and agent connections.", `<div class="page-actions"><button class="button primary" data-action="project-edit">Configure project</button><details class="page-overflow"><summary class="button ghost">More</summary><div><button class="button ghost small" data-remove-kind="reset" data-remove-id="${esc(selectedProject.id)}">Reset styles</button><button class="button ghost small" data-remove-kind="project" data-remove-id="${esc(selectedProject.id)}">Delete project</button></div></details></div>`, status + tabs + content);
+            : "Manage this project's working styles and agent connections.", `<div class="page-actions"><button class="button primary" data-action="project-edit">Configure project</button><details class="page-overflow"><summary class="button ghost">More</summary><div><button class="button ghost small" data-clone-project="${esc(selectedProject.id)}">Clone project</button><button class="button ghost small" data-remove-kind="reset" data-remove-id="${esc(selectedProject.id)}">Reset styles</button><button class="button ghost small" data-remove-kind="project" data-remove-id="${esc(selectedProject.id)}">Delete project</button></div></details></div>`, status + tabs + content);
         if (projectTab === 'gaps') {
             const project = selectedProject;
             const scan = async () => {
@@ -1424,7 +1437,7 @@ function projectListTable(projects) {
         return empty('No matching projects', 'Try a different project name.');
     }
     return `<div class="table-scroll"><table class="record-table projects-table"><thead><tr><th scope="col">Project</th><th scope="col">Selections</th><th scope="col">Agent activity</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${pageItems(projects)
-        .map((p) => `<tr class="project-link-row" data-project-row="${esc(p.id)}"><td><a class="project-title-link" href="#/projects/${encodeURIComponent(p.id)}">${esc(p.name)}</a>${p.description && p.description !== p.name ? `<p>${esc(p.description)}</p>` : ''}</td><td><span class="tag ${p.assignments.length ? '' : 'needs-selection'}">${p.assignments.length ? p.assignments.length + ' selected' : 'No styles selected'}</span></td><td>${p.activity ? `<strong>${p.activity.active} recently active</strong><p>${p.activity.linked} linked conversations</p>` : '<span class="hint">Not available</span>'}</td><td>${esc(formatTime(p.updatedAt))}</td><td><div class="row-actions project-list-actions">${iconAction('open', `Open ${p.name}`, `data-project="${esc(p.id)}"`)}${iconAction('remove', `Delete ${p.name}`, `data-remove-kind="project" data-remove-id="${esc(p.id)}"`)}</div></td></tr>`)
+        .map((p) => `<tr class="project-link-row" data-project-row="${esc(p.id)}"><td><a class="project-title-link" href="#/projects/${encodeURIComponent(p.id)}">${esc(p.name)}</a>${p.description && p.description !== p.name ? `<p>${esc(p.description)}</p>` : ''}</td><td><span class="tag ${p.assignments.length ? '' : 'needs-selection'}">${p.assignments.length ? p.assignments.length + ' selected' : 'No styles selected'}</span></td><td>${p.activity ? `<strong>${p.activity.active} recently active</strong><p>${p.activity.linked} linked conversations</p>` : '<span class="hint">Not available</span>'}</td><td>${esc(formatTime(p.updatedAt))}</td><td><div class="row-actions project-list-actions">${iconAction('open', `Open ${p.name}`, `data-project="${esc(p.id)}"`)}${iconAction('copy', `Clone ${p.name}`, `data-clone-project="${esc(p.id)}"`)}${iconAction('remove', `Delete ${p.name}`, `data-remove-kind="project" data-remove-id="${esc(p.id)}"`)}</div></td></tr>`)
         .join('')}</tbody></table></div>`;
 }
 function projectActivityPanel(activity, error) {
@@ -2305,7 +2318,7 @@ function projectEvidence(f) {
         return text ? `<h4>${label}</h4><pre>${esc(text)}</pre>` : '';
     })
         .join('');
-    return `<details><summary>Learned from ${f.sources.length} source style(s)</summary><ul>${f.sources.map((s) => `<li>${esc(s.title)}${s.version ? ` · v${s.version}` : ''} · ${esc(s.project)}</li>`).join('')}</ul></details>${fields ? `<details><summary>Also updates summary, keywords, principles and criteria</summary>${fields}<p class="hint">Mandatory requirements, checks, required links and skills stay as they are.</p></details>` : ''}<p class="hint">Applying creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p>`;
+    return `${f.resolution ? `<p><b>Your conflict resolution:</b> ${esc(f.resolution)}</p>` : ''}<details><summary>Learned from ${f.sources.length} source style(s)</summary><ul>${f.sources.map((s) => `<li>${esc(s.title)}${s.version ? ` · v${s.version}` : ''} · ${esc(s.project)}</li>`).join('')}</ul></details>${fields ? `<details><summary>Also updates summary, keywords, principles and criteria</summary>${fields}<p class="hint">Mandatory requirements, checks, required links and skills stay as they are.</p></details>` : ''}<p class="hint">Applying creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p>`;
 }
 const handoffState = (p) => {
     if (p.unchanged) {
@@ -2363,6 +2376,18 @@ function evidenceBar(e) {
     const pct = Math.round((e.independent / total) * 100);
     return `<svg class="evidence-bar" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="${e.independent} correction(s) for, ${e.counter} accepted outcome(s) against"><rect class="ev-for" width="${pct}" height="6"/><rect class="ev-against" x="${pct}" width="${100 - pct}" height="6"/></svg>`;
 }
+function reviewLine(x, version) {
+    if (!x.passed && !x.failed) {
+        return '';
+    }
+    return ` · agent reviews of v${version}: ${x.passed} check(s) passed${x.failed ? `, <span class="bad">${x.failed} failed</span>` : ''}`;
+}
+function styleChecksCard(rows) {
+    if (!rows.length) {
+        return '';
+    }
+    return `<section class="card panel"><h2>How your styles hold up</h2><p class="hint">Requirement results from agents' compliance reviews of each style's current version. Most results are reported by the agent itself, so treat them as a signal, not proof.</p><ul>${rows.map((r) => `<li><button class="link-btn" data-edit="${esc(r.id)}">${esc(r.title)}</button> · v${r.version} · ${r.passed} passed${r.failed ? ` · <span class="bad">${r.failed} failed</span>` : ''}</li>`).join('')}</ul></section>`;
+}
 function inboxItem(r, projectName) {
     const t = r.target;
     const warnings = [
@@ -2373,7 +2398,7 @@ function inboxItem(r, projectName) {
         r.lostObligations.length ? 'Drops mandatory statements: ' + r.lostObligations.join(' | ') : '',
         r.evidence.competing ? `${r.evidence.competing} other pending proposal(s) for this style.` : '',
         r.analysis?.conflicts.length
-            ? 'Conflicting guidance (cannot apply — resolve in the source styles, then analyze again): ' +
+            ? 'Conflicting guidance (Apply asks you to confirm; Edit to adjust first): ' +
                 r.analysis.conflicts.join(' | ')
             : '',
     ].filter(Boolean);
@@ -2394,11 +2419,17 @@ function inboxItem(r, projectName) {
         ? `<button class="button small" data-feedback-decision="accept" data-feedback-scope="project" data-feedback-id="${r.id}">Project only</button>`
         : '';
     const applyLabel = r.action === 'revise' && r.proposedContent == null ? 'Acknowledge' : 'Apply';
-    const apply = r.analysis?.conflicts.length
-        ? ''
+    const blocked = r.stale || !!r.fixtureFailures.length;
+    const needsReview = blocked || !!r.analysis?.conflicts.length || !!r.lostObligations.length;
+    const apply = blocked
+        ? `<button type="button" class="button small" disabled title="${r.stale ? 'Style changed since this was proposed — dismiss it' : 'Edit the proposal so the fixtures pass'}">Apply</button>`
         : `<button class="button small primary" data-feedback-decision="accept" data-feedback-id="${r.id}">${applyLabel}</button>`;
+    const editable = r.proposedContent != null && r.action !== 'forget' && !r.stale;
+    const editor = editable
+        ? `<details data-proposal-editor><summary class="button small">Edit</summary><form data-proposal-form="${esc(r.id)}" aria-label="Edit proposal for ${esc(t?.title || 'style')}"><div class="field"><label for="proposal-content-${esc(r.id)}">Proposed text</label><textarea id="proposal-content-${esc(r.id)}" name="content" rows="14" required maxlength="100000">${esc(r.proposedContent)}</textarea></div>${r.analysis?.conflicts.length ? `<div class="field"><label for="proposal-resolution-${esc(r.id)}">How you resolved the conflicts (optional)</label><textarea id="proposal-resolution-${esc(r.id)}" name="conflictResolution" rows="2" maxlength="4000"></textarea></div>` : ''}<p class="bad" data-proposal-error role="alert" tabindex="-1"></p><button type="submit" class="button primary small">Save and apply</button></form></details>`
+        : '';
     const actions = r.status === 'pending'
-        ? `<div class="row-actions">${apply}${projectOnly}${r.evidenceIds.length ? `<button class="button small" data-feedback-decision="split" data-feedback-id="${r.id}">Split</button>` : ''}<button class="button ghost small" data-feedback-decision="dismiss" data-feedback-id="${r.id}">Dismiss</button></div>`
+        ? `<div class="row-actions">${apply}${blocked ? '' : projectOnly}${r.evidenceIds.length ? `<button class="button small" data-feedback-decision="split" data-feedback-id="${r.id}">Split</button>` : ''}<button class="button ghost small" data-feedback-decision="dismiss" data-feedback-id="${r.id}">Dismiss</button></div>${editor}`
         : `<p class="hint">${esc(r.status)}${r.appliedVersion ? ` · applied as v${r.appliedVersion}` : ''}</p>`;
     const tools = r.recordId && t
         ? `<details class="space-top-18"><summary>Why is this style applied or missing?</summary><button class="button ghost small" data-explain="${r.recordId}" data-explain-project="${r.projectId || ''}">Explain</button><pre id="explain-${r.id}" data-explain-out="${r.recordId}"></pre></details>${r.action === 'revise'
@@ -2406,9 +2437,9 @@ function inboxItem(r, projectName) {
             : ''}`
         : '';
     const evidence = r.recordId
-        ? `<div class="evidence">${evidenceBar(r.evidence)}<p class="hint">${r.evidence.independent} correction(s) · ${r.evidence.counter} accepted outcome(s) under the current rule${r.evidenceIds.length ? ` · consolidates ${r.evidenceIds.length} item(s)` : ''}</p></div>`
+        ? `<div class="evidence">${evidenceBar(r.evidence)}<p class="hint">${r.evidence.independent} correction(s) · ${r.evidence.counter} accepted outcome(s) under the current rule${r.evidenceIds.length ? ` · consolidates ${r.evidenceIds.length} item(s)` : ''}${reviewLine(r.evidence.reviews, t?.version)}</p></div>`
         : '';
-    return `<div class="feedback-item diag-${r.diagnosis}"><div class="spread-row"><label class="inline-check"><input type="checkbox" data-inbox-select="${r.id}" aria-label="Select item"> ${ch(actionLabel[r.action])} ${ch(sourceLabel[r.source])}${r.projectId ? ' ' + ch(projectName(r.projectId)) : ' ' + ch('Global')}</label><span class="hint">${esc(formatTime(r.createdAt))}</span></div><p class="hint">${esc(diagnosisLabel[r.diagnosis])}</p><p>${esc(r.note)}</p>${warnings.map((w) => `<p class="bad">${esc(w)}</p>`).join('')}${evidence}${change}${r.analysis ? projectEvidence(r.analysis) : ''}${actions}${tools}</div>`;
+    return `<div class="feedback-item diag-${r.diagnosis}"><div class="spread-row"><label class="inline-check"><input type="checkbox" data-inbox-select="${r.id}" data-inbox-blocked="${needsReview}" aria-label="Select item"> ${ch(actionLabel[r.action])} ${ch(sourceLabel[r.source])}${r.projectId ? ' ' + ch(projectName(r.projectId)) : ' ' + ch('Global')}</label><span class="hint">${esc(formatTime(r.createdAt))}</span></div><p class="hint">${esc(diagnosisLabel[r.diagnosis])}</p><p>${esc(r.note)}</p>${warnings.map((w) => `<p class="bad">${esc(w)}</p>`).join('')}${actions}${evidence}${change}${r.analysis ? projectEvidence(r.analysis) : ''}${tools}</div>`;
 }
 function comparisonResult(run) {
     if (run.status === 'ready') {
@@ -2493,7 +2524,11 @@ function bindAutoStatus(health) {
             return;
         }
         const card = document.getElementById('learnStatus');
-        if (wasRunning !== (latest.projects.state === 'running') || !card) {
+        if (!card) {
+            return;
+        }
+        if (wasRunning !== (latest.projects.state === 'running') &&
+            !document.querySelector('[data-proposal-editor][open]')) {
             await feedback();
             return;
         }
@@ -2539,7 +2574,7 @@ async function feedback() {
     const settings = `<details class="card panel learning-settings space-top-18"><summary><span aria-hidden="true">⚙</span> Settings</summary><div class="field space-top-20"><label for="learnMode">Learning</label><select id="learnMode">${option('suggest', 'On — ask me before changing anything', health.mode)}${option('explicit', 'On — save my own remember/forget requests right away', health.mode)}${option('off', 'Off — stop learning', health.mode)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAutoProjects"${health.autoProjects ? ' checked' : ''}> Compare my projects automatically when their styles change</label><div class="field"><label for="learnAgent">Agent used to compare projects</label><select id="learnAgent">${option('', 'Automatic (Codex, else Claude)', health.agent)}${option('codex', 'Codex', health.agent)}${option('claude', 'Claude', health.agent)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAuto"${health.autoConsolidate ? ' checked' : ''}> Merge identical proposals into one</label><div class="field"><label for="learnRetention">Forget decided items after (days, 0 = never)</label><input id="learnRetention" type="number" min="0" max="3650" value="${health.retentionDays}"></div><fieldset class="field"><legend>Don't learn from these projects</legend>${projects.map((p) => `<label class="inline-check"><input type="checkbox" data-learn-pause="${p.id}"${health.pausedProjects.includes(p.id) ? ' checked' : ''}> ${esc(p.name)}</label>`).join('') || '<p class="hint">No projects</p>'}</fieldset><button class="button primary" data-action="learning-settings">Save settings</button><p class="hint">${health.suppressions} dismissed idea(s) won't be suggested again.</p>${health.suppressions ? '<button class="button ghost small" data-action="learning-clear-suppressions">Allow dismissed ideas again</button>' : ''}${auto}</details>`;
     const askAutoLearning = `<section class="card panel learning-ask" aria-labelledby="learnAskTitle"><h2 id="learnAskTitle">Learn from your projects automatically?</h2><p>When a project's customized styles change, Personal Brain asks your Codex or Claude command-line tool to compare them and suggest updates to your shared styles. This uses your agent account. Nothing changes until you apply a suggestion, and you can change this later in Settings.</p><div class="row-actions"><button class="button primary" data-learn-auto-answer="on">Turn on</button><button class="button ghost" data-learn-auto-answer="off">Keep it off</button></div></section>`;
     const tell = `<details class="card panel learning-tell space-top-18"><summary>Tell Personal Brain something yourself</summary><div class="field space-top-20"><label for="fbNote">What should agents do differently?</label><textarea id="fbNote" rows="4" placeholder="e.g. Never compress code into one line"></textarea></div><button class="button primary small" data-action="feedback">Send</button></details>`;
-    layout('Learning', 'Personal Brain learns from your agents and projects on its own. You only say yes or no to each proposed change.', '', `${health.autoProjectsAsked ? '' : askAutoLearning}${autoLearningStatus(health)}${flow}<section class="card panel"><div class="spread-row"><h2>Proposed changes ${infoButton('feedback')}</h2>${tabs}</div>${bulk}<div class="feedback-list space-top-18">${pageItems(records)
+    layout('Learning', 'Personal Brain learns from your agents and projects on its own. You only say yes or no to each proposed change.', '', `${health.autoProjectsAsked ? '' : askAutoLearning}${autoLearningStatus(health)}${flow}${styleChecksCard(health.styleChecks)}<section class="card panel"><div class="spread-row"><h2>Proposed changes ${infoButton('feedback')}</h2>${tabs}</div>${bulk}<div class="feedback-list space-top-18">${pageItems(records)
         .map((r) => inboxItem(r, projectName))
         .join('') || empty(emptyTitle, emptyHint)}</div>${pagination(records.length)}</section>${tell}${settings}`);
     main.querySelectorAll('[data-learn-tab]').forEach((b) => b.addEventListener('click', async () => {
@@ -2575,26 +2610,66 @@ async function feedback() {
     bindAutoStatus(health);
 }
 const OBLIGATION_ERROR = 'Proposal drops mandatory statements';
-async function decideInboxItem(id, decision, scope) {
-    const send = (acknowledgeRemovals = false) => api(`/api/feedback/${id}/decision`, {
-        method: 'POST',
-        body: JSON.stringify({ decision, scope, acknowledgeRemovals }),
-    });
+const CONFLICT_ERROR = 'Resolve conflicting guidance';
+async function decideInboxItem(id, decision, scope, edit) {
+    const body = { decision, scope, ...edit };
+    for (;;) {
+        try {
+            return await api(`/api/feedback/${id}/decision`, {
+                method: 'POST',
+                body: JSON.stringify(body),
+            });
+        }
+        catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            if (message.startsWith(OBLIGATION_ERROR) &&
+                !body.acknowledgeRemovals &&
+                confirm(message + '\n\nApply anyway?')) {
+                body.acknowledgeRemovals = true;
+            }
+            else if (message.startsWith(CONFLICT_ERROR) &&
+                !body.conflictResolution &&
+                confirm('This proposal has conflicting guidance (listed on the card).\n\nApply it anyway?')) {
+                body.conflictResolution = 'Applied after reviewing the listed conflicts.';
+            }
+            else {
+                throw e;
+            }
+        }
+    }
+}
+async function applyEditedProposal(form) {
+    const button = form.querySelector('button[type="submit"]');
+    const error = form.querySelector('[data-proposal-error]');
+    const data = new FormData(form);
+    button.disabled = true;
+    error.textContent = '';
     try {
-        await send();
+        await decideInboxItem(form.dataset.proposalForm, 'accept', undefined, {
+            content: String(data.get('content') || ''),
+            conflictResolution: String(data.get('conflictResolution') || '').trim() || undefined,
+        });
+        toast('Edited proposal applied');
+        await feedback();
     }
     catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        if (!message.startsWith(OBLIGATION_ERROR) || !confirm(message + '\n\nApply anyway?')) {
-            throw e;
-        }
-        await send(true);
+        error.textContent = e instanceof Error ? e.message : String(e);
+        error.focus();
+    }
+    finally {
+        button.disabled = false;
     }
 }
 async function bulkInbox(kind) {
-    const ids = Array.from(document.querySelectorAll('[data-inbox-select]:checked')).map((i) => i.dataset.inboxSelect);
+    const selected = Array.from(document.querySelectorAll('[data-inbox-select]:checked'));
+    const blocked = kind === 'accept' ? selected.filter((i) => i.dataset.inboxBlocked === 'true').length : 0;
+    const ids = selected
+        .filter((i) => kind !== 'accept' || i.dataset.inboxBlocked !== 'true')
+        .map((i) => i.dataset.inboxSelect);
     if (!ids.length) {
-        throw new Error('Select items first');
+        throw new Error(blocked
+            ? 'Selected proposals need individual review. Apply them one at a time.'
+            : 'Select items first');
     }
     const results = await api('/api/feedback/bulk', {
         method: 'POST',
@@ -2603,7 +2678,7 @@ async function bulkInbox(kind) {
     const failed = results.filter((r) => !r.ok);
     toast(failed.length
         ? `${results.length - failed.length} done, ${failed.length} failed: ${failed[0].error}`
-        : `${results.length} item(s) ${kind === 'accept' ? 'applied' : 'dismissed'}`);
+        : `${results.length} item(s) ${kind === 'accept' ? 'applied' : 'dismissed'}${blocked ? `; ${blocked} blocked proposal(s) skipped — review individually` : ''}`);
     await feedback();
 }
 async function activity() {
@@ -3374,6 +3449,7 @@ async function delegated(ev) {
         }
         if (button.dataset.project) {
             selectedProject = await api(`/api/projects/${button.dataset.project}`);
+            active = 'projects';
             projectEditing = false;
             projectTab = 'styles';
             page = 1;
@@ -3426,6 +3502,10 @@ async function delegated(ev) {
             domain = 'all';
             page = 1;
             await render();
+            return;
+        }
+        if (button.dataset.cloneProject) {
+            await cloneProject(button.dataset.cloneProject);
             return;
         }
         if (button.dataset.edit) {
@@ -3790,6 +3870,12 @@ document.addEventListener('input', (ev) => {
     }
 });
 document.addEventListener('submit', (ev) => {
+    const form = ev.target;
+    if (form.dataset.proposalForm) {
+        ev.preventDefault();
+        void applyEditedProposal(form);
+        return;
+    }
     if (ev.target.id === 'projectForm') {
         void saveProject(ev);
     }

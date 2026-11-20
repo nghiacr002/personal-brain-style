@@ -229,6 +229,10 @@ export function createBrainHttpServer(db: BrainDB) {
         if (path === '/api/projects' && method === 'POST') {
           return json(res, 201, db.saveProject(await body(req)));
         }
+        const cloneMatch = path.match(/^\/api\/projects\/([a-f0-9-]{36})\/clone$/);
+        if (cloneMatch && method === 'POST') {
+          return json(res, 201, db.cloneProject(cloneMatch[1], (await body(req)).name));
+        }
         if (path === '/api/onboarding/folder' && method === 'POST') {
           return json(res, 200, inspectOnboardingFolder(db, (await body(req)).folder));
         }

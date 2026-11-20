@@ -371,3 +371,28 @@ test('handoff writes only the previewed file into the linked repository (F20)', 
     assert.match(readFileSync(join(repo, preview.path), 'utf8'), /Use black/);
     assert.equal(handoffPreview(db, p.id).unchanged, true);
   }));
+
+test('learning health counts only failed agent learning calls, and unknown domains list valid ones', () =>
+  withDb((db) => {
+    db.trace({
+      agent: 'claude',
+      channel: 'mcp',
+      eventType: 'mcp.brain_remember',
+      outcome: 'success',
+    });
+    db.trace({agent: 'claude', channel: 'mcp', eventType: 'mcp.brain_remember', outcome: 'error'});
+    const [claude] = db.learningHealth().integrations;
+    assert.equal(claude.events, 2);
+    assert.equal(claude.failures, 1);
+    assert.throws(
+      () =>
+        db.capture({
+          action: 'remember',
+          rating: 'correction',
+          note: 'x',
+          proposedContent: 'x',
+          proposal: {title: 'T', domain: 'nope'},
+        }),
+      /Unknown domain\. Use one of: .*coding/,
+    );
+  }));

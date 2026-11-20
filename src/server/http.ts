@@ -12,6 +12,14 @@ import {
 import {catalogUpgradePreview, applyCatalogUpgrade} from '../styles/catalog-upgrade.ts';
 import {resolveInstructions} from '../instructions/resolve.ts';
 import {
+  benchRuns,
+  benchTasks,
+  cancelBenchRun,
+  deleteBenchTask,
+  saveBenchTask,
+  startBenchRun,
+} from '../instructions/benchmark.ts';
+import {
   seedGlobalStyles,
   installCatalogAdditions,
   globalCatalogMarker,
@@ -41,7 +49,7 @@ import {
   recommendProjectStyles,
 } from '../projects/onboarding.ts';
 import {selectFolder} from '../projects/folder-browser.ts';
-import {handoffPreview, handoffWrite} from '../projects/handoff.ts';
+import {handoffPreview, handoffWrite, setAutoExport, staleExports} from '../projects/handoff.ts';
 import {scanGaps, scanProjectGaps} from '../projects/gaps.ts';
 import {
   discoverProject,
@@ -697,11 +705,66 @@ export function createBrainHttpServer(db: BrainDB) {
         }
         if (path === '/api/learning' && method === 'GET') {
           syncLearningRuns(db);
-          return json(res, 200, {...db.learningHealth(), projects: projectLearningStatus(db)});
+          return json(res, 200, {
+            ...db.learningHealth(),
+            projects: projectLearningStatus(db),
+            staleExports: staleExports(db),
+          });
+        }
+        if (path === '/api/effectiveness' && method === 'GET') {
+          return json(res, 200, {
+            weeks: db.effectiveness(),
+            adoption: db.adoption(),
+            tasks: benchTasks(db),
+            runs: benchRuns(db),
+          });
+        }
+        if (path === '/api/bench/tasks' && method === 'POST') {
+          return json(res, 201, saveBenchTask(db, await body(req)));
+        }
+        const benchTask = path.match(/^\/api\/bench\/tasks\/([a-f0-9-]{36})$/);
+        if (benchTask && method === 'PUT') {
+          return json(res, 200, saveBenchTask(db, await body(req), benchTask[1]));
+        }
+        if (benchTask && method === 'DELETE') {
+          deleteBenchTask(db, benchTask[1]);
+          return json(res, 200, {deleted: true});
+        }
+        if (path === '/api/bench/runs' && method === 'POST') {
+          return json(res, 202, startBenchRun(db, await body(req)));
+        }
+        const benchCancel = path.match(/^\/api\/bench\/runs\/([a-f0-9-]{36})\/cancel$/);
+        if (benchCancel && method === 'POST') {
+          return json(res, 200, cancelBenchRun(benchCancel[1]));
         }
         if (path === '/api/learning/check' && method === 'POST') {
           // "Check now": same automatic step, ignoring the unchanged-projects shortcut.
           return json(res, 202, {result: autoLearnFromProjects(db, true)});
+        }
+        if (path === '/api/project-templates' && method === 'GET') {
+          return json(res, 200, db.projectTemplates());
+        }
+        if (path === '/api/project-templates' && method === 'POST') {
+          return json(res, 201, db.saveProjectTemplate(await body(req)));
+        }
+        const template = path.match(/^\/api\/project-templates\/(starter|[a-f0-9-]{36})$/);
+        if (template && method === 'PUT') {
+          return json(res, 200, db.saveProjectTemplate(await body(req), template[1]));
+        }
+        if (template && method === 'DELETE') {
+          db.deleteProjectTemplate(template[1]);
+          return json(res, 200, {deleted: true});
+        }
+        const templateStyle = path.match(
+          /^\/api\/project-templates\/(starter|[a-f0-9-]{36})\/styles\/([a-f0-9-]{36})$/,
+        );
+        if (templateStyle && method === 'PUT') {
+          const x = (await body(req)) as {enabled?: unknown};
+          return json(
+            res,
+            200,
+            db.setTemplateStyle(templateStyle[1], templateStyle[2], x?.enabled),
+          );
         }
         if (path === '/api/learning/settings' && method === 'PUT') {
           return json(res, 200, db.saveLearningSettings(await body(req)));
@@ -729,11 +792,24 @@ export function createBrainHttpServer(db: BrainDB) {
         }
         const handoff = path.match(/^\/api\/projects\/([a-f0-9-]{36})\/handoff$/);
         if (handoff && method === 'GET') {
-          return json(res, 200, handoffPreview(db, handoff[1]));
+          return json(
+            res,
+            200,
+            handoffPreview(db, handoff[1], url.searchParams.get('target') ?? undefined),
+          );
         }
         if (handoff && method === 'POST') {
           const x = await body(req);
-          return json(res, 200, handoffWrite(db, handoff[1], x.contentHash, x.existingHash));
+          return json(
+            res,
+            200,
+            handoffWrite(db, handoff[1], x.contentHash, x.existingHash, x.target),
+          );
+        }
+        const autoExport = path.match(/^\/api\/projects\/([a-f0-9-]{36})\/handoff\/auto$/);
+        if (autoExport && method === 'POST') {
+          const x = await body(req);
+          return json(res, 200, setAutoExport(db, autoExport[1], x.target, x.enabled));
         }
         if (path === '/api/learning/suppressions' && method === 'DELETE') {
           return json(res, 200, db.clearSuppressions());

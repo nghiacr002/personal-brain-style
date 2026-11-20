@@ -188,6 +188,8 @@ export function checkInput(raw: unknown): RecordInput {
     backend,
   };
 }
+export type ProjectTemplate = {id: string; name: string; styleIds: string[]; builtIn?: boolean};
+const STARTER_TEMPLATE = 'starter';
 const stopWords = new Set(
   'the a an and or to of for in on with is it this that my me please let should have use when how can do we you all as at by from be are new using what which who where why there here plus'.split(
     ' ',
@@ -267,6 +269,7 @@ type FeedbackInput = {
   /** Project analysis pins the version it saw, so a newer edit shows as stale. */
   baseVersion?: number;
 };
+type ReviewTally = {passed: number; failed: number};
 export type DecisionOptions = {content?: unknown; scope?: unknown; acknowledgeRemovals?: unknown};
 export class BrainDB {
   db: DatabaseSync;
@@ -667,7 +670,8 @@ export class BrainDB {
       };
     });
   }
-  projectDefaultStyleIds(): string[] {
+  /** The original starter list, used for the Starter template until the user changes it. */
+  private legacyDefaultStyleIds(): string[] {
     const row = this.db
       .prepare("SELECT value FROM meta WHERE key='new_project_style_defaults_v1'")
       .get() as {value: string} | undefined;
@@ -680,10 +684,19 @@ export class BrainDB {
     if (architecture && !ids.includes(architecture.id)) {
       ids.push(architecture.id);
     }
+    return ids;
+  }
+  /** Keeps shared, active preferences and skills, one per selection slot, in the given order. */
+  private templateStyleIds(ids: string[]): string[] {
     const slots = new Set<string>();
     return ids.filter((id) => {
       const r = this.get(id);
-      if (!r || r.projectId || r.status !== 'active') {
+      if (
+        !r ||
+        r.projectId ||
+        r.status !== 'active' ||
+        (r.kind !== 'preference' && r.kind !== 'skill')
+      ) {
         return false;
       }
       const slot = this.selectionSlot(r);
@@ -693,6 +706,116 @@ export class BrainDB {
       slots.add(slot);
       return true;
     });
+  }
+  /**
+   * Project templates: named starting selections for the new-project form. Starter is built in,
+   * comes first and is preselected; it cannot be deleted. Templates never change existing projects.
+   */
+  projectTemplates(): ProjectTemplate[] {
+    const stored = (
+      this.db.prepare("SELECT value FROM meta WHERE key LIKE 'project-template:%'").all() as {
+        value: string;
+      }[]
+    ).map((r) => JSON.parse(r.value) as ProjectTemplate);
+    const starter = stored.find((t) => t.id === STARTER_TEMPLATE) || {
+      id: STARTER_TEMPLATE,
+      name: 'Starter',
+      styleIds: this.legacyDefaultStyleIds(),
+    };
+    return [
+      starter,
+      ...stored
+        .filter((t) => t.id !== STARTER_TEMPLATE)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ].map((t) => ({
+      id: t.id,
+      name: t.name,
+      styleIds: this.templateStyleIds(t.styleIds),
+      builtIn: t.id === STARTER_TEMPLATE,
+    }));
+  }
+  projectTemplate(id: string): ProjectTemplate {
+    const t = this.projectTemplates().find((t) => t.id === id);
+    if (!t) {
+      throw new BrainError('Template not found', 'NOT_FOUND', 404);
+    }
+    return t;
+  }
+  projectDefaultStyleIds(): string[] {
+    return this.projectTemplate(STARTER_TEMPLATE).styleIds;
+  }
+  private writeTemplate(t: {id: string; name: string; styleIds: string[]}) {
+    this.db
+      .prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)')
+      .run(
+        'project-template:' + t.id,
+        JSON.stringify({id: t.id, name: t.name, styleIds: this.templateStyleIds(t.styleIds)}),
+      );
+    return this.projectTemplate(t.id);
+  }
+  /** Creates a template (optionally from a list of styles) or renames one. */
+  saveProjectTemplate(raw: unknown, id?: string): ProjectTemplate {
+    const x = (raw || {}) as {name?: unknown; styleIds?: unknown};
+    const name = typeof x.name === 'string' ? x.name.trim() : '';
+    if (!name || name.length > 80) {
+      throw new BrainError('Template name must have 1–80 characters');
+    }
+    if (
+      x.styleIds !== undefined &&
+      (!Array.isArray(x.styleIds) || x.styleIds.some((s) => typeof s !== 'string'))
+    ) {
+      throw new BrainError('Template styles must be a list of style IDs');
+    }
+    const current = id ? this.projectTemplate(id) : undefined;
+    if (
+      this.projectTemplates().some(
+        (t) => t.id !== id && t.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      throw new BrainError('A template with this name already exists', 'CONFLICT', 409);
+    }
+    return this.writeTemplate({
+      id: current?.id || randomUUID(),
+      name,
+      styleIds: (x.styleIds as string[] | undefined) ?? current?.styleIds ?? [],
+    });
+  }
+  deleteProjectTemplate(id: string) {
+    if (this.projectTemplate(id).builtIn) {
+      throw new BrainError('The Starter template cannot be deleted');
+    }
+    this.db.prepare('DELETE FROM meta WHERE key=?').run('project-template:' + id);
+  }
+  /**
+   * Adds a shared style to a template or removes it. A new project takes one style per slot, so
+   * adding a style replaces any style in the same slot. Existing projects are never changed.
+   */
+  setTemplateStyle(templateId: string, recordId: string, enabled: unknown) {
+    if (typeof enabled !== 'boolean') {
+      throw new BrainError('Enabled must be true or false');
+    }
+    const t = this.projectTemplate(templateId);
+    const r = this.get(recordId);
+    if (!r || r.projectId) {
+      throw new BrainError('Shared style not found', 'NOT_FOUND', 404);
+    }
+    let ids = t.styleIds.filter((x) => x !== recordId);
+    const replaced: string[] = [];
+    if (enabled) {
+      if (r.status !== 'active' || (r.kind !== 'preference' && r.kind !== 'skill')) {
+        throw new BrainError('Only active preferences and skills can be added to a template');
+      }
+      const slot = this.selectionSlot(r);
+      ids = ids.filter((x) => {
+        const same = this.selectionSlot(this.get(x)!) === slot;
+        if (same) {
+          replaced.push(x);
+        }
+        return !same;
+      });
+      ids.push(recordId);
+    }
+    return {template: this.writeTemplate({...t, styleIds: ids}), replaced};
   }
   summary() {
     const all = this.list({limit: 300});
@@ -705,6 +828,7 @@ export class BrainDB {
     return {
       counts,
       projectDefaultStyleIds: this.projectDefaultStyleIds(),
+      projectTemplates: this.projectTemplates(),
       domains: this.domains().map((d) => d.id),
       domainRegistry: this.capabilityStats(),
       total: all.length,
@@ -1802,6 +1926,7 @@ export class BrainDB {
           reviews: (record && reviews.get(`${record.id}@${record.version}`)) || {
             passed: 0,
             failed: 0,
+            agents: {},
           },
           competing: related.filter(
             (o) =>
@@ -1934,28 +2059,40 @@ export class BrainDB {
    * Requirement results from agents' compliance reviews, per style version. Mostly agent-reported:
    * the server verifies automated checks only, so this is a signal, not proof.
    */
-  reviewEvidence(): Map<string, {passed: number; failed: number}> {
+  reviewEvidence(): Map<string, ReviewTally & {agents: Record<string, ReviewTally>}> {
     const rows = this.db
       .prepare(
-        `SELECT json_extract(r.value,'$.recordId') AS id, json_extract(r.value,'$.recordVersion') AS version,
+        `SELECT json_extract(r.value,'$.recordId') AS id, json_extract(r.value,'$.recordVersion') AS version, t.agent AS agent,
           sum(json_extract(r.value,'$.status')='pass' OR (json_extract(r.value,'$.status')!='fail' AND json_extract(r.value,'$.agentReported')='pass')) AS passed,
           sum(json_extract(r.value,'$.status')='fail' OR (json_extract(r.value,'$.status')!='pass' AND json_extract(r.value,'$.agentReported')='fail')) AS failed
         FROM trace_events t, json_each(json_extract(t.metadata,'$.complianceReport'),'$.results') r
         WHERE t.demo=0 AND t.event_type='compliance.review' AND json_valid(json_extract(t.metadata,'$.complianceReport'))
-        GROUP BY 1,2`,
+        GROUP BY 1,2,3`,
       )
-      .all() as Array<{id: string; version: number; passed: number; failed: number}>;
-    return new Map(
-      rows.map((r) => [
-        `${r.id}@${r.version}`,
-        {passed: Number(r.passed) || 0, failed: Number(r.failed) || 0},
-      ]),
-    );
+      .all() as Array<{id: string; version: number; agent: string} & ReviewTally>;
+    const out = new Map<string, ReviewTally & {agents: Record<string, ReviewTally>}>();
+    for (const r of rows) {
+      const key = `${r.id}@${r.version}`;
+      const total = out.get(key) || {passed: 0, failed: 0, agents: {}};
+      const passed = Number(r.passed) || 0,
+        failed = Number(r.failed) || 0;
+      total.passed += passed;
+      total.failed += failed;
+      total.agents[r.agent] = {passed, failed};
+      out.set(key, total);
+    }
+    return out;
   }
   /** Active styles whose current version has review results, failing ones first. */
   private styleChecks() {
-    const out: Array<{id: string; title: string; version: number; passed: number; failed: number}> =
-      [];
+    const out: Array<
+      {
+        id: string;
+        title: string;
+        version: number;
+        agents: Record<string, ReviewTally>;
+      } & ReviewTally
+    > = [];
     for (const [key, result] of this.reviewEvidence()) {
       const [id, version] = key.split('@');
       const r = this.get(id);
@@ -1968,11 +2105,114 @@ export class BrainDB {
       .sort((a, b) => b.failed - a.failed || a.passed - b.passed)
       .slice(0, 8);
   }
+  /**
+   * Daily-work effectiveness per ISO week: how often prompts still state a preference (corrections),
+   * and how many captured lessons repeat one the user already approved. Both should fall over time.
+   */
+  effectiveness(weeks = 8) {
+    const rows = this.db
+      .prepare(
+        `SELECT strftime('%Y-%W', occurred_at) AS week, count(*) AS prompts, count(DISTINCT run_id) AS sessions,
+          sum(json_extract(metadata,'$.preferenceCue')=1) AS corrections,
+          sum(json_extract(metadata,'$.preferenceCue') IS NOT NULL) AS recorded
+        FROM trace_events WHERE demo=0 AND event_type IN ('hook.prompt.context','hook.prompt.no_match')
+        GROUP BY 1 ORDER BY 1 DESC LIMIT ?`,
+      )
+      .all(weeks) as Array<{
+      week: string;
+      prompts: number;
+      sessions: number;
+      corrections: number | null;
+      recorded: number | null;
+    }>;
+    const words = (text: string) => new Set(text.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+    // ponytail: word-overlap similarity; misses paraphrases, embeddings if that matters.
+    const similar = (a: Set<string>, b: Set<string>) => {
+      const shared = [...a].filter((w) => b.has(w)).length;
+      return shared / (a.size + b.size - shared || 1) >= 0.5;
+    };
+    const lessons = this.feedbackRows("WHERE source='agent' ORDER BY created_at");
+    const captured = new Map<string, {lessons: number; repeats: number}>();
+    lessons.forEach((f, i) => {
+      const week = this.db.prepare("SELECT strftime('%Y-%W', ?) AS w").get(f.createdAt) as {
+        w: string;
+      };
+      const text = words(f.proposedContent ?? f.note);
+      const repeat = lessons
+        .slice(0, i)
+        .some(
+          (o) =>
+            o.status === 'accepted' &&
+            o.decidedAt! <= f.createdAt &&
+            similar(text, words(o.proposedContent ?? o.note)),
+        );
+      const tally = captured.get(week.w) || {lessons: 0, repeats: 0};
+      tally.lessons++;
+      tally.repeats += Number(repeat);
+      captured.set(week.w, tally);
+    });
+    return rows.reverse().map((r) => ({
+      week: r.week,
+      prompts: r.prompts,
+      sessions: r.sessions,
+      // Weeks before the flag was recorded have no correction data rather than zero corrections.
+      corrections: r.recorded ? Number(r.corrections) || 0 : null,
+      recordedPrompts: Number(r.recorded) || 0,
+      lessons: captured.get(r.week)?.lessons || 0,
+      repeats: captured.get(r.week)?.repeats || 0,
+    }));
+  }
+  /**
+   * Whether each agent actually uses the shared styles: hook prompts against style loads, reviews
+   * and lessons. One style across tools only holds if every agent's load rate is healthy.
+   */
+  adoption(days = 14) {
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    return (
+      this.db
+        .prepare(
+          `SELECT agent, sum(event_type='hook.session.context') AS sessions,
+            sum(event_type IN ('hook.prompt.context','hook.prompt.no_match')) AS prompts,
+            sum(event_type IN ('mcp.brain_get','mcp.brain_prepare') AND outcome='success') AS loads,
+            sum(event_type='mcp.brain_review' AND outcome='success') AS reviews,
+            sum(event_type IN ('mcp.brain_remember','mcp.brain_feedback','mcp.brain_forget') AND outcome='success') AS lessons,
+            sum(channel='mcp' AND outcome='error') AS errors
+          FROM trace_events WHERE demo=0 AND occurred_at >= ? AND agent IN ('claude','codex','opencode','chatgpt')
+          GROUP BY agent ORDER BY prompts DESC`,
+        )
+        .all(since) as Array<Record<string, number | string>>
+    ).map((r) => ({
+      ...this.workSessions(String(r.agent), since),
+      agent: String(r.agent),
+      sessions: Number(r.sessions) || 0,
+      prompts: Number(r.prompts) || 0,
+      loads: Number(r.loads) || 0,
+      reviews: Number(r.reviews) || 0,
+      lessons: Number(r.lessons) || 0,
+      errors: Number(r.errors) || 0,
+    }));
+  }
+  /**
+   * Sessions where the agent edited files, and how many of them loaded styles first or later.
+   * Null before the tool hook was installed, so missing data never reads as zero use.
+   */
+  private workSessions(agent: string, since: string) {
+    const row = this.db
+      .prepare(
+        `SELECT count(*) AS work, sum(EXISTS(SELECT 1 FROM trace_events l WHERE l.run_id=w.run_id AND l.event_type='hook.tool.load')) AS covered
+        FROM (SELECT DISTINCT run_id FROM trace_events WHERE demo=0 AND agent=? AND occurred_at >= ? AND event_type='hook.tool.work') w`,
+      )
+      .get(agent, since) as {work: number; covered: number | null};
+    return row.work
+      ? {workSessions: row.work, coveredSessions: Number(row.covered) || 0}
+      : {workSessions: null, coveredSessions: null};
+  }
   /** Capture activity per agent integration, from trace events of the learning tools. */
+  /** Failures an agent fixed by retrying within 10 minutes are not counted: nothing was lost. */
   private integrationStatus() {
     return this.db
       .prepare(
-        "SELECT agent, count(*) AS events, max(occurred_at) AS lastAt, sum(outcome!='success') AS failures FROM trace_events WHERE demo=0 AND event_type IN ('mcp.brain_feedback','mcp.brain_remember','mcp.brain_forget') GROUP BY agent ORDER BY lastAt DESC",
+        "SELECT agent, count(*) AS events, max(occurred_at) AS lastAt, sum(outcome='error' AND NOT EXISTS (SELECT 1 FROM trace_events s WHERE s.agent=t.agent AND s.event_type=t.event_type AND s.outcome='success' AND s.occurred_at > t.occurred_at AND s.occurred_at <= strftime('%Y-%m-%dT%H:%M:%fZ', t.occurred_at, '+10 minutes'))) AS failures FROM trace_events t WHERE demo=0 AND event_type IN ('mcp.brain_feedback','mcp.brain_remember','mcp.brain_forget') GROUP BY agent ORDER BY lastAt DESC",
       )
       .all() as Array<{agent: string; events: number; lastAt: string; failures: number}>;
   }
@@ -2082,7 +2322,7 @@ export class BrainDB {
     const safeMetadata: Record<string, string | number | boolean | null> = {};
     for (const [key, value] of Object.entries(event.metadata || {})) {
       if (
-        !/^(client|domain|count|recordCount|contextChars|promptChars|promptHash|matchedDomains|resultCount|checkCount|passed|step|note|tool|version|sessionLinked|projectId|origin|tested|complianceReport)$/i.test(
+        !/^(client|domain|count|recordCount|contextChars|promptChars|promptHash|matchedDomains|resultCount|checkCount|passed|step|note|tool|version|sessionLinked|projectId|origin|tested|complianceReport|preferenceCue|instructionsRefreshed|error|activity)$/i.test(
           key,
         )
       ) {
@@ -2617,6 +2857,64 @@ export class BrainDB {
       this.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run(marker, 'done');
     });
   }
+  /**
+   * After publishing, the shared copy takes the private one's place in its project: the selection,
+   * links from other private styles, the configuration baseline and recorded lessons move to the
+   * shared ID, and the private copy is removed so the project no longer lists it twice.
+   */
+  private replacePrivateCopies(projectId: string, moved: Map<string, string>) {
+    if (!moved.size) {
+      return;
+    }
+    const swap = (id: string) => moved.get(id) ?? id;
+    const now = new Date().toISOString();
+    const p = this.project(projectId);
+    const seen = new Set<string>();
+    const assignments = p.assignments
+      .map((a) => ({...a, recordId: swap(a.recordId)}))
+      .filter((a) => !seen.has(a.recordId) && seen.add(a.recordId));
+    if (JSON.stringify(assignments) !== JSON.stringify(p.assignments)) {
+      this.db
+        .prepare('UPDATE projects SET snapshot=? WHERE id=?')
+        .run(JSON.stringify({...p, assignments, version: p.version + 1, updatedAt: now}), p.id);
+    }
+    const baseline = this.db
+      .prepare('SELECT value FROM meta WHERE key=?')
+      .get('project-style-baseline:' + projectId) as {value: string} | undefined;
+    if (baseline) {
+      this.db.prepare('UPDATE meta SET value=? WHERE key=?').run(
+        JSON.stringify(
+          JSON.parse(baseline.value).map((a: {recordId: string}) => ({
+            ...a,
+            recordId: swap(a.recordId),
+          })),
+        ),
+        'project-style-baseline:' + projectId,
+      );
+    }
+    for (const r of this.list({projectId, limit: 10000}).filter(
+      (r) =>
+        r.projectId === projectId && !moved.has(r.id) && linkedIds(r).some((x) => moved.has(x)),
+    )) {
+      this.write(
+        {
+          ...r,
+          requiredIds: (r.requiredIds || []).map(swap),
+          supportingLinks: r.supportingLinks?.map((l) => ({...l, recordId: swap(l.recordId)})),
+          version: r.version + 1,
+          updatedAt: now,
+        },
+        'update',
+      );
+    }
+    for (const [privateId, sharedId] of moved) {
+      this.db.prepare('UPDATE feedback SET record_id=? WHERE record_id=?').run(sharedId, privateId);
+      this.db.prepare('DELETE FROM meta WHERE key=?').run('learning-fixtures:' + privateId);
+      this.db.prepare('DELETE FROM revisions WHERE record_id=?').run(privateId);
+      this.db.prepare('DELETE FROM audit WHERE target=?').run(privateId);
+      this.db.prepare('DELETE FROM records WHERE id=?').run(privateId);
+    }
+  }
   publishProjectRecord(projectId: string, recordId: string, expectedVersion: number) {
     return this.transaction(() => {
       this.project(projectId);
@@ -2711,6 +3009,10 @@ export class BrainDB {
         return shared;
       };
       const record = publish(source);
+      this.replacePrivateCopies(
+        projectId,
+        new Map([...copies].map(([privateId, shared]) => [privateId, shared.id])),
+      );
       return {record, published: [...copies.values()]};
     });
   }

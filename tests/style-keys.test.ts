@@ -83,7 +83,7 @@ test('two private keys can match until publishing establishes one global identit
     assert.equal(updated.id, a.id);
     assert.throws(() => db.create(base), /key already exists/);
     const published = db.publishProjectRecord(p.id, a.id, updated.version).record;
-    assert.equal(db.get(a.id)!.sourceStyleId, published.id);
+    assert.ok(!db.get(a.id), 'the published private copy is replaced');
     assert.equal(db.get(b.id)!.sourceStyleId, published.id);
     assert.equal(db.get(b.id)!.content, 'Other content');
     assert.equal(

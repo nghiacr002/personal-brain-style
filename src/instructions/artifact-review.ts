@@ -189,7 +189,8 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
     throw new BrainError('Review report too large; reduce scope or evidence');
   }
   const event = db.trace({
-    agent: 'unknown',
+    // trace() keeps only known agent names, so a made-up host is stored as unknown.
+    agent: typeof args.host === 'string' ? args.host : 'unknown',
     channel: 'review',
     eventType: 'compliance.review',
     outcome: status,

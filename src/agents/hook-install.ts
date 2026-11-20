@@ -39,7 +39,11 @@ function baseArgv(opts: InstallOptions) {
   }
   return launcher().argv;
 }
-export function hookCommand(agent: Agent, phase: 'session' | 'prompt', opts: InstallOptions = {}) {
+export function hookCommand(
+  agent: Agent,
+  phase: 'session' | 'prompt' | 'tool',
+  opts: InstallOptions = {},
+) {
   const base = baseArgv(opts);
   if ((opts.platform || process.platform) === 'win32') {
     const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
@@ -83,7 +87,7 @@ function own(entry: unknown): boolean {
 // Own commands are tagged with a benign statusMessage to make safe removal deterministic.
 function stripOwn(config: HookConfig) {
   const hooks = ensureHooks(config);
-  for (const event of ['SessionStart', 'UserPromptSubmit']) {
+  for (const event of ['SessionStart', 'UserPromptSubmit', 'PostToolUse']) {
     const list = hooks[event];
     if (!Array.isArray(list)) {
       continue;
@@ -113,6 +117,7 @@ function add(config: HookConfig, agent: Agent, opts: InstallOptions) {
   for (const [event, phase] of [
     ['SessionStart', 'session'],
     ['UserPromptSubmit', 'prompt'],
+    ['PostToolUse', 'tool'],
   ] as const) {
     const handler: JsonObject = {
       type: 'command',
@@ -129,10 +134,17 @@ function add(config: HookConfig, agent: Agent, opts: InstallOptions) {
       handler.additionalContextLimit = 2500;
     }
     const groups = hooks[event] || [];
+    // Only edits and Personal Brain loads start the hook; other tool calls stay free.
+    const group: JsonObject = {hooks: [handler]};
+    if (phase === 'tool') {
+      handler.timeout = 5;
+      delete handler.additionalContextLimit;
+      group.matcher = 'Edit|Write|MultiEdit|NotebookEdit|apply_patch|mcp__personal-brain__.*';
+    }
     if (!Array.isArray(groups)) {
       throw new Error('Invalid hooks structure');
     }
-    groups.push({hooks: [handler]});
+    groups.push(group);
     hooks[event] = groups;
   }
 }
@@ -180,6 +192,9 @@ const PersonalBrain = async ({ directory }) => {
       if (state.startup === undefined) state.startup = await hook("session", { cwd: directory, session_id: input.sessionID });
       state.prompt = prompt ? await hook("prompt", { cwd: directory, session_id: input.sessionID, prompt }) : "";
       sessions.set(input.sessionID, state);
+    },
+    "tool.execute.after": async input => {
+      if (/brain_(get|prepare)$|^(edit|write|patch)$/.test(input.tool || "")) await hook("tool", { cwd: directory, session_id: input.sessionID, tool_name: input.tool });
     },
     "experimental.chat.system.transform": async (input, output) => {
       const state = input.sessionID && sessions.get(input.sessionID);

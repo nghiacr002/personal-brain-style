@@ -2,12 +2,26 @@ import {complianceReminder} from '../instructions/compliance.ts';
 import {dirname} from 'node:path';
 import {resolveProjectScope} from '../projects/project-scope.ts';
 import {readFileSync} from 'node:fs';
-import {BrainDB} from '../core/database.ts';
+import {BrainDB, recordMatch} from '../core/database.ts';
 import type {BrainRecord, Domain} from '../core/models.ts';
 
 /** Personal Brain supplies context; it never starts a second LLM turn. */
 export type AgentKind = 'claude' | 'codex' | 'opencode';
-export type HookPhase = 'session' | 'prompt';
+export type HookPhase = 'session' | 'prompt' | 'tool';
+/**
+ * Tool-use signal for "did this working session use the styles": an edit marks real work, a
+ * brain_get/brain_prepare marks a style load. Names differ by host: Claude Edit/Write, Codex
+ * apply_patch, OpenCode edit/write/patch; MCP tools end in their own name on every host.
+ */
+export function toolSignal(name: unknown): 'work' | 'load' | null {
+  if (typeof name !== 'string') {
+    return null;
+  }
+  if (/brain_(get|prepare)$/.test(name)) {
+    return 'load';
+  }
+  return /^(edit|write|multiedit|notebookedit|apply_patch|patch)$/i.test(name) ? 'work' : null;
+}
 
 // Tags both catalog capability ids and the legacy ids older libraries still use.
 function classify(task: string): Domain[] {
@@ -77,16 +91,103 @@ function classify(task: string): Domain[] {
 }
 
 // ponytail: keyword cue, not intent detection; the agent judges and the user consents on the Learning page.
+// "instead of" and Vietnamese "luôn" ("right away") and "thay vì" were mostly one-off task wording.
 const STANDING =
-  /\b(from now on|going forward|by default|default|always|never|whenever|every time|each time|next time|in future|in the future|i prefer|i'd prefer|i want .{0,40}\b(to be|to use|as)|let'?s? (always )?use|should (always )?use|don'?t (ever )?use|stop using|instead of|remember)\b|luôn|mặc định|từ nay|từ giờ|lần sau|đừng bao giờ|không bao giờ|ghi nhớ|hãy nhớ|thay vì/i;
+  /\b(from now on|going forward|by default|default|always|never|whenever|every time|each time|next time|in future|in the future|i prefer|i'd prefer|i want .{0,40}\b(to be|to use|as)|let'?s? (always )?use|should (always )?use|don'?t (ever )?use|stop using|remember (that|to|this))\b|luôn luôn|hãy luôn|phải luôn|mặc định|từ nay|từ giờ|lần sau|đừng bao giờ|không bao giờ|ghi nhớ|hãy nhớ/i;
+// ponytail: length cap; long prompts are pasted documents or tool-generated runs, not a person
+// stating a preference. Detect generated runs directly if hosts start reporting them.
+const MAX_CUE_PROMPT = 1500;
 
 export const learnNudge =
   'PERSONAL BRAIN LEARN: this message may state a lasting working preference or decision (a default, an always/never rule, a correction to reuse). ' +
   'If it is meant to last beyond this task, call brain_remember once (brain_feedback with rating "correction" if brain_remember is unavailable) with the projectId, a short title, the preference as content, its domain, and the user\'s own words as reason; pass no projectId only if the user said it applies everywhere. ' +
   "Do not ask first: it waits on the Learning page for the user's consent. Skip one-off task details. Then continue the task.";
 
+/**
+ * Claude Code hides MCP tools behind tool search, so an index of record ids alone rarely gets
+ * followed (about 3 loads per 100 prompts versus Codex's majority). Name the exact load step.
+ */
+export function toolHint(agent: AgentKind) {
+  return agent === 'claude'
+    ? '\n\nPERSONAL BRAIN TOOLS: if brain_* tools are not loaded yet, load them first with ToolSearch query "select:mcp__personal-brain__brain_get,mcp__personal-brain__brain_prepare,mcp__personal-brain__brain_discover,mcp__personal-brain__brain_review,mcp__personal-brain__brain_remember". Skipping the load is not a reason to skip the styles.'
+    : '';
+}
+
+/**
+ * Claude rarely calls brain_get from an index alone, so for Claude the strongly matched
+ * preferences are sent as a digest (summary, principles, requirements) once per session and
+ * version. Other agents load reliably and keep the index only.
+ */
+const INLINE_BUDGET = 2000;
+// ponytail: 2+ distinct prompt words in title, keywords or "Use when"; one shared word was
+// usually a false match ("style", "text"). Use the ranking score if this proves too strict.
+const STRONG_FIELDS = new Set(['title', 'tags', 'useWhen', 'key']);
+export function strongMatch(record: BrainRecord, prompt: string) {
+  const words = new Set(
+    recordMatch(record, prompt)
+      .matches.filter((m) => STRONG_FIELDS.has(m.field))
+      .flatMap((m) => m.terms),
+  );
+  return words.size >= 2;
+}
+/** The parts of a style that must not be lost, never its text cut mid-sentence. */
+export function styleDigest(r: BrainRecord) {
+  const list = (head: string, items: string[] = []) =>
+    items.length ? `\n${head}\n${items.map((x) => '- ' + x).join('\n')}` : '';
+  const extra = r.reviewCriteria?.length
+    ? `\n(${r.reviewCriteria.length} review criteria: load with brain_get before finishing.)`
+    : '';
+  return (
+    `## ${r.title} (v${r.version}, id ${r.id})\n${r.summary}` +
+    list('Principles:', r.principles) +
+    list(
+      'Requirements:',
+      (r.requirements || []).map((q) => q.label),
+    ) +
+    extra
+  );
+}
+export function inlineStyles(
+  db: BrainDB,
+  agent: AgentKind,
+  sessionId: string | null,
+  matches: BrainRecord[],
+  prompt: string,
+): string {
+  if (agent !== 'claude' || !sessionId) {
+    return '';
+  }
+  const key = 'hook-inlined:' + db.fingerprint(JSON.stringify([agent, sessionId]));
+  const row = db.db.prepare('SELECT value FROM meta WHERE key=?').get(key) as
+    {value: string} | undefined;
+  const seen = new Set<string>(row ? JSON.parse(row.value) : []);
+  let left = INLINE_BUDGET;
+  const parts: string[] = [];
+  for (const r of matches.filter((m) => m.kind === 'preference' && strongMatch(m, prompt))) {
+    const tag = `${r.id}@${r.version}`;
+    const digest = styleDigest(r);
+    // A digest that does not fit is skipped whole; the index still lists it.
+    if (seen.has(tag) || digest.length > left) {
+      continue;
+    }
+    left -= digest.length;
+    seen.add(tag);
+    parts.push(digest);
+  }
+  if (!parts.length) {
+    return '';
+  }
+  db.db
+    .prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)')
+    .run(key, JSON.stringify([...seen]));
+  return (
+    'PERSONAL BRAIN STYLE DIGEST — apply these now. Each is a summary: brain_get on the id has the full instructions, required links and review criteria.\n\n' +
+    parts.join('\n\n')
+  );
+}
+
 export function hasPreferenceCue(prompt: string): boolean {
-  return STANDING.test(prompt);
+  return prompt.length <= MAX_CUE_PROMPT && STANDING.test(prompt);
 }
 
 export function startupContext(db: BrainDB, projectId?: string): string {
@@ -217,7 +318,7 @@ export function simulateHook(
     [obj.session_id, obj.thread_id].find((id): id is string => typeof id === 'string') ?? null;
   const refresh = instructionRefreshContext(db, agent, phase, sessionId);
   if (phase === 'session') {
-    return formatHookOutput('SessionStart', startupContext(db));
+    return formatHookOutput('SessionStart', startupContext(db) + toolHint(agent));
   }
   return formatHookOutput(
     'UserPromptSubmit',
@@ -251,6 +352,20 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
     const sessionId =
       [obj.session_id, obj.thread_id].find((id): id is string => typeof id === 'string') ?? null;
     const runId = sessionId ? `${agent}:${sessionId.slice(0, 100)}` : `${agent}:hook:unlinked`;
+    if (phase === 'tool') {
+      const signal = toolSignal(obj.tool_name);
+      if (signal && sessionId) {
+        db.trace({
+          agent,
+          channel: 'hook',
+          eventType: 'hook.tool.' + signal,
+          outcome: 'observed',
+          runId,
+          metadata: {projectId: projectId || null, tool: String(obj.tool_name).slice(0, 80)},
+        });
+      }
+      return;
+    }
     const refresh = instructionRefreshContext(db, agent, phase, sessionId, projectId);
     if (phase === 'session') {
       let discoveryNote = '';
@@ -272,17 +387,16 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
             (e instanceof Error ? e.message : String(e)).slice(0, 220);
         }
       }
-      const context = startupContext(db, projectId) + discoveryNote;
+      const context = startupContext(db, projectId) + discoveryNote + toolHint(agent);
+      const baseline = db.bootstrapWithRecords(1600, projectId).records;
       db.trace({
         agent,
         channel: 'hook',
         eventType: 'hook.session.context',
         outcome: 'emitted',
         runId,
-        recordIds: db.bootstrapWithRecords(1600, projectId).records.map((r) => r.id),
-        recordVersions: Object.fromEntries(
-          db.bootstrapWithRecords(1600, projectId).records.map((r) => [r.id, r.version]),
-        ),
+        recordIds: baseline.map((r) => r.id),
+        recordVersions: Object.fromEntries(baseline.map((r) => [r.id, r.version])),
         metadata: {
           note: 'Index only; full instructions load through brain_get',
           contextChars: context.length,
@@ -304,7 +418,8 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
         },
         projectId,
       );
-      const context = [refresh, matchedContext].filter(Boolean).join('\n\n');
+      const inlined = inlineStyles(db, agent, sessionId, matches, prompt);
+      const context = [refresh, matchedContext, inlined].filter(Boolean).join('\n\n');
       db.trace({
         agent,
         channel: 'hook',

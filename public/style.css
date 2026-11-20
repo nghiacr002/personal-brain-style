@@ -606,3 +606,9 @@ fieldset.field legend{font-size:12px;font-weight:700;color:var(--muted);margin-b
 @media(max-width:700px){.learning-status dl{grid-template-columns:1fr;gap:2px}.learning-status dd{margin-bottom:8px}}
 .learning-tell summary,.learning-settings summary{cursor:pointer;font-weight:700}.learn-bulk{margin-top:12px;align-items:center}
 .learning-ask{margin-bottom:18px;border-color:var(--accent-border);background:var(--accent-tint)}.learning-ask p{margin:6px 0 14px;max-width:80ch}
+.field-grid .inline-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)}.field-grid .inline-check input{width:auto}
+.template-choices{border:0;padding:0;margin:0;min-width:0}.template-choices legend{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px}#editTemplates{display:flex;flex-wrap:wrap;gap:6px 18px}#templatesDialog .assignment-list{max-height:45vh;overflow:auto}
+#templatesDialog{padding:27px}#templatesDialog .section-heading .hint{margin-top:0}#templatesDialog .section-heading .button{flex:none}
+#templatesDialog form{padding:0}#templatesDialog .assignment-list{max-height:40vh}#templatesDialog .assignment-choice{align-items:flex-start;padding:8px 0}#templatesDialog .assignment-choice input{margin-top:3px}#templatesDialog .assignment-choice span{display:grid;gap:2px}#templatesDialog .assignment-choice small{color:var(--muted);font-size:12px}
+.template-hint{margin-bottom:16px}
+#templatesDialog .assignment-choice[hidden]{display:none}

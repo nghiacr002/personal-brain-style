@@ -7,6 +7,7 @@ type View =
   | 'overview'
   | 'discover'
   | 'feedback'
+  | 'effectiveness'
   | 'history'
   | 'activation'
   | 'trace'
@@ -53,8 +54,10 @@ type RecordItem = {
   checks: unknown[];
   backend: unknown;
 };
+type ProjectTemplate = {id: string; name: string; styleIds: string[]; builtIn?: boolean};
 type Summary = {
   projectDefaultStyleIds?: string[];
+  projectTemplates?: ProjectTemplate[];
   domainRegistry?: Array<{
     id: string;
     name: string;
@@ -88,6 +91,7 @@ const labels: Record<string, string> = {
   tool: 'MCP Tool Catalog',
   discover: 'Style discovery',
   feedback: 'Learning',
+  effectiveness: 'Effectiveness',
   history: 'Activity',
   activation: 'Agent setup',
   trace: 'Trace Explorer',
@@ -165,6 +169,15 @@ type Help = {
   example: string;
 };
 const HELP: Record<string, Help> = {
+  effectiveness: {
+    what: 'Whether your styles make AI output better, measured two ways.',
+    how: 'Daily work: how often your prompts still have to correct the agent, and how often a captured lesson repeats one you already approved. Controlled comparison: the same task runs with and without the project styles in Codex or Claude, and both outputs are scored by the same checks.',
+    why: 'Usage shows styles are delivered; only a with/without comparison shows they help.',
+    limitations:
+      'Corrections are detected by phrasing ("always", "next time", "don\'t"…), so they are an estimate. The comparison checks text in the final answer and passes the styles directly in the prompt; it does not test MCP discovery or files the agent writes.',
+    example:
+      'Task "Write a release note" with checks contains: <html, contains: flowchart, absent: TODO.',
+  },
   skills: {
     what: 'Installed skills and the styles that require them.',
     how: 'Choose global or project scope, search the inventory, and filter to Needs attention. Expand installations to compare file locations; Rescan skills rereads installed files.',
@@ -684,7 +697,7 @@ function recordTable(rows: RecordItem[]) {
     return empty('No records yet', 'Create your first record, or adjust your search.');
   }
   const selectable = active !== 'projects';
-  return `${rows.some((item) => item.skillWarnings?.length) ? `<div class="section-heading">${skillResolutionHelp()}<button class="button ghost small" data-action="skills-rescan">Rescan skills</button></div>` : ''}<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Name &amp; details</th><th scope="col">Capability type</th><th scope="col">References</th><th scope="col">Status</th><th scope="col">Version</th><th scope="col">Actions</th></tr></thead><tbody>${rows.map((item) => `<tr><td><div class="record-identity${selectable ? ' is-selectable' : ''}">${selectable ? `<label class="record-select"><input type="checkbox" data-library-select="${esc(item.id)}" aria-label="Select ${esc(item.title)} for export" ${librarySelection.has(item.id) ? 'checked' : ''}/></label>` : ''}<div class="record-copy"><strong>${esc(item.title)}</strong>${item.standardLanguage ? '<p class="standard-inheritance">↳ Inherits Global Development Standard</p>' : ''}${item.compatibility ? '<span class="tag">Compatibility</span>' : ''}<p>${esc(item.summary)}</p>${item.skillWarnings?.length ? `<details class="skill-warning"><summary>${skillIssueLabel(item.skillWarnings)}</summary><ul>${item.skillWarnings.map((w) => `<li>${skillWarningExplanation(w)}</li>`).join('')}</ul></details>` : ''}<details class="table-details"><summary>${item.kind === 'preference' ? 'View style guidelines' : 'View details'}</summary><pre>${esc(item.content)}</pre>${styleContract(item)}${item.requiredIds?.length ? `<p>Required-linked: ${item.requiredIds.map((id) => esc(items.find((r) => r.id === id)?.title || id)).join(', ')}</p>` : ''}</details></div></div></td><td>${esc(domainName(item.domain))}</td><td><button class="button ghost small" data-dependencies="${esc(item.id)}" aria-label="Manage dependencies for ${esc(item.title)}">${item.requiredIds?.length || 0} linked records</button><p class="reference-counts">${(item.externalSkills?.length || 0) + (item.skillBindings?.length || 0)} procedure references · ${item.reviewCriteria?.length || 0} rules · ${item.examples?.length || 0} examples</p></td><td><span class="tag">${esc(item.status)}</span></td><td>v${item.version}</td><td><div class="row-actions">${item.kind === 'example' ? iconAction('copy', 'Copy template ' + item.title, `data-copy-template="${esc(item.id)}"`) : ''}${iconAction('edit', 'Edit ' + item.title, `data-edit="${esc(item.id)}"`)}${iconAction('history', 'History of ' + item.title, `data-history="${esc(item.id)}"`)}${iconAction('remove', 'Delete ' + item.title, `data-remove-kind="record" data-remove-id="${esc(item.id)}"`)}${item.projectId && active === 'projects' ? `<button class="button ghost small" data-publish="${item.id}">Publish to global</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`;
+  return `${rows.some((item) => item.skillWarnings?.length) ? `<div class="section-heading">${skillResolutionHelp()}<button class="button ghost small" data-action="skills-rescan">Rescan skills</button></div>` : ''}<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Name &amp; details</th><th scope="col">Capability type</th><th scope="col">References</th><th scope="col">Status</th><th scope="col">Templates</th><th scope="col">Version</th><th scope="col">Actions</th></tr></thead><tbody>${rows.map((item) => `<tr><td><div class="record-identity${selectable ? ' is-selectable' : ''}">${selectable ? `<label class="record-select"><input type="checkbox" data-library-select="${esc(item.id)}" aria-label="Select ${esc(item.title)} for export" ${librarySelection.has(item.id) ? 'checked' : ''}/></label>` : ''}<div class="record-copy"><strong>${esc(item.title)}</strong>${item.standardLanguage ? '<p class="standard-inheritance">↳ Inherits Global Development Standard</p>' : ''}${item.compatibility ? '<span class="tag">Compatibility</span>' : ''}<p>${esc(item.summary)}</p>${item.skillWarnings?.length ? `<details class="skill-warning"><summary>${skillIssueLabel(item.skillWarnings)}</summary><ul>${item.skillWarnings.map((w) => `<li>${skillWarningExplanation(w)}</li>`).join('')}</ul></details>` : ''}<details class="table-details"><summary>${item.kind === 'preference' ? 'View style guidelines' : 'View details'}</summary><pre>${esc(item.content)}</pre>${styleContract(item)}${item.requiredIds?.length ? `<p>Required-linked: ${item.requiredIds.map((id) => esc(items.find((r) => r.id === id)?.title || id)).join(', ')}</p>` : ''}</details></div></div></td><td>${esc(domainName(item.domain))}</td><td><button class="button ghost small" data-dependencies="${esc(item.id)}" aria-label="Manage dependencies for ${esc(item.title)}">${item.requiredIds?.length || 0} linked records</button><p class="reference-counts">${(item.externalSkills?.length || 0) + (item.skillBindings?.length || 0)} procedure references · ${item.reviewCriteria?.length || 0} rules · ${item.examples?.length || 0} examples</p></td><td><span class="tag">${esc(item.status)}</span></td><td>${templateTags(item.id)}</td><td>v${item.version}</td><td><div class="row-actions">${item.kind === 'example' ? iconAction('copy', 'Copy template ' + item.title, `data-copy-template="${esc(item.id)}"`) : ''}${iconAction('edit', 'Edit ' + item.title, `data-edit="${esc(item.id)}"`)}${iconAction('history', 'History of ' + item.title, `data-history="${esc(item.id)}"`)}${iconAction('remove', 'Delete ' + item.title, `data-remove-kind="record" data-remove-id="${esc(item.id)}"`)}${item.projectId && active === 'projects' ? `<button class="button ghost small" data-publish="${item.id}">Publish to global</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`;
 }
 
 let selectedGraphNode = '';
@@ -1176,6 +1189,9 @@ async function render() {
   if (active === 'feedback') {
     return feedback();
   }
+  if (active === 'effectiveness') {
+    return effectiveness();
+  }
   if (active === 'history') {
     return activity();
   }
@@ -1495,7 +1511,7 @@ function projectAgentGuide(id: string) {
     <div class="repository-field"><label for="repositoryFolder">Repository folder</label><div class="folder-input"><input id="repositoryFolder" placeholder="Absolute path to your repository" spellcheck="false" autocomplete="off" /><button type="button" class="button ghost" id="browseRepositoryFolder" data-action="repository-browse">Browse folders</button></div></div>
     <div class="row-actions"><button type="button" class="button primary" data-action="repository-link">Save folder</button><button type="button" class="button ghost" data-action="repository-test">Check connection</button></div><p id="repositoryResult" role="status" aria-live="polite"></p>
     <div class="repository-configure"><div><h2>Project styles</h2><p>Use the same AI discovery and style selection workflow as project creation. Review changes before saving; global styles stay unchanged.</p></div><button class="button primary" data-action="project-edit">Discover & personalize with AI</button></div>
-    <div class="repository-configure"><div><h2>Share approved preferences with the repository</h2><p>Write this project's approved preferences to <code>.personal-brain/preferences.md</code>. You see the exact file first.</p><input type="hidden" id="handoffProject" value="${esc(id)}"></div><button type="button" class="button ghost" data-action="handoff-preview">Preview file</button></div><div id="handoffOut"></div>
+    <div class="repository-configure"><div><h2>Share approved preferences with the repository</h2><p>Write this project's approved preferences into a file your AI tools read on their own — useful for tools without a Personal Brain connection. Shared files such as AGENTS.md keep your own content; only the marked Personal Brain block changes. You see the exact file first.</p><input type="hidden" id="handoffProject" value="${esc(id)}"><div class="field"><label for="handoffTarget">File</label><select id="handoffTarget">${handoffTargets.map(([value, label]) => `<option value="${value}">${esc(label)}</option>`).join('')}</select></div></div><button type="button" class="button ghost" data-action="handoff-preview">Preview file</button></div><div id="handoffOut"></div>
     <details><summary>Agent connection details</summary><p>Open this folder in your connected agent. Its project configuration selects the styles automatically.</p><p>Project ID: <code>${esc(id)}</code></p><a href="#/activation">Manage agent setup</a></details></section>`;
 }
 let removalPreview: {kind: string; id: string; fingerprint: string} | null = null;
@@ -1857,7 +1873,7 @@ async function projectScreen() {
   layout(
     'Projects',
     'Choose a project to manage its styles and agent connections.',
-    '<button class="button primary" data-action="project-new">＋ New Project</button>',
+    '<div class="page-actions"><button class="button ghost" data-action="templates-open">Templates</button><button class="button primary" data-action="project-new">＋ New Project</button></div>',
     projects.length
       ? `<div class="toolbar project-list-toolbar"><input id="projectSearch" class="search" type="search" aria-label="Search projects" placeholder="Search projects…" value="${esc(search)}" /><span id="projectCount" class="hint" aria-live="polite">${found.length} of ${projects.length} projects</span></div><div id="projectList">${projectListTable(found)}</div><div id="projectPagination">${pagination(found.length)}</div><p class="hint project-activity-note">Recently active: a call received in the last 15 minutes.</p>`
       : empty(
@@ -1903,6 +1919,107 @@ function projectActivityPanel(activity: ProjectActivity | null, error: string) {
           '<tr><td colspan="4">No linked conversations observed yet. Start an agent with this project scope and enabled hooks.</td></tr>'
         }</tbody></table></div>${pagination(activity?.sessions.length || 0)}`
   }</section>`;
+}
+const templates = () => summary?.projectTemplates || [];
+function templateTags(id: string) {
+  const names = templates().filter((t) => t.styleIds.includes(id));
+  return names.length
+    ? names.map((t) => `<span class="tag">${esc(t.name)}</span>`).join(' ')
+    : '<span class="hint">—</span>';
+}
+// One style per kind and capability, except in combinable capabilities (same rule as projects).
+const styleSlot = (r: RecordItem) =>
+  r.kind +
+  ':' +
+  r.domain +
+  (domainRegistry().find((d) => d.id === r.domain)?.combinable ? ':' + r.id : '');
+function templatesList() {
+  $('templatesBody').innerHTML =
+    `<div class="section-heading"><p class="hint">A template is a named set of shared styles. Choose one when you create a project to preselect its styles. Starter is preselected and can't be deleted.</p><button type="button" class="button primary small" data-action="template-new">＋ New template</button></div><div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Template</th><th scope="col">Styles</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${templates()
+      .map(
+        (t) =>
+          `<tr><td><strong>${esc(t.name)}</strong>${t.builtIn ? ' <span class="tag">Preselected</span>' : ''}</td><td>${t.styleIds.length}</td><td><div class="row-actions">${iconAction('edit', 'Edit template ' + t.name, `data-template-edit="${esc(t.id)}"`)}${t.builtIn ? '' : iconAction('remove', 'Delete template ' + t.name, `data-template-delete="${esc(t.id)}"`)}</div></td></tr>`,
+      )
+      .join('')}</tbody></table></div>`;
+}
+function templateEdit(t: ProjectTemplate | null) {
+  const eligible = items.filter(
+    (r) => !r.projectId && r.status === 'active' && (r.kind === 'preference' || r.kind === 'skill'),
+  );
+  const chosen = new Set(t?.styleIds || []);
+  $('templatesBody').innerHTML =
+    `<form id="templateForm"><div class="field"><label for="templateName">Template name</label><input id="templateName" required maxlength="80" value="${esc(t?.name || '')}" placeholder="e.g. Backend service" /></div>${
+      t
+        ? ''
+        : `<div class="field"><label for="templateFrom">Start from</label><select id="templateFrom"><option value="">No styles</option>${templates()
+            .map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`)
+            .join('')}</select></div>`
+    }<div class="field"><label for="templateSearch">Styles</label><input id="templateSearch" type="search" placeholder="Search styles…" /><div class="style-selection-toolbar"><label class="inline-field"><input id="templateSelectedOnly" type="checkbox" /> Selected only</label><span id="templateCount" class="hint" aria-live="polite"></span></div></div><div id="templateStyles" class="assignment-list">${eligible
+      .map(
+        (r) =>
+          `<label class="assignment-choice" data-template-row="${esc((r.title + ' ' + domainName(r.domain)).toLowerCase())}" data-slot="${esc(styleSlot(r))}"><input type="checkbox" name="templateStyle" value="${esc(r.id)}" ${chosen.has(r.id) ? 'checked' : ''} /><span><strong>${esc(r.title)}</strong><small>${esc(domainName(r.domain))} · ${esc(kindLabel(r.kind))}</small></span></label>`,
+      )
+      .join(
+        '',
+      )}</div><div id="templateError" class="form-error" role="alert"></div><div class="modal-foot"><button type="button" class="button soft" id="templateBack">Back</button><button type="submit" class="button primary">Save template</button></div></form>`;
+  const boxes = () =>
+    Array.from(document.querySelectorAll<HTMLInputElement>('input[name="templateStyle"]'));
+  const slotOf = (b: HTMLInputElement) => b.closest<HTMLElement>('[data-slot]')!.dataset.slot;
+  // Same one-per-slot rule as projects: other styles in a taken slot are disabled.
+  const sync = () => {
+    const taken = new Set(
+      boxes()
+        .filter((b) => b.checked)
+        .map(slotOf),
+    );
+    for (const b of boxes()) {
+      b.disabled = !b.checked && taken.has(slotOf(b));
+    }
+    $('templateCount').textContent = `${boxes().filter((b) => b.checked).length} selected`;
+  };
+  sync();
+  $('templateStyles').addEventListener('change', sync);
+  $('templateFrom')?.addEventListener('change', (e) => {
+    const from = new Set(
+      templates().find((x) => x.id === (e.target as HTMLSelectElement).value)?.styleIds || [],
+    );
+    boxes().forEach((b) => (b.checked = from.has(b.value)));
+    sync();
+    filter();
+  });
+  // Search and "Selected only" combine; unchecking a style under "Selected only" keeps it visible until the filter changes.
+  const filter = () => {
+    const q = ($('templateSearch') as HTMLInputElement).value.trim().toLowerCase();
+    const selectedOnly = ($('templateSelectedOnly') as HTMLInputElement).checked;
+    document.querySelectorAll<HTMLElement>('[data-template-row]').forEach((row) => {
+      const box = row.querySelector<HTMLInputElement>('input')!;
+      row.hidden = (!!q && !row.dataset.templateRow!.includes(q)) || (selectedOnly && !box.checked);
+    });
+  };
+  $('templateSearch').addEventListener('input', filter);
+  $('templateSelectedOnly').addEventListener('change', filter);
+  $('templateBack').addEventListener('click', templatesList);
+  $('templateForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const body = JSON.stringify({
+      name: ($('templateName') as HTMLInputElement).value,
+      styleIds: boxes()
+        .filter((b) => b.checked)
+        .map((b) => b.value),
+    });
+    try {
+      await api(t ? `/api/project-templates/${t.id}` : '/api/project-templates', {
+        method: t ? 'PUT' : 'POST',
+        body,
+      });
+      summary = await api<Summary>('/api/summary');
+      toast('Template saved');
+      templatesList();
+    } catch (e) {
+      $('templateError').textContent = e instanceof Error ? e.message : String(e);
+    }
+  });
+  $('templateName').focus();
 }
 function projectForm() {
   onboardingAbort?.abort();
@@ -2175,6 +2292,18 @@ function configurationSection() {
     <p>Browse capabilities, add preferences and Library skills, then review what your agents will use.</p>
     <div class="configuration-grid">
       <div class="configuration-catalog">
+        ${
+          templates().length
+            ? `<label for="projectTemplate">Start from template<select id="projectTemplate">${templates()
+                .map(
+                  (t) =>
+                    `<option value="${esc(t.id)}">${esc(t.name)} (${t.styleIds.length} ${t.styleIds.length === 1 ? 'style' : 'styles'})</option>`,
+                )
+                .join(
+                  '',
+                )}</select></label><p class="hint template-hint">Replaces the current selection with the template's styles. You can still change them below.</p>`
+            : ''
+        }
         <div class="configuration-filters">
           <label for="configurationCapability">Capability<select id="configurationCapability"><option value="">All capabilities</option>${capabilities.map((domain) => `<option value="${esc(domain.id)}">${esc(domain.name)}</option>`).join('')}</select></label>
           <label for="configurationKind">Show<select id="configurationKind"><option value="">Preferences &amp; skills</option><option value="preference">Preferences</option><option value="skill">Library skills</option></select></label>
@@ -2301,6 +2430,17 @@ function bindConfiguration() {
     ($('override-' + recordId) as HTMLTextAreaElement).value = textarea.value;
     projectFormDirty = true;
     syncProjectSelection(false);
+  });
+  $('projectTemplate')?.addEventListener('change', (e) => {
+    const chosen = new Set(
+      templates().find((t) => t.id === (e.target as HTMLSelectElement).value)?.styleIds || [],
+    );
+    document
+      .querySelectorAll<HTMLInputElement>('#availableAssignments input[name="assignment"]')
+      .forEach((input) => (input.checked = chosen.has(input.value)));
+    projectFormDirty = true;
+    syncProjectSelection();
+    filterProjectStyles();
   });
   $('configurationSearch').addEventListener('input', renderConfiguration);
   $('configurationCapability').addEventListener('change', renderConfiguration);
@@ -2940,13 +3080,27 @@ type InboxItem = {
     agent: string;
     conflicts: string[];
     resolution?: string;
-    sources: Array<{title: string; version?: number; project: string; projectId?: string | null}>;
+    sources: Array<{
+      id?: string;
+      title: string;
+      version?: number;
+      project: string;
+      projectId?: string | null;
+    }>;
     fields: Record<string, string | string[] | undefined>;
   } | null;
 };
 type LearningHealth = {
   mode: 'off' | 'suggest' | 'explicit';
-  styleChecks: Array<{id: string; title: string; version: number; passed: number; failed: number}>;
+  staleExports?: Array<{projectId: string; project: string; path: string}>;
+  styleChecks: Array<{
+    id: string;
+    title: string;
+    version: number;
+    passed: number;
+    failed: number;
+    agents: Record<string, {passed: number; failed: number}>;
+  }>;
   retentionDays: number;
   pausedProjects: string[];
   suppressions: number;
@@ -2996,14 +3150,32 @@ function projectEvidence(f: NonNullable<InboxItem['analysis']>) {
     .join('');
   return `${f.resolution ? `<p><b>Your conflict resolution:</b> ${esc(f.resolution)}</p>` : ''}<details><summary>Learned from ${f.sources.length} source style(s)</summary><ul>${f.sources.map((s) => `<li>${esc(s.title)}${s.version ? ` · v${s.version}` : ''} · ${esc(s.project)}</li>`).join('')}</ul></details>${fields ? `<details><summary>Also updates summary, keywords, principles and criteria</summary>${fields}<p class="hint">Mandatory requirements, checks, required links and skills stay as they are.</p></details>` : ''}<p class="hint">Applying creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p>`;
 }
-const handoffState = (p: {unchanged: boolean; existingHash: string | null}) => {
+const handoffTargets = [
+  ['agents', 'AGENTS.md — Codex and most other agents'],
+  ['claude', 'CLAUDE.md — Claude Code'],
+  ['gemini', 'GEMINI.md — Gemini CLI'],
+  ['copilot', '.github/copilot-instructions.md — GitHub Copilot'],
+  ['cursor', '.cursor/rules/personal-brain.mdc — Cursor'],
+  ['preferences', '.personal-brain/preferences.md — reference copy'],
+] as const;
+const handoffState = (p: {unchanged: boolean; existingHash: string | null; managed?: boolean}) => {
   if (p.unchanged) {
     return 'file is already up to date';
   }
-  return p.existingHash ? 'replaces the existing file' : 'new file';
+  if (!p.existingHash) {
+    return 'new file';
+  }
+  return p.managed
+    ? 'updates the Personal Brain block; the rest of the file is kept'
+    : 'replaces the existing file';
 };
+const handoffAutoButton = (on: boolean) =>
+  on
+    ? '<button class="button ghost small" data-action="handoff-auto" data-enabled="0">Stop updating automatically</button>'
+    : '<button class="button ghost small" data-action="handoff-auto" data-enabled="1">Keep updated automatically</button>';
 let handoffPending: {
   projectId: string;
+  target: string;
   path: string;
   contentHash: string;
   existingHash: string | null;
@@ -3020,7 +3192,85 @@ const actionLabel = {
 };
 const OBLIGATION_WORD = /^(must|never|always|required|shall|mandatory|don't|do)$/i;
 // Word-level LCS diff. Removed obligation words get a stronger mark so dropped rules stand out.
+/** Proposals that change mandatory text, conflict or are out of date must be applied one by one. */
+const needsOwnReview = (r: InboxItem) =>
+  r.stale ||
+  !!r.fixtureFailures.length ||
+  !!r.analysis?.conflicts.length ||
+  !!r.lostObligations.length;
+/** Agents cite sources as "projectId:recordId"; show the style and project names instead. */
+function readableNote(r: InboxItem) {
+  let note = r.note;
+  for (const s of r.analysis?.sources || []) {
+    if (s.id) {
+      note = note.split(s.id).join(`"${s.title}" (${s.project})`);
+    }
+  }
+  return note.replace(
+    /\b[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(:[0-9a-f-]{36})?\b/g,
+    'a project style',
+  );
+}
+const OBLIGATION_SENTENCE = /\b(must|never|always|required|do not|don't|shall|mandatory)\b/i;
+const sentences = (text: string) => text.match(/[^.!?\n]+[.!?]*[ \t]*|\n+/g) || [];
+const sentenceKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+const wordsOf = (s: string) => new Set(sentenceKey(s).split(' ').filter(Boolean));
+/** Lightly edited sentences get a word diff; rewritten ones are shown whole, old then new. */
+function similarSentences(a: string, b: string) {
+  const x = wordsOf(a),
+    y = wordsOf(b);
+  const shared = [...x].filter((w) => y.has(w)).length;
+  return shared / (Math.min(x.size, y.size) || 1) >= 0.5;
+}
 function wordDiff(before: string, after: string) {
+  const a = sentences(before),
+    b = sentences(after);
+  const dp = Array.from({length: a.length + 1}, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      dp[i][j] =
+        sentenceKey(a[i]) === sentenceKey(b[j])
+          ? dp[i + 1][j + 1] + 1
+          : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  let out = '';
+  let dels: string[] = [],
+    inss: string[] = [];
+  const whole = (tag: 'del' | 'ins', s: string) =>
+    s.trim()
+      ? `<${tag}${tag === 'del' && OBLIGATION_SENTENCE.test(s) ? ' class="lost"' : ''}>${esc(s)}</${tag}>`
+      : esc(s);
+  const flush = () => {
+    for (let k = 0; k < Math.max(dels.length, inss.length); k++) {
+      const d = dels[k],
+        n = inss[k];
+      if (d !== undefined && n !== undefined && similarSentences(d, n)) {
+        out += tokenDiff(d, n);
+      } else {
+        out += (d !== undefined ? whole('del', d) : '') + (n !== undefined ? whole('ins', n) : '');
+      }
+    }
+    dels = [];
+    inss = [];
+  };
+  let i = 0,
+    j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && sentenceKey(a[i]) === sentenceKey(b[j])) {
+      flush();
+      out += esc(b[j++]);
+      i++;
+    } else if (j < b.length && (i === a.length || dp[i][j + 1] >= dp[i + 1][j])) {
+      inss.push(b[j++]);
+    } else {
+      dels.push(a[i++]);
+    }
+  }
+  flush();
+  return out;
+}
+function tokenDiff(before: string, after: string) {
   const a = before.split(/(\s+)/);
   const b = after.split(/(\s+)/);
   const lost = (w: string) => (OBLIGATION_WORD.test(w) ? ' class="lost"' : '');
@@ -3063,12 +3313,27 @@ function reviewLine(x: {passed: number; failed: number}, version?: number) {
   }
   return ` · agent reviews of v${version}: ${x.passed} check(s) passed${x.failed ? `, <span class="bad">${x.failed} failed</span>` : ''}`;
 }
+/** Per-agent split, so a style that fails in one tool but not another stands out. */
+function byAgent(agents: Record<string, {passed: number; failed: number}> = {}) {
+  const parts = Object.entries(agents).map(
+    ([name, x]) =>
+      `${esc(name === 'unknown' ? 'earlier reviews' : agentName(name))} ${x.passed}✓${x.failed ? ` <span class="bad">${x.failed}✗</span>` : ''}`,
+  );
+  return parts.length ? `<br><span class="hint">${parts.join(' · ')}</span>` : '';
+}
 /** Evaluation half of the loop: how each style's current version does in agents' reviews. */
+/** Exported rule files that lag behind approved styles, so tools reading them drift apart. */
+function staleExportsCard(rows: LearningHealth['staleExports'] = []) {
+  if (!rows.length) {
+    return '';
+  }
+  return `<section class="card panel"><h2>Rule files out of date</h2><p class="hint">Styles changed after these files were written. Agents that read them instead of Personal Brain still follow the old version.</p><ul>${rows.map((r) => `<li><code>${esc(r.path)}</code> in <a href="#/projects/${esc(r.projectId)}">${esc(r.project)}</a> — open the project and write the file again</li>`).join('')}</ul></section>`;
+}
 function styleChecksCard(rows: LearningHealth['styleChecks']) {
   if (!rows.length) {
     return '';
   }
-  return `<section class="card panel"><h2>How your styles hold up</h2><p class="hint">Requirement results from agents' compliance reviews of each style's current version. Most results are reported by the agent itself, so treat them as a signal, not proof.</p><ul>${rows.map((r) => `<li><button class="link-btn" data-edit="${esc(r.id)}">${esc(r.title)}</button> · v${r.version} · ${r.passed} passed${r.failed ? ` · <span class="bad">${r.failed} failed</span>` : ''}</li>`).join('')}</ul></section>`;
+  return `<section class="card panel"><h2>How your styles hold up</h2><p class="hint">Requirement results from agents' compliance reviews of each style's current version. Most results are reported by the agent itself, so treat them as a signal, not proof.</p><ul>${rows.map((r) => `<li><button class="link-btn" data-edit="${esc(r.id)}">${esc(r.title)}</button> · v${r.version} · ${r.passed} passed${r.failed ? ` · <span class="bad">${r.failed} failed</span>` : ''}${byAgent(r.agents)}</li>`).join('')}</ul></section>`;
 }
 function inboxItem(r: InboxItem, projectName: (id: string) => string) {
   const t = r.target;
@@ -3105,7 +3370,7 @@ function inboxItem(r: InboxItem, projectName: (id: string) => string) {
   // Stale or fixture-failing proposals cannot apply as written; conflicts and dropped
   // statements ask for confirmation on Apply instead.
   const blocked = r.stale || !!r.fixtureFailures.length;
-  const needsReview = blocked || !!r.analysis?.conflicts.length || !!r.lostObligations.length;
+  const needsReview = needsOwnReview(r);
   const apply = blocked
     ? `<button type="button" class="button small" disabled title="${r.stale ? 'Style changed since this was proposed — dismiss it' : 'Edit the proposal so the fixtures pass'}">Apply</button>`
     : `<button class="button small primary" data-feedback-decision="accept" data-feedback-id="${r.id}">${applyLabel}</button>`;
@@ -3128,7 +3393,7 @@ function inboxItem(r: InboxItem, projectName: (id: string) => string) {
   const evidence = r.recordId
     ? `<div class="evidence">${evidenceBar(r.evidence)}<p class="hint">${r.evidence.independent} correction(s) · ${r.evidence.counter} accepted outcome(s) under the current rule${r.evidenceIds.length ? ` · consolidates ${r.evidenceIds.length} item(s)` : ''}${reviewLine(r.evidence.reviews, t?.version)}</p></div>`
     : '';
-  return `<div class="feedback-item diag-${r.diagnosis}"><div class="spread-row"><label class="inline-check"><input type="checkbox" data-inbox-select="${r.id}" data-inbox-blocked="${needsReview}" aria-label="Select item"> ${ch(actionLabel[r.action])} ${ch(sourceLabel[r.source])}${r.projectId ? ' ' + ch(projectName(r.projectId)) : ' ' + ch('Global')}</label><span class="hint">${esc(formatTime(r.createdAt))}</span></div><p class="hint">${esc(diagnosisLabel[r.diagnosis])}</p><p>${esc(r.note)}</p>${warnings.map((w) => `<p class="bad">${esc(w)}</p>`).join('')}${actions}${evidence}${change}${r.analysis ? projectEvidence(r.analysis) : ''}${tools}</div>`;
+  return `<div class="feedback-item diag-${r.diagnosis}"><div class="spread-row"><label class="inline-check"><input type="checkbox" data-inbox-select="${r.id}" data-inbox-blocked="${needsReview}" aria-label="Select item"> ${ch(actionLabel[r.action])} ${ch(sourceLabel[r.source])}${r.projectId ? ' ' + ch(projectName(r.projectId)) : ' ' + ch('Global')}</label><span class="hint">${esc(formatTime(r.createdAt))}</span></div><p class="hint">${esc(diagnosisLabel[r.diagnosis])}</p><p>${esc(readableNote(r))}</p>${warnings.map((w) => `<p class="bad">${esc(w)}</p>`).join('')}${actions}${evidence}${change}${r.analysis ? projectEvidence(r.analysis) : ''}${tools}</div>`;
 }
 function comparisonResult(run: RunSummary) {
   if (run.status === 'ready') {
@@ -3254,9 +3519,10 @@ async function feedback() {
   const tab = (status: string, label: string) =>
     `<button class="button small${inboxFilter.status === status ? ' primary' : ' soft'}" data-learn-tab="${status}" aria-pressed="${inboxFilter.status === status}">${label}</button>`;
   const tabs = `<div class="row-actions" role="group" aria-label="Show">${tab('pending', `Waiting (${health.pending})`)}${tab('accepted', 'Applied')}${tab('dismissed', 'Dismissed')}</div>`;
+  const reviewOnly = records.filter(needsOwnReview).length;
   const bulk =
     inboxFilter.status === 'pending' && records.length > 1
-      ? `<div class="row-actions learn-bulk"><label class="inline-check"><input type="checkbox" id="learnSelectAll"> Select all</label><button class="button small" data-inbox-bulk="accept">Apply selected</button><button class="button ghost small" data-inbox-bulk="dismiss">Dismiss selected</button></div>`
+      ? `<div class="row-actions learn-bulk"><label class="inline-check"><input type="checkbox" id="learnSelectAll"> Select all</label><button class="button small" data-inbox-bulk="accept">Apply selected</button><button class="button ghost small" data-inbox-bulk="dismiss">Dismiss selected</button>${reviewOnly ? `<span class="hint">${reviewOnly} of ${records.length} drop mandatory text, conflict or are out of date, so Apply selected skips them. Open each one to apply or edit it.</span>` : ''}</div>`
       : '';
   const emptyText: Record<string, [string, string]> = {
     pending: [
@@ -3281,7 +3547,7 @@ async function feedback() {
     'Learning',
     'Personal Brain learns from your agents and projects on its own. You only say yes or no to each proposed change.',
     '',
-    `${health.autoProjectsAsked ? '' : askAutoLearning}${autoLearningStatus(health)}${flow}${styleChecksCard(health.styleChecks)}<section class="card panel"><div class="spread-row"><h2>Proposed changes ${infoButton('feedback')}</h2>${tabs}</div>${bulk}<div class="feedback-list space-top-18">${
+    `${health.autoProjectsAsked ? '' : askAutoLearning}${autoLearningStatus(health)}${flow}${staleExportsCard(health.staleExports)}${styleChecksCard(health.styleChecks)}<section class="card panel"><div class="spread-row"><h2>Proposed changes ${infoButton('feedback')}</h2>${tabs}</div>${bulk}<div class="feedback-list space-top-18">${
       pageItems(records)
         .map((r) => inboxItem(r, projectName))
         .join('') || empty(emptyTitle, emptyHint)
@@ -3323,6 +3589,259 @@ async function feedback() {
     }),
   );
   bindAutoStatus(health);
+}
+type EffectWeek = {
+  week: string;
+  prompts: number;
+  sessions: number;
+  corrections: number | null;
+  recordedPrompts: number;
+  lessons: number;
+  repeats: number;
+};
+type BenchTask = {
+  id: string;
+  title: string;
+  projectId: string;
+  prompt: string;
+  checks: Array<{kind: string; value: string}>;
+};
+type BenchResult = {
+  taskId: string;
+  agent: string;
+  condition: 'with' | 'without';
+  run: number;
+  passed: number;
+  total: number;
+  failed: string[];
+  error?: string;
+  seconds: number;
+};
+type BenchRun = {
+  id: string;
+  status: string;
+  createdAt: string;
+  agents: string[];
+  runs: number;
+  taskIds: string[];
+  planned: number;
+  results: BenchResult[];
+  error?: string;
+};
+let benchEditing: string | null = null;
+let benchPoll: ReturnType<typeof setTimeout> | undefined;
+const pct = (passed: number, total: number) => (total ? Math.round((passed / total) * 100) : null);
+const pctText = (v: number | null) => (v === null ? '—' : v + '%');
+type Adoption = {
+  agent: string;
+  workSessions?: number | null;
+  coveredSessions?: number | null;
+  sessions: number;
+  prompts: number;
+  loads: number;
+  reviews: number;
+  lessons: number;
+  errors: number;
+};
+/** Per-agent use of the shared styles; a low load rate means that agent works without them. */
+function adoptionTable(rows: Adoption[] = []) {
+  if (!rows.length) {
+    return '<p class="hint">No agent activity in the last 14 days.</p>';
+  }
+  const row = (a: Adoption) => {
+    const per10 = a.prompts ? Math.round((a.loads / a.prompts) * 100) / 10 : null;
+    let rate = '<span class="hint">no hooks</span>';
+    if (per10 !== null) {
+      rate = per10 < 1 ? `<span class="bad">${per10}</span>` : String(per10);
+    }
+    let work = '<span class="hint">not recorded yet</span>';
+    if (a.workSessions) {
+      const share = Math.round(((a.coveredSessions || 0) / a.workSessions) * 100);
+      const text = `${a.coveredSessions} of ${a.workSessions} · ${share}%`;
+      work = share < 50 ? `<span class="bad">${text}</span>` : text;
+    }
+    return `<tr><td>${esc(agentName(a.agent))}</td><td>${work}</td><td class="num">${a.sessions}</td><td class="num">${a.prompts}</td><td class="num">${a.loads}</td><td class="num">${rate}</td><td class="num">${a.reviews}</td><td class="num">${a.lessons}</td><td class="num">${a.errors ? `<span class="bad">${a.errors}</span>` : 0}</td></tr>`;
+  };
+  return `<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Agent</th><th scope="col">Work sessions that loaded styles</th><th scope="col">Sessions</th><th scope="col">Prompts</th><th scope="col">Style loads</th><th scope="col">Loads per 10 prompts</th><th scope="col">Reviews</th><th scope="col">Lessons sent</th><th scope="col">Tool errors</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
+}
+function weeksTable(weeks: EffectWeek[]) {
+  if (!weeks.length) {
+    return empty(
+      'No agent prompts yet',
+      'Connect an agent; prompts are counted through its hooks.',
+    );
+  }
+  const row = (w: EffectWeek) => {
+    const rate =
+      w.corrections === null
+        ? '<span class="hint">not recorded</span>'
+        : `${w.corrections} · ${pctText(pct(w.corrections, w.recordedPrompts))} of prompts`;
+    return `<tr><td>${esc(w.week)}</td><td class="num">${w.prompts}</td><td class="num">${w.sessions}</td><td>${rate}</td><td class="num">${w.lessons}</td><td class="num">${w.repeats ? `<span class="bad">${w.repeats}</span>` : 0}</td></tr>`;
+  };
+  return `<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Week</th><th scope="col">Prompts</th><th scope="col">Sessions</th><th scope="col">Corrections</th><th scope="col">Lessons captured</th><th scope="col">Repeats of approved lessons</th></tr></thead><tbody>${weeks.map(row).join('')}</tbody></table></div>`;
+}
+/** Pass rate with and without styles, per agent and per task, from one comparison run. */
+function benchSummary(run: BenchRun, tasks: BenchTask[]) {
+  const done = run.results.filter((r) => !r.error);
+  const rate = (rows: BenchResult[]) =>
+    pct(
+      rows.reduce((n, r) => n + r.passed, 0),
+      rows.reduce((n, r) => n + r.total, 0),
+    );
+  const gap = (w: number | null, wo: number | null) => {
+    if (w === null || wo === null) {
+      return '—';
+    }
+    const d = w - wo;
+    const tone = ({1: 'good', [-1]: 'bad'} as Record<number, string>)[Math.sign(d)] || '';
+    return `<b class="${tone}">${d > 0 ? '+' : ''}${d} pts</b>`;
+  };
+  const pick = (agent: string, condition: string, taskId?: string) =>
+    done.filter(
+      (r) => r.agent === agent && r.condition === condition && (!taskId || r.taskId === taskId),
+    );
+  const agentRows = run.agents
+    .map((a) => {
+      const w = rate(pick(a, 'with')),
+        wo = rate(pick(a, 'without'));
+      const errors = run.results.filter((r) => r.agent === a && r.error).length;
+      return `<tr><td>${esc(agentName(a))}</td><td class="num">${pctText(w)}</td><td class="num">${pctText(wo)}</td><td>${gap(w, wo)}</td><td class="num">${errors ? `<span class="bad">${errors}</span>` : 0}</td></tr>`;
+    })
+    .join('');
+  const taskRows = run.taskIds
+    .flatMap((id) =>
+      run.agents.map((a) => {
+        const title = tasks.find((t) => t.id === id)?.title || 'Deleted task';
+        const w = rate(pick(a, 'with', id)),
+          wo = rate(pick(a, 'without', id));
+        const misses = [...new Set(pick(a, 'with', id).flatMap((r) => r.failed))];
+        return `<tr><td>${esc(title)}</td><td>${esc(agentName(a))}</td><td class="num">${pctText(w)}</td><td class="num">${pctText(wo)}</td><td>${gap(w, wo)}</td><td>${misses.map((m) => `<code>${esc(m)}</code>`).join(' ') || '—'}</td></tr>`;
+      }),
+    )
+    .join('');
+  const firstError = run.results.find((r) => r.error)?.error;
+  const progress =
+    run.status === 'running'
+      ? `<p class="hint" aria-live="polite">Running · ${run.results.length} of ${run.planned} agent calls done <button class="link-btn" data-bench-stop="${esc(run.id)}">Stop</button></p>`
+      : `<p class="hint">${esc(formatTime(run.createdAt))} · ${esc(run.status)} · ${run.results.length} of ${run.planned} calls · ${run.runs} run(s) per task</p>`;
+  return `${progress}${firstError ? `<p class="bad">${esc(firstError)}</p>` : ''}<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Agent</th><th scope="col">With styles</th><th scope="col">Without</th><th scope="col">Difference</th><th scope="col">Errors</th></tr></thead><tbody>${agentRows}</tbody></table></div><details class="space-top-18"><summary>Per task</summary><div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Task</th><th scope="col">Agent</th><th scope="col">With</th><th scope="col">Without</th><th scope="col">Difference</th><th scope="col">Checks missed with styles</th></tr></thead><tbody>${taskRows}</tbody></table></div></details>`;
+}
+function benchTaskForm(task: BenchTask | null, projects: ProjectConfig[]) {
+  const checks = task ? task.checks.map((c) => `${c.kind}: ${c.value}`).join('\n') : '';
+  return `<form id="benchTaskForm" class="space-top-18"><h3>${task ? 'Edit task' : 'Add a task'}</h3><div class="field"><label for="benchTitle">Title</label><input id="benchTitle" name="title" required maxlength="150" value="${esc(task?.title || '')}"></div><div class="field"><label for="benchProject">Project whose styles it tests</label><select id="benchProject" name="projectId" required>${projects.map((p) => `<option value="${esc(p.id)}"${p.id === task?.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div><div class="field"><label for="benchPrompt">Prompt — a real request from your work</label><textarea id="benchPrompt" name="prompt" rows="5" required maxlength="20000">${esc(task?.prompt || '')}</textarea></div><div class="field"><label for="benchChecks">Checks, one per line</label><textarea id="benchChecks" name="checks" rows="4" required aria-describedby="benchChecksHelp" placeholder="contains: <html&#10;absent: TODO&#10;regex: flowchart|sequenceDiagram">${esc(checks)}</textarea><p class="hint" id="benchChecksHelp">Start each line with <code>contains:</code>, <code>absent:</code> or <code>regex:</code>. Matching ignores case. Base them on what your styles ask for, so the comparison shows whether the styles are followed.</p></div><p class="bad" id="benchTaskError" role="alert"></p><div class="row-actions"><button type="submit" class="button primary small">${task ? 'Save task' : 'Add task'}</button>${task ? '<button type="button" class="button ghost small" data-bench-cancel-edit>Cancel</button>' : ''}</div></form>`;
+}
+async function effectiveness() {
+  clearTimeout(benchPoll);
+  const [data, projects] = await Promise.all([
+    api<{
+      weeks: EffectWeek[];
+      adoption?: Adoption[];
+      tasks: BenchTask[];
+      runs: BenchRun[];
+    }>('/api/effectiveness'),
+    api<ProjectConfig[]>('/api/projects'),
+  ]);
+  if (active !== 'effectiveness') {
+    return;
+  }
+  const {weeks, adoption, tasks, runs} = data;
+  const latest = runs[0];
+  const running = latest?.status === 'running';
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name || 'Removed project';
+  const taskList = tasks.length
+    ? `<ul>${tasks.map((t) => `<li><label class="inline-check"><input type="checkbox" data-bench-task="${esc(t.id)}" checked> ${esc(t.title)}</label> <span class="hint">${esc(projectName(t.projectId))} · ${t.checks.length} check(s)</span> <button class="link-btn" data-bench-edit="${esc(t.id)}">Edit</button> <button class="link-btn" data-bench-delete="${esc(t.id)}">Delete</button></li>`).join('')}</ul>`
+    : '<p class="hint">No tasks yet. Add 5–20 real requests from your work below.</p>';
+  const runForm = tasks.length
+    ? `<fieldset class="field"><legend>Agents</legend><label class="inline-check"><input type="checkbox" data-bench-agent="codex" checked> Codex</label> <label class="inline-check"><input type="checkbox" data-bench-agent="claude" checked> Claude</label></fieldset><div class="field"><label for="benchRuns">Runs per task (agent answers vary, so 3 is more reliable)</label><select id="benchRuns">${[1, 2, 3, 4, 5].map((n) => `<option${n === 3 ? ' selected' : ''}>${n}</option>`).join('')}</select></div><p class="hint" id="benchPlanned"></p><button class="button primary" data-action="bench-run"${running ? ' disabled' : ''}>Run comparison</button><p class="hint">Uses your Codex/Claude account. Each task runs twice per run: with the project styles in the prompt and without.</p>`
+    : '';
+  const older = runs
+    .slice(1)
+    .map(
+      (r) =>
+        `<details><summary>${esc(formatTime(r.createdAt))} · ${r.agents.map(agentName).join(', ')} · ${esc(r.status)}</summary>${benchSummary(r, tasks)}</details>`,
+    )
+    .join('');
+  layout(
+    'Effectiveness',
+    'Is Personal Brain making AI output better? Track corrections in daily work, and compare the same tasks with and without your styles.',
+    '',
+    `<section class="card panel"><h2>Styles in use, by agent</h2><p class="hint">Last 14 days. One set of styles only works if every agent loads it: a style load is the agent reading your styles before working. A work session is one where the agent edited files; it should load your styles in most of them. Loads per 10 prompts also counts chat, so it reads low.</p>${adoptionTable(adoption)}</section><section class="card panel"><h2>Daily work</h2><p class="hint">Corrections are prompts where you state a lasting preference ("always…", "next time…", "don't…") — they should fall as styles cover more. A repeat is a captured lesson that matches one you already approved, which means that style is not being followed.</p>${weeksTable(weeks)}</section><section class="card panel"><h2>With vs without your styles</h2>${latest ? benchSummary(latest, tasks) : '<p class="hint">No comparison yet.</p>'}${older ? `<h3 class="space-top-18">Earlier comparisons</h3>${older}` : ''}<h3 class="space-top-18">Tasks</h3>${taskList}${runForm}${benchTaskForm(tasks.find((t) => t.id === benchEditing) || null, projects)}</section>`,
+  );
+  const planned = () => {
+    const n =
+      main.querySelectorAll('[data-bench-task]:checked').length *
+      main.querySelectorAll('[data-bench-agent]:checked').length *
+      Number(($('benchRuns') as HTMLSelectElement | null)?.value || 0) *
+      2;
+    const out = document.getElementById('benchPlanned');
+    if (out) {
+      out.textContent = `${n} agent call(s)${n > 60 ? ' — too many, the limit is 60' : ''}`;
+    }
+  };
+  planned();
+  main
+    .querySelectorAll('[data-bench-task], [data-bench-agent], #benchRuns')
+    .forEach((el) => el.addEventListener('change', planned));
+  $('benchTaskForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const form = new FormData(ev.target as HTMLFormElement);
+    try {
+      await api(benchEditing ? `/api/bench/tasks/${benchEditing}` : '/api/bench/tasks', {
+        method: benchEditing ? 'PUT' : 'POST',
+        body: JSON.stringify({
+          title: form.get('title'),
+          projectId: form.get('projectId'),
+          prompt: form.get('prompt'),
+          checks: form.get('checks'),
+        }),
+      });
+      benchEditing = null;
+      toast('Task saved');
+      await effectiveness();
+    } catch (e) {
+      $('benchTaskError').textContent = e instanceof Error ? e.message : String(e);
+    }
+  });
+  if (running) {
+    benchPoll = setTimeout(() => void effectiveness(), 3000);
+  }
+}
+async function benchClick(button: HTMLElement) {
+  const d = button.dataset;
+  if (d.benchEdit) {
+    benchEditing = d.benchEdit;
+    await effectiveness();
+    $('benchTitle').focus();
+  } else if (d.benchCancelEdit !== undefined) {
+    benchEditing = null;
+    await effectiveness();
+  } else if (d.benchDelete) {
+    if (confirm('Delete this task? Past comparison results keep its scores.')) {
+      await api(`/api/bench/tasks/${d.benchDelete}`, {method: 'DELETE'});
+      await effectiveness();
+    }
+  } else if (d.benchStop) {
+    await api(`/api/bench/runs/${d.benchStop}/cancel`, {method: 'POST', body: '{}'});
+    await effectiveness();
+  } else if (d.action === 'bench-run') {
+    const values = (sel: string, key: string) =>
+      Array.from(main.querySelectorAll<HTMLInputElement>(sel + ':checked')).map(
+        (i) => i.dataset[key]!,
+      );
+    await api('/api/bench/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        taskIds: values('[data-bench-task]', 'benchTask'),
+        agents: values('[data-bench-agent]', 'benchAgent'),
+        runs: Number(($('benchRuns') as HTMLSelectElement).value),
+      }),
+    });
+    toast('Comparison started');
+    await effectiveness();
+  } else {
+    return false;
+  }
+  return true;
 }
 const OBLIGATION_ERROR = 'Proposal drops mandatory statements';
 const CONFLICT_ERROR = 'Resolve conflicting guidance';
@@ -3464,7 +3983,8 @@ type RunSummary = {
   proposals?: number;
   error?: string;
 };
-const agentName = (a: string) => (a === 'claude' ? 'Claude' : 'Codex');
+const agentName = (a: string) =>
+  ({claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', chatgpt: 'ChatGPT'})[a] || a;
 function elapsed(from: string) {
   const s = Math.max(0, Math.round((Date.now() - new Date(from).getTime()) / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
@@ -3784,6 +4304,14 @@ function openEditor(record: RecordItem | null = null) {
         .join('') || '<p class="hint">No active records available to link.</p>';
   ($('editRequiredSearch') as HTMLInputElement).value = '';
   filterEditorLinks();
+  // Templates hold shared styles only.
+  $('editTemplatesField').hidden = !!owner;
+  $('editTemplates').innerHTML = templates()
+    .map(
+      (t) =>
+        `<label class="inline-check"><input type="checkbox" data-edit-template="${esc(t.id)}" ${record && t.styleIds.includes(record.id) ? 'checked' : ''} /> ${esc(t.name)}</label>`,
+    )
+    .join('');
   showEditorTab(0);
   $('editError').textContent = '';
   editorDirty = false;
@@ -3848,6 +4376,26 @@ async function saveEditor(ev: SubmitEvent) {
         return;
       }
     }
+    const templateChanges = $('editTemplatesField').hidden
+      ? []
+      : Array.from(document.querySelectorAll<HTMLInputElement>('[data-edit-template]'))
+          .map((box) => ({
+            id: box.dataset.editTemplate!,
+            enabled: box.checked,
+            had:
+              !!editing &&
+              !!templates()
+                .find((t) => t.id === box.dataset.editTemplate)
+                ?.styleIds.includes(editing.id),
+          }))
+          .filter((c) => c.enabled !== c.had);
+    if (
+      templateChanges.some((c) => c.enabled) &&
+      (record.status !== 'active' || !['preference', 'skill'].includes(record.kind))
+    ) {
+      throw new Error('Only active preferences can be added to a project template.');
+    }
+    let saved: {id: string} | undefined;
     if (
       editing &&
       active === 'projects' &&
@@ -3863,16 +4411,25 @@ async function saveEditor(ev: SubmitEvent) {
         }),
       });
     } else if (editing) {
-      await api(
+      saved = await api<{id: string}>(
         `/api/items/${editing.id}${editing.projectId ? '?projectId=' + encodeURIComponent(editing.projectId) : ''}`,
         {method: 'PUT', body: JSON.stringify({expectedVersion: editing.version, record})},
       );
     } else {
-      await api('/api/items', {method: 'POST', body: JSON.stringify(record)});
+      saved = await api<{id: string}>('/api/items', {method: 'POST', body: JSON.stringify(record)});
     }
+    const replaced: string[] = [];
+    for (const change of saved ? templateChanges : []) {
+      const result = await api<{replaced: string[]}>(
+        `/api/project-templates/${change.id}/styles/${saved!.id}`,
+        {method: 'PUT', body: JSON.stringify({enabled: change.enabled})},
+      );
+      replaced.push(...result.replaced.map((id) => items.find((i) => i.id === id)?.title || id));
+    }
+    const note = replaced.length ? ` It replaces ${replaced.join(', ')} in a template.` : '';
     editorDirty = false;
     editor.close();
-    toast('Saved a new version successfully');
+    toast('Saved a new version successfully.' + note);
     await refresh();
   } catch (e) {
     $('editError').textContent = e instanceof Error ? e.message : String(e);
@@ -4268,7 +4825,7 @@ async function delegated(ev: MouseEvent) {
       }
       if (
         !confirm(
-          `Publish "${record.title}" to the global library? This creates shared copies of this record and its required private dependencies, including their instructions, skill references, examples and rules. Active copies become available as global defaults and to other projects. This project's private records and selections stay unchanged.`,
+          `Publish "${record.title}" to the global library? This creates shared copies of this record and its required private dependencies, including their instructions, skill references, examples and rules. The shared copy replaces the private one in this project, so it moves to All styles and stays selected. Other projects can then select it too.`,
         )
       ) {
         return;
@@ -4293,6 +4850,36 @@ async function delegated(ev: MouseEvent) {
       )!.checked = true;
       ($('capabilityDialog') as HTMLDialogElement).showModal();
       $('domainName').focus();
+      return;
+    }
+    if (button.dataset.action === 'templates-open') {
+      templatesList();
+      ($('templatesDialog') as HTMLDialogElement).showModal();
+      return;
+    }
+    if (button.dataset.action === 'templates-close') {
+      ($('templatesDialog') as HTMLDialogElement).close();
+      return;
+    }
+    if (button.dataset.action === 'template-new') {
+      templateEdit(null);
+      return;
+    }
+    if (button.dataset.templateEdit) {
+      templateEdit(templates().find((t) => t.id === button.dataset.templateEdit) || null);
+      return;
+    }
+    if (button.dataset.templateDelete) {
+      const t = templates().find((t) => t.id === button.dataset.templateDelete);
+      if (
+        t &&
+        confirm(`Delete the template "${t.name}"? Projects already created from it don't change.`)
+      ) {
+        await api(`/api/project-templates/${t.id}`, {method: 'DELETE'});
+        summary = await api<Summary>('/api/summary');
+        toast('Template deleted');
+        templatesList();
+      }
       return;
     }
     if (button.dataset.action === 'capability-close') {
@@ -4379,6 +4966,9 @@ async function delegated(ev: MouseEvent) {
       domain = 'all';
       page = 1;
       await render();
+      return;
+    }
+    if (active === 'effectiveness' && (await benchClick(button))) {
       return;
     }
     if (button.dataset.cloneProject) {
@@ -4648,30 +5238,60 @@ async function delegated(ev: MouseEvent) {
       }
       case 'handoff-preview': {
         const projectId = ($('handoffProject') as HTMLSelectElement).value;
+        const target = ($('handoffTarget') as HTMLSelectElement | null)?.value || 'preferences';
         const preview = await api<{
           path: string;
           content: string;
           contentHash: string;
           existingHash: string | null;
           unchanged: boolean;
+          managed: boolean;
           styles: number;
-        }>(`/api/projects/${projectId}/handoff`);
-        handoffPending = {projectId, ...preview};
+          approxTokens: number;
+          autoUpdate: boolean;
+        }>(`/api/projects/${projectId}/handoff?target=${encodeURIComponent(target)}`);
+        handoffPending = {projectId, target, ...preview};
         $('handoffOut').innerHTML =
-          `<p class="hint">${esc(preview.path)} · ${preview.styles} preference(s) · ${handoffState(preview)}</p><pre class="code-output">${esc(preview.content)}</pre>${preview.unchanged ? '' : '<button class="button primary small" data-action="handoff-write">Write this file</button>'}`;
+          `<p class="hint">${esc(preview.path)} · ${preview.styles} preference(s) · about ${preview.approxTokens} tokens loaded on every prompt · ${handoffState(preview)}</p><pre class="code-output">${esc(preview.content)}</pre><div class="row-actions">${preview.unchanged ? '' : '<button class="button primary small" data-action="handoff-write">Write this file</button>'}${handoffAutoButton(preview.autoUpdate)}</div>`;
+        break;
+      }
+      case 'handoff-auto': {
+        if (!handoffPending) {
+          throw new Error('Preview the file first');
+        }
+        const enabled = button.dataset.enabled === '1';
+        const {projectId, target, path} = handoffPending;
+        if (
+          enabled &&
+          !confirm(
+            `Rewrite ${path} automatically whenever this project's styles change? Only the Personal Brain block changes in shared files; review and commit the changes yourself.`,
+          )
+        ) {
+          break;
+        }
+        const result = await api<{autoUpdate: boolean}>(`/api/projects/${projectId}/handoff/auto`, {
+          method: 'POST',
+          body: JSON.stringify({target, enabled}),
+        });
+        button.outerHTML = handoffAutoButton(result.autoUpdate);
+        toast(
+          result.autoUpdate
+            ? `${path} now updates by itself`
+            : `${path} updates only when you write it`,
+        );
         break;
       }
       case 'handoff-write': {
         if (!handoffPending) {
           throw new Error('Preview the file first');
         }
-        const {projectId, contentHash, existingHash, path} = handoffPending;
+        const {projectId, target, contentHash, existingHash, path} = handoffPending;
         if (!confirm(`Write ${path} into the project repository? Review and commit it yourself.`)) {
           break;
         }
         await api(`/api/projects/${projectId}/handoff`, {
           method: 'POST',
-          body: JSON.stringify({contentHash, existingHash}),
+          body: JSON.stringify({contentHash, existingHash, target}),
         });
         handoffPending = null;
         $('handoffOut').innerHTML = `<p class="good">Wrote ${esc(path)}</p>`;

@@ -370,3 +370,27 @@ test('discovery reports selection evidence and excludes unrelated literal querie
     f.close();
   }
 });
+
+test('reviews are recorded under the reviewing agent so styles can be compared per agent', async () => {
+  const f = fixture();
+  try {
+    const r = f.record('Agent split'),
+      p = f.project([r.id]);
+    for (const host of ['codex', undefined]) {
+      await callTool(f.db, 'brain_review', {
+        projectId: p.id,
+        task: 'Work',
+        recordIds: [r.id],
+        ...(host ? {host} : {}),
+      });
+    }
+    const agents = f.db.db
+      .prepare("SELECT agent FROM trace_events WHERE event_type='compliance.review' ORDER BY rowid")
+      .all()
+      .map((row) => (row as {agent: string}).agent);
+    assert.deepEqual(agents, ['codex', 'unknown']);
+    assert.ok('isError' in (await callTool(f.db, 'brain_review', {projectId: p.id, host: 'x'})));
+  } finally {
+    f.close();
+  }
+});

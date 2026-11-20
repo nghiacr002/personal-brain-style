@@ -1,6 +1,7 @@
 import {installProjectDefaults} from '../projects/project-defaults.ts';
 import {BrainDB} from '../core/database.ts';
 import {globalStyleCatalog, catalogDomains} from './global-style-catalog.ts';
+import {catalogTemplates} from './catalog-updates.ts';
 
 export const globalCatalogMarker = 'global_style_catalog_v1';
 
@@ -61,6 +62,12 @@ export function seedGlobalStyles(db: BrainDB): number {
       add(record.id);
     }
     installProjectDefaults(db);
+    for (const template of catalogTemplates) {
+      db.saveProjectTemplate({
+        name: template.name,
+        styleIds: template.styleKeys.map((key) => imported.get(key)).filter(Boolean),
+      });
+    }
     db.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run(globalCatalogMarker, '1');
     return imported.size;
   });
@@ -69,6 +76,7 @@ export function seedGlobalStyles(db: BrainDB): number {
 // Catalog styles released after a library was seeded. Each batch runs once, so a user's later deletion sticks.
 const catalogAdditions: Record<string, string[]> = {
   global_style_catalog_writing_formats_v1: ['doc-markdown', 'doc-html', 'doc-word'],
+  global_style_catalog_agent_roles_v1: ['agent-roles-claude-lead-codex-worker'],
 };
 
 export function installCatalogAdditions(db: BrainDB): number {

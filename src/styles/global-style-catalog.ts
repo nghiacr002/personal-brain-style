@@ -1,5 +1,6 @@
 // Release catalog: user preferences, outcome criteria and external procedure references.
 import {consolidateCatalog} from './standards-catalog.ts';
+import {applyCatalogUpdates} from './catalog-updates.ts';
 import type {RecordInput} from '../core/models.ts';
 export const previousCatalog: Array<RecordInput & {id: string}> = [
   {
@@ -5218,4 +5219,4 @@ export const catalogDomains = [
   },
 ];
 
-export const globalStyleCatalog = consolidateCatalog(previousCatalog);
+export const globalStyleCatalog = applyCatalogUpdates(consolidateCatalog(previousCatalog));

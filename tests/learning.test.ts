@@ -1,13 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BrainDB} from '../src/core/database.ts';
+import {learningRun} from '../src/instructions/project-learning.ts';
 import {looksLikeCredential, lostObligations} from '../src/core/learning.ts';
 import type {RecordInput} from '../src/core/models.ts';
 import {exportLibrary, previewLibraryImport, importLibrary} from '../src/core/library-transfer.ts';
-import {handoffPreview, handoffWrite} from '../src/projects/handoff.ts';
+import {
+  handoffPreview,
+  handoffWrite,
+  setAutoExport,
+  staleExports,
+  syncExports,
+} from '../src/projects/handoff.ts';
 
 const style = (content = 'Use tabs. Never compress code into one line.'): RecordInput => ({
   kind: 'preference',
@@ -394,5 +401,113 @@ test('learning health counts only failed agent learning calls, and unknown domai
           proposal: {title: 'T', domain: 'nope'},
         }),
       /Unknown domain\. Use one of: .*coding/,
+    );
+  }));
+
+test('handoff writes native agent files, keeping user content outside the managed block', () =>
+  withDb((db, path) => {
+    const repo = join(path, '..', 'repo');
+    const p = db.saveProject({name: 'P', description: '', assignments: []});
+    db.db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('repository:' + p.id, repo);
+    const style = db.createProjectStyle(
+      p.id,
+      {title: 'Formatter', domain: 'coding', summary: 's', content: 'Use black'},
+      p.version,
+    ).record;
+    const write = (target: string) => {
+      const preview = handoffPreview(db, p.id, target);
+      handoffWrite(db, p.id, preview.contentHash, preview.existingHash, target);
+      return readFileSync(join(repo, preview.path), 'utf8');
+    };
+    mkdirSync(repo, {recursive: true});
+    writeFileSync(join(repo, 'AGENTS.md'), '# Team rules\n\nRun tests.\n');
+    const first = write('agents');
+    assert.match(
+      first,
+      /^# Team rules\n\nRun tests\.\n\n<!-- personal-brain:start[\s\S]*Use black/,
+    );
+    // A second write replaces only the block; text after it survives too.
+    writeFileSync(join(repo, 'AGENTS.md'), first + '\nFooter\n');
+    assert.deepEqual(staleExports(db), []);
+    db.update(style.id, {content: 'Use ruff'}, style.version);
+    assert.deepEqual(
+      staleExports(db).map((x) => x.path),
+      ['AGENTS.md'],
+    );
+    const second = write('agents');
+    assert.deepEqual(staleExports(db), []);
+    assert.match(second, /^# Team rules[\s\S]*Use ruff[\s\S]*end -->\n\nFooter\n$/);
+    assert.doesNotMatch(second, /Use black/);
+    assert.equal(second.match(/personal-brain:start/g)!.length, 1);
+    // Opted-in files follow style changes; others only report as out of date.
+    assert.deepEqual(setAutoExport(db, p.id, 'agents', true), {target: 'agents', autoUpdate: true});
+    const latest = db.update(style.id, {content: 'Use ruff format'}, style.version + 1);
+    assert.deepEqual(
+      syncExports(db).map((r) => r.path),
+      ['AGENTS.md'],
+    );
+    assert.match(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), /Use ruff format[\s\S]*Footer/);
+    assert.deepEqual(syncExports(db), []);
+    setAutoExport(db, p.id, 'agents', false);
+    db.update(style.id, {content: 'Use ruff'}, latest.version);
+    assert.deepEqual(syncExports(db), []);
+    assert.deepEqual(
+      staleExports(db).map((x) => x.path),
+      ['AGENTS.md'],
+    );
+    write('agents');
+    assert.throws(() => setAutoExport(db, p.id, '../x', true), /Unknown file target/);
+    assert.match(write('cursor'), /^---\n[\s\S]*alwaysApply: true[\s\S]*Use ruff/);
+    assert.match(write('copilot'), /^<!-- personal-brain:start/);
+    assert.ok(handoffPreview(db, p.id, 'claude').approxTokens > 0);
+    assert.throws(() => handoffPreview(db, p.id, '../etc'), /Unknown file target/);
+    writeFileSync(join(repo, 'GEMINI.md'), '<!-- personal-brain:start broken');
+    assert.throws(() => handoffPreview(db, p.id, 'gemini'), /no end marker/);
+    // A symlinked folder on the way to the file is refused.
+    rmSync(join(repo, '.github'), {recursive: true});
+    symlinkSync(path, join(repo, '.github'));
+    const preview = handoffPreview(db, p.id, 'copilot');
+    assert.throws(
+      () => handoffWrite(db, p.id, preview.contentHash, preview.existingHash, 'copilot'),
+      /symbolic link/,
+    );
+  }));
+
+test('agent failures fixed by a retry are not counted; an interrupted comparison retries', () =>
+  withDb((db) => {
+    const at = (min: number) => new Date(Date.UTC(2026, 10, 13, 7, min)).toISOString();
+    const event = (min: number, outcome: string) =>
+      db.db
+        .prepare(
+          "INSERT INTO trace_events(id,occurred_at,run_id,agent,channel,event_type,outcome,record_ids,record_versions,metadata,demo) VALUES (?,?,'r','claude','mcp','mcp.brain_remember',?,'[]','{}','{}',0)",
+        )
+        .run(`e${min}`, at(min), outcome);
+    event(0, 'error'); // retried a minute later: nothing lost
+    event(1, 'success');
+    event(30, 'error'); // never retried
+    const claude = db.learningHealth().integrations.find((i) => i.agent === 'claude')!;
+    assert.equal(claude.failures, 1);
+    // A comparison left running by a restart is failed and the next check may run it again.
+    db.db
+      .prepare('INSERT INTO meta(key,value) VALUES(?,?)')
+      .run('learning-projects-fingerprint', 'seen');
+    const job = {
+      id: 'j1',
+      agent: 'codex',
+      status: 'running',
+      projectIds: [],
+      sources: [],
+      targets: [],
+      proposals: [],
+      applied: [],
+      createdAt: at(0),
+    };
+    db.db
+      .prepare('INSERT INTO meta(key,value) VALUES(?,?)')
+      .run('learning-run:j1', JSON.stringify(job));
+    assert.equal(learningRun(db, 'j1').status, 'failed');
+    assert.equal(
+      db.db.prepare("SELECT 1 FROM meta WHERE key='learning-projects-fingerprint'").get(),
+      undefined,
     );
   }));

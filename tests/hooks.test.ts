@@ -6,7 +6,12 @@ import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {BrainDB} from '../src/core/database.ts';
 import {seed} from '../src/styles/seed.ts';
-import {instructionRefreshContext, simulateHook, taskContext} from '../src/agents/hooks.ts';
+import {
+  inlineStyles,
+  instructionRefreshContext,
+  simulateHook,
+  taskContext,
+} from '../src/agents/hooks.ts';
 import {manageHookConfig} from '../src/agents/hook-install.ts';
 import {pathToFileURL} from 'node:url';
 
@@ -87,7 +92,23 @@ test('SessionStart automatically injects personal baseline for Claude and Codex'
       assert.equal(data.hookSpecificOutput.hookEventName, 'SessionStart');
       assert.match(data.hookSpecificOutput.additionalContext, /PERSONAL BRAIN AUTO ACTIVATION/);
       assert.match(data.hookSpecificOutput.additionalContext, /PERSONAL BRAIN STYLE BASELINE/);
+      // Only Claude hides MCP tools behind tool search.
+      assert.equal(
+        data.hookSpecificOutput.additionalContext.includes('select:mcp__personal-brain__brain_get'),
+        agent === 'claude',
+      );
     }
+    db.trace({
+      agent: 'codex',
+      channel: 'mcp',
+      eventType: 'mcp.brain_review',
+      outcome: 'error',
+      metadata: {error: 'Unknown requirement x'},
+    });
+    const row = db.db
+      .prepare("SELECT metadata FROM trace_events WHERE event_type='mcp.brain_review'")
+      .get() as {metadata: string};
+    assert.equal(JSON.parse(row.metadata).error, 'Unknown requirement x');
   } finally {
     db.close();
     rmSync(dir, {recursive: true, force: true});
@@ -147,6 +168,9 @@ test('hook installer preserves other settings, is idempotent, and removes only i
         1,
       );
       assert.equal(data.hooks.UserPromptSubmit.length, 1);
+      const tool = data.hooks.PostToolUse[0];
+      assert.match(tool.matcher, /apply_patch\|mcp__personal-brain__/);
+      assert.equal(tool.hooks[0].additionalContextLimit, undefined);
       const handler = data.hooks.SessionStart.find((g: HookGroup) =>
         g.hooks.some((h) => h.statusMessage === 'personal-brain-style'),
       ).hooks[0];
@@ -166,6 +190,7 @@ test('hook installer preserves other settings, is idempotent, and removes only i
       assert.equal(manageHookConfig('remove', agent, opts).installed, false);
       const after = JSON.parse(readFileSync(file, 'utf8'));
       assert.ok(!after.hooks?.UserPromptSubmit);
+      assert.ok(!after.hooks?.PostToolUse);
       if (agent === 'claude') {
         assert.ok(
           after.hooks.SessionStart.some((g: HookGroup) => g.hooks[0]?.command === 'echo existing'),
@@ -201,6 +226,44 @@ test('real hook CLI reads JSON stdin and outputs host hook format', () => {
     assert.equal(result.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
     assert.doesNotMatch(result.hookSpecificOutput.additionalContext, /orthogonal connectors/);
     assert.match(result.hookSpecificOutput.additionalContext, /INDEX ONLY/);
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('tool hook records edits and style loads per session, ignoring other tools', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-tool-hook-'));
+  try {
+    const run = (agent: string, tool_name: string, session_id = 'w1') =>
+      spawnSync(
+        process.execPath,
+        [resolve('scripts/run.mjs'), resolve('src/cli.ts'), 'hook', agent, 'tool'],
+        {
+          cwd: dir,
+          env: {...process.env, PB_HOME: dir},
+          input: JSON.stringify({session_id, tool_name}),
+          encoding: 'utf8',
+        },
+      );
+    for (const [agent, tool, session] of [
+      ['claude', 'Edit', 'w1'],
+      ['claude', 'mcp__personal-brain__brain_prepare', 'w1'],
+      ['claude', 'Write', 'w2'],
+      ['claude', 'Read', 'w3'],
+      ['codex', 'apply_patch', 'c1'],
+    ]) {
+      const out = run(agent, tool, session);
+      assert.equal(out.status, 0, out.stderr);
+      assert.equal(out.stdout, '', 'tool hook adds no context');
+    }
+    const db = new BrainDB(join(dir, 'brain.sqlite'));
+    try {
+      const by = Object.fromEntries(db.adoption().map((a) => [a.agent, a]));
+      assert.deepEqual([by.claude.workSessions, by.claude.coveredSessions], [2, 1]);
+      assert.deepEqual([by.codex.workSessions, by.codex.coveredSessions], [1, 0]);
+    } finally {
+      db.close();
+    }
   } finally {
     rmSync(dir, {recursive: true, force: true});
   }
@@ -464,7 +527,55 @@ test('prompt hook asks the agent to capture standing preferences, not one-off ta
     ]) {
       assert.match(taskContext(db, said) || '', /PERSONAL BRAIN LEARN[\s\S]*brain_remember/, said);
     }
-    assert.doesNotMatch(taskContext(db, 'Fix the login bug') || '', /PERSONAL BRAIN LEARN/);
+    for (const oneOff of [
+      'Fix the login bug',
+      'Use pnpm instead of npm for this script',
+      'sửa lỗi này luôn đi',
+      'Generated plan:\n' + 'Always run the steps below. '.repeat(80),
+    ]) {
+      assert.doesNotMatch(
+        taskContext(db, oneOff) || '',
+        /PERSONAL BRAIN LEARN/,
+        oneOff.slice(0, 40),
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test('Claude gets a digest of strongly matched styles once per session and version', () => {
+  const db = new BrainDB(':memory:');
+  try {
+    const r = db.create({
+      kind: 'preference',
+      domain: 'coding',
+      title: 'Commit messages',
+      summary: 'Short imperative commit subjects.',
+      content: 'Long body that must not be sent. '.repeat(40),
+      tags: ['commit', 'git'],
+      principles: ['Subject under 50 characters'],
+      requirements: [{id: 'req-subject', label: 'Subject line checked', type: 'manual'}],
+      reviewCriteria: ['Subject is imperative'],
+      priority: 50,
+      status: 'active',
+      checks: [],
+      backend: null,
+    });
+    const strong = 'write the commit message for this git change';
+    const text = inlineStyles(db, 'claude', 's1', [r], strong);
+    assert.match(
+      text,
+      /STYLE DIGEST[\s\S]*Short imperative[\s\S]*- Subject under 50[\s\S]*- Subject line checked[\s\S]*1 review criteria/,
+    );
+    assert.doesNotMatch(text, /Long body/);
+    assert.equal(inlineStyles(db, 'claude', 's1', [r], strong), '', 'once per session');
+    assert.equal(inlineStyles(db, 'codex', 's2', [r], strong), '');
+    assert.equal(inlineStyles(db, 'claude', null, [r], strong), '');
+    // One shared word is a weak match: index only.
+    assert.equal(inlineStyles(db, 'claude', 's3', [r], 'why is this commit slow'), '');
+    const next = db.update(r.id, {summary: 'Imperative subjects, 60 characters.'}, r.version);
+    assert.match(inlineStyles(db, 'claude', 's1', [next], strong), /60 characters/);
   } finally {
     db.close();
   }

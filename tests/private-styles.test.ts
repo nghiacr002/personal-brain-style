@@ -199,10 +199,41 @@ test('MCP edits require explicit project scope and publishing copies private dep
     assert.equal(child.content, 'Global');
     assert.equal(db.project(project.id).version, 2);
     assert.equal(db.project(project.id).assignments[0].recordId, local.id);
-    assert.equal(db.get(parent.id)?.projectId, project.id);
+    // The shared copy replaces the private parent; the override of a global style stays private.
+    assert.ok(!db.get(parent.id));
+    assert.equal(db.get(local.id)?.projectId, project.id);
     const other = db.saveProject({name: 'Other', description: '', assignments: []});
+    const selected = db.create({
+      ...input,
+      projectId: other.id,
+      domain: 'coding',
+      title: 'Selected private',
+      keyId: 'selected-private',
+    });
+    const user = db.create({
+      ...input,
+      projectId: other.id,
+      domain: 'coding',
+      title: 'Links to it',
+      keyId: 'links-to-it',
+      requiredIds: [selected.id],
+    });
+    const before = db.project(other.id);
+    db.saveProject(
+      {...before, assignments: [{recordId: selected.id, override: null}]},
+      other.id,
+      before.version,
+    );
     assert.throws(() => db.publishProjectRecord(other.id, parent.id, parent.version), /not found/);
-    assert.throws(() => db.publishProjectRecord(project.id, parent.id, 99), /conflict/);
+    assert.throws(() => db.publishProjectRecord(other.id, selected.id, 99), /conflict/);
+    const shared = db.publishProjectRecord(other.id, selected.id, selected.version).record;
+    assert.ok(!db.get(selected.id));
+    assert.deepEqual(
+      db.project(other.id).assignments.map((a) => a.recordId),
+      [shared.id],
+      'the project now selects the shared copy',
+    );
+    assert.deepEqual(db.get(user.id)!.requiredIds, [shared.id]);
   } finally {
     db.close();
     rmSync(dir, {recursive: true, force: true});

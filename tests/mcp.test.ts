@@ -112,6 +112,38 @@ test(
       assert.equal(prompts.result.prompts[0].name, 'personalized_task');
       const missing = await call('tools/call', {name: 'brain_get', arguments: {id: 'missing'}});
       assert.equal(missing.result.isError, true);
+      // A save refused by a paused project is traced as skipped with its reason, not success.
+      const side = new BrainDB(join(dir, 'brain.sqlite'));
+      const paused = side.saveProject({name: 'Paused', description: '', assignments: []});
+      side.saveLearningSettings({mode: 'suggest', retentionDays: 90, pausedProjects: [paused.id]});
+      const refused = await call('tools/call', {
+        name: 'brain_remember',
+        arguments: {projectId: paused.id, title: 'Tabs', content: 'Use tabs', domain: 'coding'},
+      });
+      assert.equal(JSON.parse(refused.result.content[0].text).recorded, false);
+      // The agent's activity wording is kept so skipped conditional guidance can be audited.
+      await call('tools/call', {
+        name: 'brain_resolve',
+        arguments: {
+          projectId: paused.id,
+          task: 't',
+          recordIds: ['x'],
+          context: {activity: 'coding'},
+        },
+      });
+      const resolved = side.db
+        .prepare("SELECT metadata FROM trace_events WHERE event_type='mcp.brain_resolve'")
+        .get() as {metadata: string};
+      assert.equal(JSON.parse(resolved.metadata).activity, 'coding');
+      const row = side.db
+        .prepare("SELECT outcome, metadata FROM trace_events WHERE event_type='mcp.brain_remember'")
+        .get() as {outcome: string; metadata: string};
+      side.close();
+      assert.equal(row.outcome, 'skipped');
+      assert.deepEqual(
+        [JSON.parse(row.metadata).projectId, JSON.parse(row.metadata).note],
+        [paused.id, 'Learning capture is paused for this project'],
+      );
     } finally {
       await stopServer(child);
       rmSync(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});

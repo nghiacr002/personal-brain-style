@@ -17,6 +17,7 @@ import {
   skillReferences,
 } from '../projects/skill-discovery.ts';
 import {BrainDB} from '../core/database.ts';
+import {ACTIVITIES, activityHint} from '../core/preference-contract.ts';
 import {BrainError, KINDS, type Kind, type Domain, type TaskContext} from '../core/models.ts';
 import {invokeBackend, inspectBackend} from './bridge.ts';
 import {packageVersion} from './launcher.ts';
@@ -43,7 +44,7 @@ const errorText = (error: unknown): ToolResult => ({
 });
 const str = {type: 'string'};
 const whenSchema = schemaObject({
-  activities: {type: 'array', items: str},
+  activities: {type: 'array', items: {type: 'string', enum: [...ACTIVITIES]}},
   formats: {type: 'array', items: str},
   languages: {type: 'array', items: str},
   frameworks: {type: 'array', items: str},
@@ -54,7 +55,7 @@ const preferencesSchema = {
   items: schemaObject({key: str, value: str}, ['key', 'value']),
 };
 const contextSchema = schemaObject({
-  activity: str,
+  activity: {type: 'string', description: activityHint},
   formats: {type: 'array', items: str},
   languages: {type: 'array', items: str},
   frameworks: {type: 'array', items: str},
@@ -955,7 +956,9 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
           } else {
             result = await callTool(db, name, {
               ...args,
-              ...(name === 'brain_get' && agent !== 'unknown' ? {host: agent} : {}),
+              ...(['brain_get', 'brain_review'].includes(name) && agent !== 'unknown'
+                ? {host: agent}
+                : {}),
             });
           }
           if (chatProjectId && result && typeof result === 'object') {
@@ -1059,6 +1062,9 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
               'brain_prepare',
               'brain_resolve',
               'brain_review',
+              'brain_remember',
+              'brain_forget',
+              'brain_feedback',
             ].includes(name)
           ) {
             tracedProjectId =
@@ -1066,12 +1072,26 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
                 ? args.projectId
                 : process.env.PB_PROJECT_ID || null;
           }
+          // Learning tools answer {recorded:false, reason} when capture is off, paused or suppressed.
+          let declined: string | undefined;
+          if (!response.isError && /^brain_(remember|forget|feedback)$/.test(name)) {
+            try {
+              const r = JSON.parse(response.content?.[0]?.text || '{}');
+              declined = r.recorded === false ? String(r.reason || 'Not recorded') : undefined;
+            } catch {
+              /* Not JSON: leave the outcome as success. */
+            }
+          }
+          let outcome = response.isError ? 'error' : 'success';
+          if (declined) {
+            outcome = 'skipped';
+          }
           db.trace({
             agent,
             channel: 'mcp',
             runId: typeof args.threadId === 'string' ? `${agent}:${args.threadId}` : mcpRunId(),
             eventType: `mcp.${name}`,
-            outcome: response.isError ? 'error' : 'success',
+            outcome,
             recordIds,
             recordVersions,
             metadata: {
@@ -1083,6 +1103,14 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
               passed,
               domain: String(args.domain || '').slice(0, 40),
               promptChars: typeof args.task === 'string' ? args.task.length : 0,
+              // The agent's own activity wording, so skipped conditional guidance can be audited.
+              activity:
+                typeof (args.context as {activity?: unknown})?.activity === 'string'
+                  ? String((args.context as {activity: string}).activity).slice(0, 80)
+                  : undefined,
+              // Error text only (our own messages); payloads are never stored.
+              error: response.isError ? response.content?.[0]?.text : undefined,
+              note: declined,
             },
           });
           break;

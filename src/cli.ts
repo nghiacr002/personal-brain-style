@@ -7,6 +7,7 @@ import {BrainDB, defaultHome, dbPath} from './core/database.ts';
 import {seedGlobalStyles, installCatalogAdditions} from './styles/global-style-seed.ts';
 import {createBrainHttpServer} from './server/http.ts';
 import {autoLearnFromProjects, LEARNING_CHECK_MINUTES} from './instructions/project-learning.ts';
+import {syncExports} from './projects/handoff.ts';
 import {mcpMain, MCP_PROTOCOL_VERSION} from './agents/mcp.ts';
 import {executeHook, simulateHook} from './agents/hooks.ts';
 import {manageHookConfig} from './agents/hook-install.ts';
@@ -81,6 +82,12 @@ if (arg === 'desktop') {
   };
   setTimeout(learn, 30_000).unref();
   setInterval(learn, LEARNING_CHECK_MINUTES * 60_000).unref();
+  // Opted-in rule files follow style changes within a minute.
+  setInterval(() => {
+    for (const r of syncExports(db)) {
+      console.log(r.error ? `Could not update ${r.path}: ${r.error}` : `Updated ${r.path}`);
+    }
+  }, 60_000).unref();
   server.listen(port, '127.0.0.1', () => {
     console.log(
       `\n  Personal Brain — Personal Style Studio\n  http://127.0.0.1:${port}\n  Data: ${dbPath()}\n`,
@@ -95,11 +102,18 @@ if (arg === 'desktop') {
 } else if (arg === 'hook') {
   const agent = process.argv[3];
   const phase = process.argv[4];
-  if (!['claude', 'codex', 'opencode'].includes(agent) || !['session', 'prompt'].includes(phase)) {
-    console.error('Usage: hook claude|codex|opencode session|prompt');
+  if (
+    !['claude', 'codex', 'opencode'].includes(agent) ||
+    !['session', 'prompt', 'tool'].includes(phase)
+  ) {
+    console.error('Usage: hook claude|codex|opencode session|prompt|tool');
     process.exitCode = 2;
   } else {
-    executeHook(db, agent as 'claude' | 'codex' | 'opencode', phase as 'session' | 'prompt');
+    executeHook(
+      db,
+      agent as 'claude' | 'codex' | 'opencode',
+      phase as 'session' | 'prompt' | 'tool',
+    );
   }
   db.close();
 } else if (arg === 'connect' || arg === 'disconnect') {

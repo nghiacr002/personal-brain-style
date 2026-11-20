@@ -1565,7 +1565,12 @@ test('learning inbox word diff marks insertions, deletions and dropped obligatio
   assert.match(html, /<del>tabs\.<\/del>/);
   assert.match(html, /<ins>spaces\.<\/ins>/);
   assert.match(html, /<del class="lost">Never<\/del>/);
-  assert.ok(!html.includes('<code>'), 'content is escaped');
+  assert.ok(!html.includes('<code>'), 'content is escaped');  // A rewritten sentence is shown whole (old, then new), never as interleaved word fragments.
+  const rewritten = vm.runInContext(
+    'wordDiff("Keep it short. You must cite sources.", "Keep it short. Provide a design per module with a map.")',
+    context,
+  );
+  assert.match(rewritten, /Keep it short\. <del class="lost">You must cite sources\.<\/del><ins>Provide a design per module with a map\.<\/ins>/);
 });
 
 test('navigation keeps setup visible and groups trace explorer, skill discovery, style discovery and startup index under diagnostics', () => {
@@ -1593,6 +1598,7 @@ test('navigation keeps setup visible and groups trace explorer, skill discovery,
       'data-view="projects"',
       'data-view="preference"',
       'data-view="feedback"',
+      'data-view="effectiveness"',
     ],
     'one Learning page in the workspace',
   );
@@ -2350,7 +2356,7 @@ test('Apply confirms conflicts and dropped statements, then retries once each', 
 test('Learning shows how styles hold up in agent reviews, failing styles flagged', () => {
   const {context} = inboxContext(() => []);
   const html = vm.runInContext(
-    `styleChecksCard([{id:'r1', title:'UI <b>', version:4, passed:2, failed:1}])`,
+    `styleChecksCard([{id:'r1', title:'UI <b>', version:4, passed:2, failed:1, agents:{codex:{passed:0, failed:1}, claude:{passed:2, failed:0}, unknown:{passed:0, failed:0}}}])`,
     context,
   );
   assert.match(html, /How your styles hold up/);
@@ -2358,6 +2364,7 @@ test('Learning shows how styles hold up in agent reviews, failing styles flagged
     html,
     /data-edit="r1">UI &lt;b&gt;<\/button> · v4 · 2 passed · <span class="bad">1 failed/,
   );
+  assert.match(html, /Codex 0✓ <span class="bad">1✗<\/span> · Claude 2✓ · earlier reviews 0✓/);
   assert.equal(vm.runInContext('styleChecksCard([])', context), '');
 });
 
@@ -2385,4 +2392,72 @@ test('Clone project asks for a name, cancels cleanly, and opens the copy', async
     '["/api/projects/p1/clone",{"name":"Copy of Portal"}]',
   );
   assert.equal(vm.runInContext('location.hash', context), '#/projects/p2');
+});
+
+test('Effectiveness shows pass rate with vs without styles and flags weeks without data', () => {
+  const {context} = inboxContext(() => []);
+  const run = {
+    id: 'r',
+    status: 'ready',
+    createdAt: '2026-11-20T00:00:00Z',
+    agents: ['codex'],
+    runs: 1,
+    taskIds: ['t'],
+    planned: 2,
+    results: [
+      {
+        taskId: 't',
+        agent: 'codex',
+        condition: 'with',
+        run: 1,
+        passed: 3,
+        total: 4,
+        failed: ['absent: TODO'],
+        seconds: 1,
+      },
+      {
+        taskId: 't',
+        agent: 'codex',
+        condition: 'without',
+        run: 1,
+        passed: 1,
+        total: 4,
+        failed: [],
+        seconds: 1,
+      },
+    ],
+  };
+  const html = vm.runInContext(
+    `benchSummary(${JSON.stringify(run)}, [{id:'t', title:'Note', projectId:'p', prompt:'x', checks:[]}])`,
+    context,
+  );
+  assert.match(
+    html,
+    /<td>Codex<\/td><td class="num">75%<\/td><td class="num">25%<\/td><td><b class="good">\+50 pts<\/b>/,
+  );
+  assert.match(html, /<code>absent: TODO<\/code>/);
+  const weeks = vm.runInContext(
+    `weeksTable([{week:'2026-45', prompts:10, sessions:2, corrections:null, recordedPrompts:0, lessons:0, repeats:0}, {week:'2026-46', prompts:10, sessions:2, corrections:2, recordedPrompts:8, lessons:3, repeats:1}])`,
+    context,
+  );
+  assert.match(weeks, /not recorded/);
+  assert.match(weeks, /2 · 25% of prompts/);
+  assert.match(weeks, /<span class="bad">1<\/span>/);
+  const adoption = vm.runInContext(
+    `adoptionTable([{agent:'claude', workSessions:4, coveredSessions:1, sessions:5, prompts:100, loads:3, reviews:0, lessons:1, errors:0}, {agent:'codex', sessions:6, prompts:6, loads:10, reviews:6, lessons:0, errors:2}, {agent:'chatgpt', sessions:0, prompts:0, loads:2, reviews:0, lessons:0, errors:0}])`,
+    context,
+  );
+  assert.match(
+    adoption,
+    /<td>Claude<\/td><td><span class="bad">1 of 4 · 25%<\/span><\/td>(<td class="num">[^<]*<\/td>){3}<td class="num"><span class="bad">0.3<\/span>/,
+  );
+  assert.match(adoption, /<td>Codex<\/td><td><span class="hint">not recorded yet/);
+  assert.match(adoption, /<td class="num">16.7<\/td>/);
+  assert.match(adoption, /no hooks/);
+  const stale = vm.runInContext(
+    `staleExportsCard([{projectId:'p1', project:'Shop', path:'AGENTS.md'}])`,
+    context,
+  );
+  assert.match(stale, /<code>AGENTS.md<\/code> in <a href="#\/projects\/p1">Shop<\/a>/);
+  assert.equal(vm.runInContext('staleExportsCard([])', context), '');
 });

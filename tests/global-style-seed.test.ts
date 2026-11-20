@@ -7,6 +7,7 @@ import {BrainDB} from '../src/core/database.ts';
 import {seedGlobalStyles, installCatalogAdditions} from '../src/styles/global-style-seed.ts';
 import {globalStyleCatalog, catalogDomains} from '../src/styles/global-style-catalog.ts';
 import {createBrainHttpServer} from '../src/server/http.ts';
+import {catalogTemplates} from '../src/styles/catalog-updates.ts';
 
 test('fresh startup installs the complete global catalog and remaps dependencies without private data', () => {
   const root = mkdtempSync(join(tmpdir(), 'brain-seed-')),
@@ -144,5 +145,26 @@ test('existing libraries receive later catalog additions once, linked to their w
   } finally {
     db.close();
     rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('a fresh library gets the release templates, the agent roles style and no organization-specific CAB guidance', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-seed-templates-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    seedGlobalStyles(db);
+    const templates = db.projectTemplates();
+    assert.equal(templates[0].name, 'Starter');
+    for (const t of catalogTemplates) {
+      const seeded = templates.find((x) => x.name === t.name);
+      assert.ok(seeded, t.name);
+      assert.equal(seeded.styleIds.length, t.styleKeys.length, `${t.name} kept every style`);
+    }
+    const shared = db.list({limit: 300});
+    assert.ok(shared.some((r) => r.keyId === 'agent-roles-claude-lead-codex-worker'));
+    assert.doesNotMatch(JSON.stringify(shared), /\bCAB\b/);
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
   }
 });

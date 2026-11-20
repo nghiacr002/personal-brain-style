@@ -23,6 +23,127 @@ function fields(value: Record<string, unknown>, allowed: string[]) {
     throw new BrainError('Unknown preference contract field');
   }
 }
+/**
+ * Activities are a fixed list so conditional guidance cannot be skipped over wording: styles may
+ * only name these, and an agent's task activity is mapped onto them before matching.
+ */
+export const ACTIVITIES = [
+  'analyze',
+  'research',
+  'architecture',
+  'design',
+  'plan',
+  'implement',
+  'refactor',
+  'test',
+  'review',
+  'document',
+  'release',
+  'operate',
+] as const;
+const ACTIVITY_SYNONYMS: Record<string, (typeof ACTIVITIES)[number]> = {
+  analysis: 'analyze',
+  analyse: 'analyze',
+  requirements: 'analyze',
+  'business-analysis': 'analyze',
+  ba: 'analyze',
+  investigate: 'research',
+  spike: 'research',
+  explore: 'research',
+  evaluate: 'research',
+  'solution-architecture': 'architecture',
+  'system-design': 'architecture',
+  sa: 'architecture',
+  'ui-design': 'design',
+  ux: 'design',
+  ui: 'design',
+  'ui-ux': 'design',
+  mockup: 'design',
+  prototype: 'design',
+  planning: 'plan',
+  breakdown: 'plan',
+  estimate: 'plan',
+  split: 'plan',
+  code: 'implement',
+  coding: 'implement',
+  build: 'implement',
+  develop: 'implement',
+  development: 'implement',
+  implementation: 'implement',
+  fix: 'implement',
+  bugfix: 'implement',
+  'bug-fix': 'implement',
+  feature: 'implement',
+  delegate: 'implement',
+  cleanup: 'refactor',
+  restructure: 'refactor',
+  testing: 'test',
+  qa: 'test',
+  qc: 'test',
+  verify: 'test',
+  verification: 'test',
+  'code-review': 'review',
+  audit: 'review',
+  'security-review': 'review',
+  docs: 'document',
+  documents: 'document',
+  remediation: 'implement',
+  remediate: 'implement',
+  documentation: 'document',
+  write: 'document',
+  writing: 'document',
+  deploy: 'release',
+  deployment: 'release',
+  ship: 'release',
+  publish: 'release',
+  merge: 'release',
+  integrate: 'release',
+  ops: 'operate',
+  operations: 'operate',
+  monitor: 'operate',
+  incident: 'operate',
+};
+/** The listed activity for a word or common synonym, or undefined when it is not recognized. */
+export function normalizeActivity(value: string): string | undefined {
+  const key = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-');
+  return (ACTIVITIES as readonly string[]).includes(key) ? key : ACTIVITY_SYNONYMS[key];
+}
+/**
+ * Every listed activity in an agent's phrase, e.g. "bug fix and review" -> implement, review.
+ * Parts are tried whole, then two words joined, then word by word; unrecognized words are ignored.
+ */
+export function activityList(phrase: string): string[] {
+  const found = new Set<string>();
+  const whole = normalizeActivity(phrase);
+  if (whole) {
+    return [whole];
+  }
+  for (const part of phrase.toLowerCase().split(/\s*(?:,|;|\/|&|\+|\band\b|\bthen\b)\s*/)) {
+    const direct = part && normalizeActivity(part);
+    if (direct) {
+      found.add(direct);
+      continue;
+    }
+    const words = part.split(/[\s_-]+/).filter(Boolean);
+    for (let i = 0; i < words.length; i++) {
+      const pair = i + 1 < words.length && normalizeActivity(words[i] + '-' + words[i + 1]);
+      if (pair) {
+        found.add(pair);
+        i++;
+      } else {
+        const word = normalizeActivity(words[i]);
+        if (word) {
+          found.add(word);
+        }
+      }
+    }
+  }
+  return [...found];
+}
+export const activityHint = `One of: ${ACTIVITIES.join(', ')}. Common synonyms such as coding, qa or deploy are mapped.`;
 export function validateApplicability(value: unknown): Applicability {
   const v = object(value);
   fields(v, ['activities', 'formats', 'languages', 'frameworks', 'targets']);
@@ -30,6 +151,19 @@ export function validateApplicability(value: unknown): Applicability {
   for (const key of ['activities', 'formats', 'languages', 'frameworks', 'targets'] as const) {
     if (v[key] !== undefined) {
       result[key] = list(v[key], 20).map((x) => text(x, 80).toLowerCase());
+      if (key === 'activities') {
+        result.activities = [
+          ...new Set(
+            result.activities!.map((a) => {
+              const known = normalizeActivity(a);
+              if (!known) {
+                throw new BrainError(`Unknown activity "${a}". ${activityHint}`);
+              }
+              return known;
+            }),
+          ),
+        ];
+      }
       if (!result[key]!.length) {
         throw new BrainError('Applicability list must not be empty');
       }
@@ -60,7 +194,10 @@ export function validateTaskContext(value: unknown): TaskContext {
   const v = object(value);
   fields(v, ['activity', 'formats', 'languages', 'frameworks', 'targets', 'preferences']);
   return {
-    ...(v.activity !== undefined ? {activity: text(v.activity, 80).toLowerCase()} : {}),
+    // An unrecognized activity is kept as given; matching then treats it as unresolved.
+    ...(v.activity !== undefined
+      ? {activity: normalizeActivity(text(v.activity, 80)) ?? text(v.activity, 80).toLowerCase()}
+      : {}),
     ...Object.fromEntries(
       ['languages', 'frameworks', 'targets']
         .filter((key) => v[key] !== undefined)
@@ -76,7 +213,9 @@ type ApplicabilityKey = keyof Applicability;
 
 function contextValues(context: TaskContext, key: ApplicabilityKey): string[] | undefined {
   if (key === 'activities') {
-    return context.activity ? [context.activity] : undefined;
+    // Unknown wording must surface as unresolved, never silently skip guidance as not applicable.
+    const listed = context.activity ? activityList(context.activity) : [];
+    return listed.length ? listed : undefined;
   }
   return context[key];
 }

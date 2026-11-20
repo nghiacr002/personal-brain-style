@@ -619,10 +619,17 @@ test('Learning from projects uses preference evidence and preserves required ski
       externalSkills: ['verified-reference'],
       requiredIds: [review.id],
     });
+    // Only customized styles are evidence; an unchanged shared style is already a target.
+    const plain = db.saveProject({
+      name: 'Plain',
+      description: '',
+      assignments: [{recordId: style.id, override: null}],
+    });
+    assert.equal(learningInput(db, [plain.id]).sources.length, 0);
     const project = db.saveProject({
       name: 'A',
       description: '',
-      assignments: [{recordId: style.id, override: null}],
+      assignments: [{recordId: style.id, override: 'Project instructions'}],
     });
     const input = learningInput(db, [project.id]);
     assert.ok(!input.sources.some((r) => r.recordId === review.id && r.kind === 'review'));
@@ -826,7 +833,11 @@ test('Approved global lessons are folded into a main style, archived on apply, a
         }),
       },
     });
-    assert.deepEqual(db.inbox({source: 'projects'})[0].evidence.reviews, {passed: 1, failed: 1});
+    assert.deepEqual(db.inbox({source: 'projects'})[0].evidence.reviews, {
+      passed: 1,
+      failed: 1,
+      agents: {claude: {passed: 1, failed: 1}},
+    });
     assert.deepEqual(
       db.learningHealth().styleChecks.map((r) => [r.title, r.passed, r.failed]),
       [['Code', 1, 1]],

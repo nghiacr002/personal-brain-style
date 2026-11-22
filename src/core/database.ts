@@ -87,6 +87,9 @@ export function checkInput(raw: unknown): RecordInput {
   if (x.useWhen !== undefined && (typeof x.useWhen !== 'string' || x.useWhen.length > 600)) {
     throw new BrainError('Use when must be text of at most 600 characters');
   }
+  if (x.alwaysApply !== undefined && typeof x.alwaysApply !== 'boolean') {
+    throw new BrainError('Always apply must be true or false');
+  }
   if (
     typeof x.priority !== 'number' ||
     !Number.isInteger(x.priority) ||
@@ -176,6 +179,8 @@ export function checkInput(raw: unknown): RecordInput {
       typeof x.useWhen === 'string'
         ? x.useWhen.trim()
         : discoveryMetadata(x as unknown as RecordInput).useWhen,
+    // Always present so an unchecked box clears the stored flag on update.
+    alwaysApply: x.alwaysApply === true ? true : undefined,
     requirements: validateRequirements(x.requirements),
     examples: (x.examples || []) as string[],
     principles: (x.principles || []) as string[],

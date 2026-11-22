@@ -104,15 +104,15 @@ if (arg === 'desktop') {
   const phase = process.argv[4];
   if (
     !['claude', 'codex', 'opencode'].includes(agent) ||
-    !['session', 'prompt', 'tool'].includes(phase)
+    !['session', 'prompt', 'tool', 'gate'].includes(phase)
   ) {
-    console.error('Usage: hook claude|codex|opencode session|prompt|tool');
+    console.error('Usage: hook claude|codex|opencode session|prompt|tool|gate');
     process.exitCode = 2;
   } else {
     executeHook(
       db,
       agent as 'claude' | 'codex' | 'opencode',
-      phase as 'session' | 'prompt' | 'tool',
+      phase as 'session' | 'prompt' | 'tool' | 'gate',
     );
   }
   db.close();

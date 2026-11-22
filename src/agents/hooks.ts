@@ -7,7 +7,7 @@ import type {BrainRecord, Domain} from '../core/models.ts';
 
 /** Personal Brain supplies context; it never starts a second LLM turn. */
 export type AgentKind = 'claude' | 'codex' | 'opencode';
-export type HookPhase = 'session' | 'prompt' | 'tool';
+export type HookPhase = 'session' | 'prompt' | 'tool' | 'gate';
 /**
  * Tool-use signal for "did this working session use the styles": an edit marks real work, a
  * brain_get/brain_prepare marks a style load. Names differ by host: Claude Edit/Write, Codex
@@ -186,6 +186,139 @@ export function inlineStyles(
   );
 }
 
+export function alwaysApplyRecords(db: BrainDB, projectId?: string) {
+  return db.scopedRecords(projectId).filter((r) => r.alwaysApply && r.status === 'active');
+}
+
+/**
+ * "Always apply" styles govern every task (who does the work, how it is delivered), so they
+ * cannot wait for a prompt-word match. Session start sends all of them (also after context
+ * compaction); later prompts resend only new or changed versions.
+ */
+export function alwaysStyles(
+  db: BrainDB,
+  agent: AgentKind,
+  sessionId: string | null,
+  projectId: string | undefined,
+  fresh: boolean,
+): string {
+  const records = alwaysApplyRecords(db, projectId);
+  const key = 'hook-always:' + db.fingerprint(JSON.stringify([agent, sessionId]));
+  const row =
+    !fresh && sessionId
+      ? (db.db.prepare('SELECT value FROM meta WHERE key=?').get(key) as
+          {value: string} | undefined)
+      : undefined;
+  const seen = new Set<string>(row ? JSON.parse(row.value) : []);
+  const due = records.filter((r) => !seen.has(`${r.id}@${r.version}`));
+  if (sessionId) {
+    db.db
+      .prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)')
+      .run(key, JSON.stringify(records.map((r) => `${r.id}@${r.version}`)));
+  }
+  if (!due.length) {
+    return '';
+  }
+  return (
+    'PERSONAL BRAIN ALWAYS APPLY — selected for every task in this scope, whatever the prompt says. Apply them from the start, before deciding how or by whom the work is done. Load each with brain_get (or include it in brain_prepare) before editing files; edits are blocked until you do.\n\n' +
+    due.map(styleDigest).join('\n\n')
+  );
+}
+
+// Requires every always-apply style and every style (preference) the current prompt matched,
+// loaded at any point in the session. Skills, templates and review rules stay optional.
+// Two denials per turn, then edits pass so a broken Personal Brain never locks the agent out.
+const GATE_DENIALS = 2;
+/** Reason to block an edit, or null to allow it. Claude PreToolUse only. */
+export function gateReason(db: BrainDB, runId: string, projectId: string | undefined) {
+  const events = db.db
+    .prepare(
+      `SELECT occurred_at AS at, event_type AS type, record_ids AS ids FROM trace_events
+       WHERE run_id=? AND event_type IN ('hook.prompt.context','hook.prompt.no_match','hook.tool.load','hook.gate.denied')
+       ORDER BY occurred_at`,
+    )
+    .all(runId) as Array<{at: string; type: string; ids: string}>;
+  const prompt = events.filter((e) => e.type.startsWith('hook.prompt.')).at(-1);
+  const since = prompt?.at ?? '';
+  const ids = (e: {ids: string}) => {
+    try {
+      return JSON.parse(e.ids || '[]') as string[];
+    } catch {
+      return [];
+    }
+  };
+  const loaded = loadedIds(db, runId);
+  const scoped = db.scopedRecords(projectId);
+  const matched = new Set(prompt ? ids(prompt) : []);
+  const missing = scoped.filter(
+    (r) =>
+      r.status === 'active' &&
+      !loaded.has(r.id) &&
+      (r.alwaysApply || (r.kind === 'preference' && matched.has(r.id))),
+  );
+  if (!missing.length) {
+    return null;
+  }
+  if (events.filter((e) => e.type === 'hook.gate.denied' && e.at > since).length >= GATE_DENIALS) {
+    return null;
+  }
+  const list = missing
+    .map((r) => `- ${r.title} | id ${r.id}${r.alwaysApply ? ' | always apply' : ''}`)
+    .join('\n');
+  return (
+    `Personal Brain: load this task's styles before editing files${projectId ? ` (projectId ${projectId})` : ''}. ` +
+    `Call brain_prepare with the applicable recordIds and context, or brain_get for each, then retry the edit. ` +
+    `Load every style listed; if one turns out not to apply after reading it, say so in your report.\n${list}\n` +
+    `If the brain_* tools are not loaded, run ToolSearch "select:mcp__personal-brain__brain_get,mcp__personal-brain__brain_prepare". ` +
+    `If styles conflict with each other or with the request, stop and ask the user before continuing.`
+  );
+}
+
+/** Styles already loaded in this session (brain_get, brain_prepare and its required links). */
+function loadedIds(db: BrainDB, runId: string) {
+  const rows = db.db
+    .prepare(
+      `SELECT record_ids AS ids FROM trace_events WHERE run_id=? AND event_type='hook.tool.load'`,
+    )
+    .all(runId) as Array<{ids: string}>;
+  return new Set(
+    rows.flatMap((row) => {
+      try {
+        return JSON.parse(row.ids || '[]') as string[];
+      } catch {
+        return [];
+      }
+    }),
+  );
+}
+
+/**
+ * Names up front what the edit gate will demand, so Claude loads it in one call before work
+ * starts instead of being blocked mid-task.
+ */
+export function requiredNotice(
+  db: BrainDB,
+  runId: string,
+  matches: BrainRecord[],
+  projectId: string | undefined,
+) {
+  const loaded = loadedIds(db, runId);
+  const matched = new Set(matches.filter((r) => r.kind === 'preference').map((r) => r.id));
+  const due = db
+    .scopedRecords(projectId)
+    .filter(
+      (r) => r.status === 'active' && !loaded.has(r.id) && (r.alwaysApply || matched.has(r.id)),
+    );
+  if (!due.length) {
+    return '';
+  }
+  return (
+    `PERSONAL BRAIN REQUIRED BEFORE EDITING: load all of these now, in one brain_prepare call (recordIds ${JSON.stringify(due.map((r) => r.id))}) or brain_get for each. ` +
+    'File edits are blocked until every one is loaded. If one does not apply after reading it, say so in your report.\n' +
+    due.map((r) => `- ${r.title} | id ${r.id}`).join('\n')
+  );
+}
+
 export function hasPreferenceCue(prompt: string): boolean {
   return prompt.length <= MAX_CUE_PROMPT && STANDING.test(prompt);
 }
@@ -204,7 +337,7 @@ export function startupContext(db: BrainDB, projectId?: string): string {
     `For substantive work, call brain_discover and brain_get for matching styles and required links; reuse only the same ID/version/scope already read in this conversation; ` +
     `Read available external skills on demand with brain_get_installed_skill; flag missing or ambiguous references. ` +
     `For development, load the common standard and the applicable language substyle; supply known languages, frameworks and targets to preparation, using empty arrays when none apply. Do not infer every framework mentioned by a style is in use. ` +
-    `Do not ask the user to request skill discovery. Respect direct user instructions over style defaults. ` +
+    `Do not ask the user to request skill discovery. If a direct user instruction conflicts with a selected style, ask before overriding the style. ` +
     `Never claim a tool or visual validator was run unless it actually ran.\n\n${complianceReminder}`
   );
 }
@@ -254,7 +387,7 @@ export function taskContext(
     `${sections}\n\nLoad relevant records with brain_get, including requiredLinked instructions, skills and review criteria. ` +
     `Reuse instructions only if this conversation already contains the same record ID, version and scope. ` +
     `Read required external skills on demand; never claim unavailable skills were used. ` +
-    `Use brain_discover if these matches are insufficient. Explicit user requirements take precedence. Full instructions have not been injected.\n\n${complianceReminder}${nudge}`
+    `Use brain_discover if these matches are insufficient. If the request conflicts with a style, ask the user which applies before acting. Full instructions have not been injected.\n\n${complianceReminder}${nudge}`
   );
 }
 
@@ -352,15 +485,57 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
     const sessionId =
       [obj.session_id, obj.thread_id].find((id): id is string => typeof id === 'string') ?? null;
     const runId = sessionId ? `${agent}:${sessionId.slice(0, 100)}` : `${agent}:hook:unlinked`;
+    if (phase === 'gate') {
+      if (!sessionId || toolSignal(obj.tool_name) !== 'work') {
+        return;
+      }
+      const reason = gateReason(db, runId, projectId);
+      if (reason) {
+        db.trace({
+          agent,
+          channel: 'hook',
+          eventType: 'hook.gate.denied',
+          outcome: 'blocked',
+          runId,
+          metadata: {projectId: projectId || null, tool: String(obj.tool_name).slice(0, 80)},
+        });
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: reason,
+            },
+          }) + '\n',
+        );
+      }
+      return;
+    }
     if (phase === 'tool') {
       const signal = toolSignal(obj.tool_name);
       if (signal && sessionId) {
+        const args = (obj.tool_input || {}) as {id?: unknown; recordIds?: unknown};
+        const loaded = new Set(
+          signal === 'load'
+            ? [args.id, ...(Array.isArray(args.recordIds) ? args.recordIds : [])].filter(
+                (id): id is string => typeof id === 'string',
+              )
+            : [],
+        );
+        // brain_prepare also returns required links, so they count as loaded.
+        if (/brain_prepare$/.test(String(obj.tool_name))) {
+          const scoped = db.scopedRecords(projectId);
+          for (const id of loaded) {
+            scoped.find((r) => r.id === id)?.requiredIds?.forEach((dep) => loaded.add(dep));
+          }
+        }
         db.trace({
           agent,
           channel: 'hook',
           eventType: 'hook.tool.' + signal,
           outcome: 'observed',
           runId,
+          recordIds: [...loaded],
           metadata: {projectId: projectId || null, tool: String(obj.tool_name).slice(0, 80)},
         });
       }
@@ -387,7 +562,12 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
             (e instanceof Error ? e.message : String(e)).slice(0, 220);
         }
       }
-      const context = startupContext(db, projectId) + discoveryNote + toolHint(agent);
+      const always = alwaysStyles(db, agent, sessionId, projectId, true);
+      const context =
+        startupContext(db, projectId) +
+        discoveryNote +
+        toolHint(agent) +
+        (always ? '\n\n' + always : '');
       const baseline = db.bootstrapWithRecords(1600, projectId).records;
       db.trace({
         agent,
@@ -419,7 +599,12 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
         projectId,
       );
       const inlined = inlineStyles(db, agent, sessionId, matches, prompt);
-      const context = [refresh, matchedContext, inlined].filter(Boolean).join('\n\n');
+      const always = alwaysStyles(db, agent, sessionId, projectId, false);
+      const required =
+        agent === 'claude' && sessionId ? requiredNotice(db, runId, matches, projectId) : '';
+      const context = [refresh, matchedContext, inlined, always, required]
+        .filter(Boolean)
+        .join('\n\n');
       db.trace({
         agent,
         channel: 'hook',

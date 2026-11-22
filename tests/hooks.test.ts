@@ -168,6 +168,7 @@ test('hook installer preserves other settings, is idempotent, and removes only i
         1,
       );
       assert.equal(data.hooks.UserPromptSubmit.length, 1);
+      assert.equal(!!data.hooks.PreToolUse, agent === 'claude', 'edit gate is Claude-only');
       const tool = data.hooks.PostToolUse[0];
       assert.match(tool.matcher, /apply_patch\|mcp__personal-brain__/);
       assert.equal(tool.hooks[0].additionalContextLimit, undefined);
@@ -191,6 +192,7 @@ test('hook installer preserves other settings, is idempotent, and removes only i
       const after = JSON.parse(readFileSync(file, 'utf8'));
       assert.ok(!after.hooks?.UserPromptSubmit);
       assert.ok(!after.hooks?.PostToolUse);
+      assert.ok(!after.hooks?.PreToolUse);
       if (agent === 'claude') {
         assert.ok(
           after.hooks.SessionStart.some((g: HookGroup) => g.hooks[0]?.command === 'echo existing'),
@@ -216,7 +218,7 @@ test('real hook CLI reads JSON stdin and outputs host hook format', () => {
         env: {...process.env, PB_HOME: dir},
         input: JSON.stringify({
           hook_event_name: 'UserPromptSubmit',
-          prompt: 'Draw architecture diagram with drawio',
+          prompt: 'Plan the release and write the security review',
         }),
         encoding: 'utf8',
       },
@@ -578,5 +580,92 @@ test('Claude gets a digest of strongly matched styles once per session and versi
     assert.match(inlineStyles(db, 'claude', 's1', [next], strong), /60 characters/);
   } finally {
     db.close();
+  }
+});
+
+test('always-apply styles reach Claude at session start and gate edits until loaded', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-always-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    seed(db);
+    const record = db.scopedRecords().find((r) => r.kind === 'preference')!;
+    db.update(record.id, {...record, alwaysApply: true}, record.version);
+    assert.equal(db.get(record.id)!.alwaysApply, true);
+    const invoke = (phase: string, extra: Record<string, unknown> = {}) => {
+      const result = spawnSync(
+        process.execPath,
+        [resolve('scripts/run.mjs'), resolve('src/cli.ts'), 'hook', 'claude', phase],
+        {
+          cwd: dir,
+          env: {...process.env, PB_HOME: dir, PB_PROJECT_ID: ''},
+          input: JSON.stringify({session_id: 's1', ...extra}),
+          encoding: 'utf8',
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    const denied = (out: string) =>
+      out ? JSON.parse(out).hookSpecificOutput.permissionDecision === 'deny' : false;
+    const session = invoke('session');
+    assert.match(session, /ALWAYS APPLY/);
+    assert.ok(session.includes(record.id));
+    assert.doesNotMatch(invoke('prompt', {prompt: 'ok'}), /ALWAYS APPLY/, 'sent once per version');
+    const gate = invoke('gate', {tool_name: 'Edit'});
+    assert.ok(denied(gate));
+    assert.ok(gate.includes(record.id) && gate.includes('always apply'));
+    assert.equal(invoke('gate', {tool_name: 'Read'}), '', 'only edits are gated');
+    invoke('tool', {tool_name: 'mcp__personal-brain__brain_get', tool_input: {id: record.id}});
+    assert.equal(invoke('gate', {tool_name: 'Edit'}), '');
+    // A prompt that matches styles blocks edits until they load; two denials, then edits pass.
+    invoke('prompt', {prompt: 'Plan the release and write the security review'});
+    assert.ok(denied(invoke('gate', {tool_name: 'Write'})));
+    assert.ok(denied(invoke('gate', {tool_name: 'Write'})));
+    assert.equal(invoke('gate', {tool_name: 'Write'}), '');
+    // Every matched style must be loaded: one load is not enough, all of them pass.
+    const notice = invoke('prompt', {
+      prompt: 'Plan the release and write the security review again',
+    });
+    assert.match(notice, /REQUIRED BEFORE EDITING/, 'Claude is told up front');
+    const reason = JSON.parse(invoke('gate', {tool_name: 'Edit'})).hookSpecificOutput
+      .permissionDecisionReason as string;
+    const wanted = [...reason.matchAll(/id ([0-9a-f-]{36})/g)].map((m) => m[1]);
+    assert.ok(
+      wanted.every((id) => notice.includes(id)),
+      'the notice names everything the gate blocks on',
+    );
+    assert.ok(wanted.length > 1, 'several matched styles listed');
+    invoke('tool', {tool_name: 'mcp__personal-brain__brain_get', tool_input: {id: wanted[0]}});
+    assert.ok(denied(invoke('gate', {tool_name: 'Edit'})), 'one load is not enough');
+    invoke('prompt', {prompt: 'Plan the release and write the security review once more'});
+    invoke('tool', {
+      tool_name: 'mcp__personal-brain__brain_prepare',
+      tool_input: {recordIds: wanted.slice(1)},
+    });
+    assert.equal(invoke('gate', {tool_name: 'Edit'}), '');
+    const changed = db.get(record.id)!;
+    db.update(record.id, {...changed, content: changed.content + '\nv2'}, changed.version);
+    assert.match(invoke('prompt', {prompt: 'ok'}), /ALWAYS APPLY/, 'resent on a new version');
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('unchecking always apply clears it; partial updates keep it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-always-clear-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    seed(db);
+    const r = db.scopedRecords().find((x) => x.kind === 'preference')!;
+    const on = db.update(r.id, {...r, alwaysApply: true}, r.version);
+    const kept = db.update(r.id, {summary: on.summary + '.'}, on.version);
+    assert.equal(kept.alwaysApply, true);
+    const off = db.update(r.id, {...kept, alwaysApply: false}, kept.version);
+    assert.equal(db.get(off.id)!.alwaysApply, undefined);
+    assert.throws(() => db.update(r.id, {...off, alwaysApply: 'yes'}, off.version), /Always apply/);
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
   }
 });

@@ -74,6 +74,24 @@ test('artifact evidence verifies presence, preserves manual uncertainty and reje
       () => reviewArtifacts(db, p.id, {...args, evidence: [...args.evidence, ...args.evidence]}),
       /duplicated/,
     );
+    assert.throws(
+      () =>
+        reviewArtifacts(db, p.id, {...args, evidence: [{...args.evidence[0], requirementId: 'x'}]}),
+      /"[^"]+:x" is outside the review scope: no such requirement/,
+    );
+    const scoped = db.get(r.id)!;
+    db.db
+      .prepare('UPDATE records SET snapshot=? WHERE id=?')
+      .run(JSON.stringify({...scoped, appliesWhen: {languages: ['typescript']}}), r.id);
+    assert.throws(
+      () => reviewArtifacts(db, p.id, args),
+      /applicability is unresolved for this context\. Pass the instructionSetId/,
+    );
+    assert.equal(
+      reviewArtifacts(db, p.id, {...args, context: {languages: ['typescript']}}).status,
+      'not_verified',
+    );
+    db.db.prepare('UPDATE records SET snapshot=? WHERE id=?').run(JSON.stringify(scoped), r.id);
     writeFileSync(join(outside, 'external.drawio'), 'external');
     symlinkSync(join(outside, 'external.drawio'), join(dir, 'linked.drawio'));
     assert.throws(

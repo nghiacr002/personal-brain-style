@@ -1565,12 +1565,15 @@ test('learning inbox word diff marks insertions, deletions and dropped obligatio
   assert.match(html, /<del>tabs\.<\/del>/);
   assert.match(html, /<ins>spaces\.<\/ins>/);
   assert.match(html, /<del class="lost">Never<\/del>/);
-  assert.ok(!html.includes('<code>'), 'content is escaped');  // A rewritten sentence is shown whole (old, then new), never as interleaved word fragments.
+  assert.ok(!html.includes('<code>'), 'content is escaped'); // A rewritten sentence is shown whole (old, then new), never as interleaved word fragments.
   const rewritten = vm.runInContext(
     'wordDiff("Keep it short. You must cite sources.", "Keep it short. Provide a design per module with a map.")',
     context,
   );
-  assert.match(rewritten, /Keep it short\. <del class="lost">You must cite sources\.<\/del><ins>Provide a design per module with a map\.<\/ins>/);
+  assert.match(
+    rewritten,
+    /Keep it short\. <del class="lost">You must cite sources\.<\/del><ins>Provide a design per module with a map\.<\/ins>/,
+  );
 });
 
 test('navigation keeps setup visible and groups trace explorer, skill discovery, style discovery and startup index under diagnostics', () => {

@@ -76,6 +76,8 @@ export type BrainRecord = {
   content: string;
   tags: string[];
   useWhen?: string;
+  /** Sent to agents at session start and enforced before edits, without a prompt match. */
+  alwaysApply?: boolean;
   requiredIds?: string[];
   examples?: string[];
   principles?: string[];

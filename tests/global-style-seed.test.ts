@@ -161,7 +161,11 @@ test('a fresh library gets the release templates, the agent roles style and no o
       assert.equal(seeded.styleIds.length, t.styleKeys.length, `${t.name} kept every style`);
     }
     const shared = db.list({limit: 300});
-    assert.ok(shared.some((r) => r.keyId === 'agent-roles-claude-lead-codex-worker'));
+    const roles = shared.find((r) => r.keyId === 'agent-roles-claude-lead-codex-worker');
+    assert.equal(roles?.alwaysApply, true, 'agent roles is always applied on a fresh install');
+    assert.match(roles!.content, /Review limit: two rounds, then the leader decides/);
+    assert.ok(roles!.requirements?.some((q) => q.id === 'req-review-limit'));
+    assert.equal(shared.filter((r) => r.alwaysApply).length, 1);
     assert.doesNotMatch(JSON.stringify(shared), /\bCAB\b/);
   } finally {
     db.close();

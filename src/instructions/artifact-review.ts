@@ -53,8 +53,24 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
       (r) => r.recordId === e.recordId && r.id === e.requirementId,
     );
     const key = e.recordId + ':' + e.requirementId;
-    if (!requirement || requirement.recordVersion !== e.recordVersion || byKey.has(key)) {
-      throw new BrainError('Evidence is stale, duplicated or outside the review scope');
+    const entry = `Evidence ${JSON.stringify(key)}`;
+    if (byKey.has(key)) {
+      throw new BrainError(`${entry} is duplicated`);
+    }
+    if (requirement && requirement.recordVersion !== e.recordVersion) {
+      throw new BrainError(
+        `${entry} is stale: recordVersion ${e.recordVersion}, current ${requirement.recordVersion}`,
+      );
+    }
+    if (!requirement) {
+      const skipped = resolved.guidance.find(
+        (g) => g.recordId === e.recordId && g.status !== 'applicable',
+      );
+      throw new BrainError(
+        skipped
+          ? `${entry} is outside the review scope: record applicability is ${skipped.status} for this context. Pass the instructionSetId from brain_prepare, or the same context (activity, languages, frameworks, targets).`
+          : `${entry} is outside the review scope: no such requirement in the selected records or their required links.`,
+      );
     }
     byKey.set(key, e);
   }

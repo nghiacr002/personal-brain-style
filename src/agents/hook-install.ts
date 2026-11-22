@@ -41,7 +41,7 @@ function baseArgv(opts: InstallOptions) {
 }
 export function hookCommand(
   agent: Agent,
-  phase: 'session' | 'prompt' | 'tool',
+  phase: 'session' | 'prompt' | 'tool' | 'gate',
   opts: InstallOptions = {},
 ) {
   const base = baseArgv(opts);
@@ -87,7 +87,7 @@ function own(entry: unknown): boolean {
 // Own commands are tagged with a benign statusMessage to make safe removal deterministic.
 function stripOwn(config: HookConfig) {
   const hooks = ensureHooks(config);
-  for (const event of ['SessionStart', 'UserPromptSubmit', 'PostToolUse']) {
+  for (const event of ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PreToolUse']) {
     const list = hooks[event];
     if (!Array.isArray(list)) {
       continue;
@@ -118,7 +118,12 @@ function add(config: HookConfig, agent: Agent, opts: InstallOptions) {
     ['SessionStart', 'session'],
     ['UserPromptSubmit', 'prompt'],
     ['PostToolUse', 'tool'],
+    ['PreToolUse', 'gate'],
   ] as const) {
+    // Only Claude needs the edit gate: it skips index-only styles, Codex loads them.
+    if (phase === 'gate' && agent !== 'claude') {
+      continue;
+    }
     const handler: JsonObject = {
       type: 'command',
       command: hookCommand(agent, phase, opts),
@@ -136,6 +141,10 @@ function add(config: HookConfig, agent: Agent, opts: InstallOptions) {
     const groups = hooks[event] || [];
     // Only edits and Personal Brain loads start the hook; other tool calls stay free.
     const group: JsonObject = {hooks: [handler]};
+    if (phase === 'gate') {
+      handler.timeout = 5;
+      group.matcher = 'Edit|Write|MultiEdit|NotebookEdit';
+    }
     if (phase === 'tool') {
       handler.timeout = 5;
       delete handler.additionalContextLimit;

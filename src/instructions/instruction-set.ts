@@ -90,7 +90,17 @@ export function checkInstructionSet(db: BrainDB, projectId: string, args: Record
     throw new BrainError('Review scope differs from the prepared instruction set');
   }
   if (args.context !== undefined && JSON.stringify(args.context) !== JSON.stringify(set.context)) {
-    throw new BrainError('Review context differs from prepared scope');
+    const given = args.context as Record<string, unknown>,
+      prepared = set.context as Record<string, unknown>;
+    const fields = [...new Set([...Object.keys(given || {}), ...Object.keys(prepared || {})])]
+      .filter((k) => JSON.stringify(given?.[k]) !== JSON.stringify(prepared?.[k]))
+      .map(
+        (k) =>
+          `${k}: ${JSON.stringify(given?.[k] ?? null)}, prepared ${JSON.stringify(prepared?.[k] ?? null)}`,
+      );
+    throw new BrainError(
+      `Review context differs from the prepared instruction set (${fields.join('; ')}). Omit context to use the prepared one.`,
+    );
   }
   return {...args, task: set.task, recordIds: set.recordIds, context: set.context};
 }

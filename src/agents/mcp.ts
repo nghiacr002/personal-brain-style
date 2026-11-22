@@ -986,6 +986,7 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
           let resultCount = 0,
             checkCount = 0,
             passed = false;
+          let reviewStatus: string | undefined;
           const recordVersions: Record<string, number> = {};
           if (!response.isError && name === 'brain_bootstrap') {
             for (const item of db.bootstrapWithRecords(
@@ -1027,6 +1028,13 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
                 }
               }
               if (name === 'brain_review') {
+                reviewStatus = typeof info.status === 'string' ? info.status : undefined;
+                for (const row of info.results || []) {
+                  if (typeof row?.recordId === 'string' && !recordIds.includes(row.recordId)) {
+                    recordIds.push(row.recordId);
+                    recordVersions[row.recordId] = row.recordVersion;
+                  }
+                }
                 checkCount = Number(
                   info.automated ??
                     info.results?.filter(
@@ -1098,9 +1106,17 @@ export async function mcpMain(db: BrainDB, chatProjectId?: string) {
               projectId: tracedProjectId,
               sessionLinked: typeof args.threadId === 'string',
               tool: name,
-              resultCount,
-              checkCount,
-              passed,
+              // Each count only where it means something, so other tools don't show a false 0.
+              resultCount: ['brain_discover', 'brain_style'].includes(name)
+                ? resultCount
+                : undefined,
+              checkCount: name === 'brain_review' ? checkCount : undefined,
+              passed: name === 'brain_review' ? passed : undefined,
+              reviewStatus,
+              evidenceCount:
+                name === 'brain_review' && Array.isArray(args.evidence)
+                  ? args.evidence.length
+                  : undefined,
               domain: String(args.domain || '').slice(0, 40),
               promptChars: typeof args.task === 'string' ? args.task.length : 0,
               // The agent's own activity wording, so skipped conditional guidance can be audited.

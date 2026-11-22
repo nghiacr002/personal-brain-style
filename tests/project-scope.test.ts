@@ -32,6 +32,32 @@ test('repository scope honors precedence, nearest file and invalid-file errors w
   }
 });
 
+test('a git worktree uses the main checkout project link, which git ignores', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pb-worktree-'));
+  const main = join(root, 'main'),
+    tree = join(root, 'wt', 'task-1');
+  const git = (cwd: string, ...args: string[]) => {
+    const r = spawnSync('git', args, {cwd, encoding: 'utf8'});
+    assert.equal(r.status, 0, r.stderr);
+  };
+  try {
+    mkdirSync(main);
+    git(main, 'init', '-q');
+    writeFileSync(join(main, '.gitignore'), '.personal-brain.json\n');
+    git(main, 'add', '.gitignore');
+    git(main, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
+    linkRepository(main, 'kid-learning');
+    git(main, 'worktree', 'add', '-q', '-b', 'task/1', tree);
+    mkdirSync(join(tree, 'src'));
+    assert.equal(resolveProjectScope(undefined, join(tree, 'src'), '').projectId, 'kid-learning');
+    // A link inside the worktree still wins.
+    linkRepository(tree, 'other');
+    assert.equal(resolveProjectScope(undefined, tree, '').projectId, 'other');
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
 test('MCP and real hooks detect repository project and omit unrelated defaults', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pb-repository-agent-'));
   const db = new BrainDB(join(root, 'brain.sqlite'));

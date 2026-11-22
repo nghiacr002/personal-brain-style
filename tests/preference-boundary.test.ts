@@ -202,7 +202,7 @@ test('PB-06/PB-07 read-only resolution matches preparation and rejects changed c
           instructionSetId: set.instructionSetId,
           context: {activity: 'plan'},
         }),
-      /context/,
+      /context differs .*activity: "plan", prepared "implement"; formats: null, prepared \[\]\)\. Omit context/,
     );
   } finally {
     f.close();

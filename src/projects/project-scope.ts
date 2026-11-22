@@ -18,6 +18,23 @@ function checkFolder(folder: string) {
   }
 }
 
+// A linked worktree (git worktree add) has a .git file instead of a folder and no copy of the
+// git-ignored link file, so its project comes from the main checkout. Submodules have no commondir.
+function mainCheckout(folder: string): string | undefined {
+  try {
+    const gitFile = readFileSync(join(folder, '.git'), 'utf8');
+    const match = /^gitdir:\s*(.+)$/m.exec(gitFile);
+    if (!match) {
+      return undefined;
+    }
+    const gitDir = resolve(folder, match[1].trim());
+    const commonDir = resolve(gitDir, readFileSync(join(gitDir, 'commondir'), 'utf8').trim());
+    return dirname(commonDir);
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveProjectScope(
   explicit?: string,
   cwd = process.cwd(),
@@ -45,6 +62,11 @@ export function resolveProjectScope(
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw new BrainError('Cannot read repository configuration: ' + file);
+      }
+      const main = mainCheckout(folder);
+      if (main && main !== folder) {
+        folder = main;
+        continue;
       }
       const parent = dirname(folder);
       if (parent === folder) {

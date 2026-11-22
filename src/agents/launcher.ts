@@ -1,5 +1,6 @@
 import {spawnSync} from 'node:child_process';
-import {readFileSync, statSync} from 'node:fs';
+import {appendFileSync, existsSync, readFileSync, statSync} from 'node:fs';
+import {homedir} from 'node:os';
 import {delimiter, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {manageHookConfig, type Agent, type InstallOptions} from './hook-install.ts';
@@ -82,6 +83,34 @@ export function mcpAddArgs(agent: 'claude' | 'codex', from = here) {
     : ['mcp', 'add', 'personal-brain', '--', ...server];
 }
 
+// codex exec has nobody to approve a tool call, so its automatic review can block
+// these and the worker stops. They only read styles or record a review in the local
+// database. Tools that save preferences or feedback still ask.
+export const CODEX_APPROVED_TOOLS = [
+  'brain_discover',
+  'brain_get',
+  'brain_prepare',
+  'brain_resolve',
+  'brain_review',
+];
+
+// Appends only missing sections, so a value the user set for a tool is kept.
+export function approveCodexTools(file: string) {
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  const missing = CODEX_APPROVED_TOOLS.filter(
+    (tool) => !text.includes(`[mcp_servers.personal-brain.tools.${tool}]`),
+  );
+  if (missing.length) {
+    appendFileSync(
+      file,
+      missing
+        .map((tool) => `\n[mcp_servers.personal-brain.tools.${tool}]\napproval_mode = "approve"\n`)
+        .join(''),
+    );
+  }
+  return missing;
+}
+
 type Step = {step: string; ok: boolean; detail: string};
 // One command per agent: hooks (or the OpenCode plugin) plus MCP registration through the agent's own CLI.
 // Windows npm shims (.cmd) cannot be spawned without a shell; executable() resolves them to node + script.
@@ -153,5 +182,25 @@ export function connectAgent(
             .trim()
             .slice(0, 300),
   });
+  if (agent === 'codex' && result.status === 0) {
+    const config = join(
+      dirname(opts.codexFile || join(opts.home || homedir(), '.codex', 'hooks.json')),
+      'config.toml',
+    );
+    try {
+      const added = approveCodexTools(config);
+      steps.push({
+        step: 'approvals',
+        ok: true,
+        detail: `${CODEX_APPROVED_TOOLS.join(', ')} run without approval in ${config}${added.length ? '' : ' (no change)'}`,
+      });
+    } catch (e) {
+      steps.push({
+        step: 'approvals',
+        ok: false,
+        detail: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
   return steps;
 }

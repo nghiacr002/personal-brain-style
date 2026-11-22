@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Roles Flow</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; the swimlane diagram scrolls inside its own frame on phones. */
+:root {
+  --bg: #f6f7fa; --panel: #ffffff; --fg: #1b2230; --muted: #5a6475; --line: #d9dee7;
+  --claude: #3f4fbf; --claude-tint: #eceefb;
+  --codex: #0f7f74; --codex-tint: #e4f4f1;
+  --user: #a5650a; --user-tint: #fbf1e1;
+  --lane-a: #f9fafc; --lane-b: #f1f3f8;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161f; --panel: #1a202c; --fg: #e5e9f1; --muted: #9aa4b6; --line: #2d3545;
+  --claude: #8f9bff; --claude-tint: #232a4a; --codex: #4fd1bf; --codex-tint: #15312f;
+  --user: #f0b24f; --user-tint: #3a2c14; --lane-a: #161b25; --lane-b: #1b2130; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161f; --panel: #1a202c; --fg: #e5e9f1; --muted: #9aa4b6; --line: #2d3545;
+  --claude: #8f9bff; --claude-tint: #232a4a; --codex: #4fd1bf; --codex-tint: #15312f;
+  --user: #f0b24f; --user-tint: #3a2c14; --lane-a: #161b25; --lane-b: #1b2130; color-scheme: dark }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+main { max-width: 1180px; margin: 0 auto; padding-block: 32px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(24px, 3.4vw, 32px); line-height: 1.2; text-wrap: balance; }
+h2 { margin: 0 0 10px; font-size: 18px; text-wrap: balance; }
+p { margin: 0; max-width: 70ch; }
+.lead { font-size: 16.5px; }
+.frame { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+.frame svg { display: block; min-width: 1060px; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); padding: 12px 16px; border-top: 1px solid var(--line); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 14px; height: 14px; border-radius: 3px; border: 2px solid; }
+.ln { width: 26px; height: 0; border-top: 2px solid var(--muted); }
+.ln.dash { border-top-style: dashed; }
+.ln.dot { border-top-style: dotted; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.rule { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.rule b { font-size: 14.5px; }
+.rule p { font-size: 14px; color: var(--muted); }
+code { font-family: var(--mono); font-size: .9em; }
+footer { font-size: 13px; color: var(--muted); }
+svg text { font-family: var(--sans); }
+</style>
+</head>
+<body>
+
+<main>
+  <header>
+    <div class="eyebrow">Personal Brain style · Agent roles v11</div>
+    <h1>Agent roles flow</h1>
+    <p class="lead">Claude owns analysis, design, the UI build and integration; Codex starts building the server, data and logic first and reviews every branch as it finishes. You confirm requirements, make significant decisions and decide serious review findings. The diagram below shows who does each step and where the work comes back to you.</p>
+  </header>
+
+  <section aria-labelledby="flow-title">
+    <h2 id="flow-title">The flow, by who does it</h2>
+    <div class="frame">
+      <svg viewBox="0 0 1130 490" role="img" aria-labelledby="svg-title svg-desc">
+        <title id="svg-title">Agent roles swimlane flow</title>
+        <desc id="svg-desc">Three lanes: You, Claude and Codex. Claude runs business analysis, solution architecture and planning, builds the UI in TypeScript, decides open findings after two review rounds, then integrates and verifies. Codex does read-only discovery, design review, builds server, data and logic tasks, and independently reviews every branch including Claude's UI branch. You confirm requirements, make significant decisions, decide serious findings and receive the per-requirement report.</desc>
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" style="fill: var(--muted)"/>
+          </marker>
+        </defs>
+
+        <!-- lanes -->
+        <rect x="0" y="40" width="1130" height="100" style="fill: var(--lane-a)"/>
+        <rect x="0" y="140" width="1130" height="170" style="fill: var(--lane-b)"/>
+        <rect x="0" y="310" width="1130" height="180" style="fill: var(--lane-a)"/>
+        <line x1="0" y1="140" x2="1130" y2="140" style="stroke: var(--line)"/>
+        <line x1="0" y1="310" x2="1130" y2="310" style="stroke: var(--line)"/>
+        <g font-size="14" font-weight="600">
+          <text x="18" y="95" style="fill: var(--user)">You</text>
+          <text x="18" y="230" style="fill: var(--claude)">Claude</text>
+          <text x="18" y="400" style="fill: var(--codex)">Codex</text>
+        </g>
+
+        <!-- phase header -->
+        <g font-size="11.5" text-anchor="middle" letter-spacing="1" style="fill: var(--muted)">
+          <text x="190" y="25">1 · ANALYSIS</text>
+          <text x="360" y="25">2 · ARCHITECTURE</text>
+          <text x="530" y="25">3 · PLAN</text>
+          <text x="700" y="25">4 · BUILD</text>
+          <text x="870" y="25">REVIEW</text>
+          <text x="1040" y="25">5 · INTEGRATE</text>
+        </g>
+
+        <!-- connectors (drawn first, under boxes) -->
+        <g fill="none" stroke-width="1.6" style="stroke: var(--muted)">
+          <path d="M265 225 H285" marker-end="url(#ah)"/>
+          <path d="M435 225 H455" marker-end="url(#ah)"/>
+          <path d="M605 225 H625" marker-end="url(#ah)"/>
+          <path d="M580 253 V385 H625" marker-end="url(#ah)"/>
+          <path d="M625 410 H490 V253" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+          <path d="M760 253 L830 357" marker-end="url(#ah)"/>
+          <path d="M775 395 H795" marker-end="url(#ah)"/>
+          <path d="M870 357 V253" marker-end="url(#ah)"/>
+          <path d="M945 225 H965" marker-end="url(#ah)"/>
+          <path d="M190 197 V118" stroke-dasharray="5 4" marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <path d="M360 197 V118" stroke-dasharray="5 4" marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <path d="M870 197 V118" stroke-dasharray="5 4" marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <path d="M1040 197 V118" marker-end="url(#ah)"/>
+          <path d="M190 367 V253" stroke-dasharray="2 4" marker-end="url(#ah)"/>
+          <path d="M360 367 V253" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        </g>
+        <g font-size="11" style="fill: var(--muted)">
+          <text x="586" y="330">Codex tasks</text>
+          <text x="496" y="300">blocked</text>
+          <text x="780" y="304" text-anchor="end">UI branch</text>
+          <text x="876" y="290">≤ 2 rounds</text>
+          <text x="196" y="160">gate</text>
+          <text x="366" y="160">gate</text>
+          <text x="876" y="160">ask</text>
+          <text x="196" y="330">findings</text>
+          <text x="366" y="330">review</text>
+        </g>
+
+        <!-- user boxes -->
+        <g font-size="12.5" text-anchor="middle">
+          <g>
+            <rect x="115" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
+            <text x="190" y="86" font-weight="600" style="fill: var(--fg)">Confirm requirements</text>
+            <text x="190" y="104" font-size="11" style="fill: var(--muted)">medium: with design, once</text>
+          </g>
+          <g>
+            <rect x="285" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
+            <text x="360" y="86" font-weight="600" style="fill: var(--fg)">Significant decisions</text>
+            <text x="360" y="104" font-size="11" style="fill: var(--muted)">irreversible design choices</text>
+          </g>
+          <g>
+            <rect x="795" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
+            <text x="870" y="86" font-weight="600" style="fill: var(--fg)">Serious findings</text>
+            <text x="870" y="104" font-size="11" style="fill: var(--muted)">security or data loss</text>
+          </g>
+          <g>
+            <rect x="965" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
+            <text x="1040" y="86" font-weight="600" style="fill: var(--fg)">Final report</text>
+            <text x="1040" y="104" font-size="11" style="fill: var(--muted)">Pass / Fail / Not verified</text>
+          </g>
+        </g>
+
+        <!-- claude boxes -->
+        <g font-size="12.5" text-anchor="middle">
+          <g>
+            <rect x="115" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
+            <text x="190" y="221" font-weight="600" style="fill: var(--fg)">Business analysis</text>
+            <text x="190" y="239" font-size="11" style="fill: var(--muted)">requirements with IDs</text>
+          </g>
+          <g>
+            <rect x="285" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
+            <text x="360" y="221" font-weight="600" style="fill: var(--fg)">Solution design</text>
+            <text x="360" y="239" font-size="11" style="fill: var(--muted)">UI/UX, API contract</text>
+          </g>
+          <g>
+            <rect x="455" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
+            <text x="530" y="221" font-weight="600" style="fill: var(--fg)">Plan + acceptance tests</text>
+            <text x="530" y="239" font-size="11" style="fill: var(--muted)">contract stub first</text>
+          </g>
+          <g>
+            <rect x="625" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="2.5"/>
+            <text x="700" y="221" font-weight="600" style="fill: var(--fg)">Build the UI/UX</text>
+            <text x="700" y="239" font-size="11" style="fill: var(--muted)">after Codex starts</text>
+          </g>
+          <g>
+            <rect x="795" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
+            <text x="870" y="221" font-weight="600" style="fill: var(--fg)">Leader decides</text>
+            <text x="870" y="239" font-size="11" style="fill: var(--muted)">open findings, round 2</text>
+          </g>
+          <g>
+            <rect x="965" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
+            <text x="1040" y="221" font-weight="600" style="fill: var(--fg)">Integrate + verify</text>
+            <text x="1040" y="239" font-size="11" style="fill: var(--muted)">merged review, tests</text>
+          </g>
+        </g>
+
+        <!-- codex boxes -->
+        <g font-size="12.5" text-anchor="middle">
+          <g>
+            <rect x="115" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="1.5"/>
+            <text x="190" y="391" font-weight="600" style="fill: var(--fg)">Read-only discovery</text>
+            <text x="190" y="409" font-size="11" style="fill: var(--muted)">current code and impact</text>
+          </g>
+          <g>
+            <rect x="285" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="1.5"/>
+            <text x="360" y="391" font-weight="600" style="fill: var(--fg)">Design review</text>
+            <text x="360" y="409" font-size="11" style="fill: var(--muted)">feasibility, security, spikes</text>
+          </g>
+          <g>
+            <rect x="625" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="2.5"/>
+            <text x="700" y="391" font-weight="600" style="fill: var(--fg)">Build server + logic</text>
+            <text x="700" y="409" font-size="11" style="fill: var(--muted)">started first, parallel</text>
+          </g>
+          <g>
+            <rect x="795" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="1.5"/>
+            <text x="870" y="391" font-weight="600" style="fill: var(--fg)">Independent review</text>
+            <text x="870" y="409" font-size="11" style="fill: var(--muted)">each branch as it finishes</text>
+          </g>
+        </g>
+        <text x="120" y="472" font-size="11" style="fill: var(--muted)">Small: one agent, straight to build · Medium: one plan, one approval · Large: every step</text>
+        <text x="700" y="452" text-anchor="middle" font-size="11" style="fill: var(--muted)">each worker: own branch + worktree, Personal Brain on; Claude runs what the sandbox can't</text>
+      </svg>
+      <div class="legend">
+        <span><i class="sw" style="border-color: var(--user); background: var(--user-tint)"></i>You</span>
+        <span><i class="sw" style="border-color: var(--claude); background: var(--claude-tint)"></i>Claude</span>
+        <span><i class="sw" style="border-color: var(--codex); background: var(--codex-tint)"></i>Codex</span>
+        <span><i class="ln"></i>hand-off</span>
+        <span><i class="ln dash"></i>decision point or "blocked" return</span>
+        <span><i class="ln dot"></i>parallel input</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="rules-title">
+    <h2 id="rules-title">Rules the diagram doesn't show</h2>
+    <div class="rules">
+      <div class="rule"><b>Three sizes</b><p>Small work: one agent, straight to build. Medium: one plan file with requirement IDs, contract and tasks, approved once. Large: every step and gate.</p></div>
+      <div class="rule"><b>Codex starts first</b><p>After planning, Claude starts the Codex tasks, then builds the UI and reads worker reports as they arrive, so no worker waits.</p></div>
+      <div class="rule"><b>Contract stub first</b><p>When work spans UI and server, the first task is the shared types plus a mock of the API. The UI and the server are then built at the same time.</p></div>
+      <div class="rule"><b>Review each branch as it finishes</b><p>Approved branches merge without waiting for the others. Large work also gets one review of the whole merged diff. The author never gives the final review.</p></div>
+      <div class="rule"><b>Two review rounds, then Claude decides</b><p>Round 2 checks only the fixes; Claude does it when they're small, a fresh reviewer when they're serious. No third round: Claude fixes, accepts, defers or drops each open finding.</p></div>
+      <div class="rule"><b>What the sandbox can't run</b><p>Hand-offs list checks the sandbox blocks, such as browser tests on local ports. Claude runs them, plus the rendered, keyboard and accessibility checks of the UI.</p></div>
+      <div class="rule"><b>Workers keep Personal Brain</b><p>Never <code>enabled=false</code> or <code>--disable hooks</code>. If a worker can't reach Personal Brain, Claude stops and asks you.</p></div>
+      <div class="rule"><b>Blocked: one retry</b><p>A blocked or timed-out worker gets Claude's decision and one restart. If it's blocked again, Claude takes the task over.</p></div>
+      <div class="rule"><b>Requirement changes go back</b><p>A new or changed requirement goes back through analysis, design and planning, and built work is re-checked against it.</p></div>
+    </div>
+  </section>
+
+  <footer>Source: Personal Brain style "Agent roles — Claude leads analysis, design, UI build and integration; Codex builds and reviews", version 11, read 2026-11-22.</footer>
+</main>
+</body>
+</html>

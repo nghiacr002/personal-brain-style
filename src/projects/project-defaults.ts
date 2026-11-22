@@ -119,6 +119,7 @@ export function installProjectDefaults(db: BrainDB) {
     'personal-document-writing',
     'personal-quality-control',
     'personal-quality-control-qc',
+    'personal-git',
   ]) {
     const r = db
       .list({kind: 'preference', status: 'active', limit: 300})

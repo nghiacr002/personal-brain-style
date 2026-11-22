@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync, readFileSync} from 'node:fs';
+import {mkdtempSync, rmSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {commandLine, connectAgent, launcher, mcpAddArgs} from '../src/agents/launcher.ts';
@@ -68,6 +68,18 @@ test('connect installs hooks and registers MCP through the agent CLI; disconnect
       /personal-brain-style/,
     );
     assert.ok(connectAgent('connect', 'opencode', run, {home}).every((s) => s.ok));
+    const config = join(home, '.codex', 'config.toml');
+    writeFileSync(
+      config,
+      '[mcp_servers.personal-brain.tools.brain_get]\napproval_mode = "prompt"\n',
+    );
+    assert.ok(connectAgent('connect', 'codex', run, {home}, () => true).every((s) => s.ok));
+    connectAgent('connect', 'codex', run, {home}, () => true);
+    const toml = readFileSync(config, 'utf8');
+    // The user's own setting is kept, the rest are added once, and write tools are not approved.
+    assert.match(toml, /tools\.brain_get\]\napproval_mode = "prompt"/);
+    assert.equal(toml.match(/approval_mode = "approve"/g)?.length, 4);
+    assert.doesNotMatch(toml, /brain_remember|brain_feedback|brain_forget/);
   } finally {
     rmSync(home, {recursive: true, force: true});
   }

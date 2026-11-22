@@ -1,6 +1,6 @@
 # Style catalog
 
-Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`; do not edit by hand. A fresh library is seeded with these 63 records in 9 capabilities. Existing libraries are never overwritten.
+Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`; do not edit by hand. A fresh library is seeded with these 64 records in 9 capabilities. Existing libraries are never overwritten.
 
 ## How the catalog fits together
 
@@ -18,7 +18,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | Architecture | 9 |
 | Drawing | 3 |
 | UI/UX design | 2 |
-| Engineering standards | 21 |
+| Engineering standards | 22 |
 | Delivery & operations | 4 |
 | Writing documents | 15 |
 
@@ -58,7 +58,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | **Data architecture — models, ownership, lifecycle and flows** | Use when designing conceptual, logical or physical data models, choosing OLTP vs. analytics stores, planning migrations and schema evolution, CDC or event integration, retention, lineage, data contracts or PII handling. | — | — | creating-mermaid-diagrams, azure-postgres, azure-kusto, azure-storage |
 | **Security architecture — threat models, identity and zero trust** | Use when threat modelling a system or feature, designing authentication and authorization, secrets and encryption, supply-chain controls, audit logging, or securing AI agents and tool use. | — | — | azure-compliance, entra-app-registration, entra-agent-id |
 | **Integration architecture — APIs, events and contracts** | Use when designing or reviewing APIs, events, queues, webhooks, file or CDC feeds, partner integrations, sagas, gateways or contract versioning between systems. | — | — | creating-mermaid-diagrams, archify, azure-messaging |
-| **Software design & code architecture — modules, patterns and structure** | Use when structuring a new service or app, adding a feature module, untangling cycles, choosing layered or hexagonal design, applying a pattern or refactoring code structure. Apply the service guidance when changing host composition, endpoint policies, background work or outbound calls. | — | — | understand, understand-domain, codebase-memory |
+| **Software design & code architecture — modules, patterns and structure** | Use when structuring a new service or app, adding a feature module, untangling cycles, choosing layered or hexagonal design, applying a pattern or refactoring code structure. Apply the service guidance when changing host composition, endpoint policies, background work or outbound calls. Apply the frontend guidance when changing API request handling or polling. | — | — | understand, understand-domain, codebase-memory |
 
 ## Drawing
 
@@ -100,6 +100,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | **Development — Swift** | Use when writing or reviewing Swift code. Apply only framework/runtime sections matching the task. | Global Development Standard | — | — |
 | **Development — Kotlin** | Use when writing or reviewing Kotlin code. Apply only framework/runtime sections matching the task. | Global Development Standard | — | — |
 | **Development — Dart** | Use when writing or reviewing Dart code. Apply only framework/runtime sections matching the task. | Global Development Standard | — | — |
+| **Git — branches, commits and safe history** | Use when creating branches or worktrees, committing, writing commit messages, opening or merging pull requests, rebasing, resolving conflicts, tagging releases or cleaning up a repository. | — | — | — |
 
 ## Delivery & operations
 
@@ -108,7 +109,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | **AI delivery lifecycle — plan, build, verify, ship and learn** | Use when an agent plans or delivers a feature end to end, or when building, evaluating or launching an LLM-based feature, assistant or agent. | — | — | codebase-memory, understand, full-output-enforcement, microsoft-foundry |
 | **Technical leadership — plans, standards and delivery quality** | Use when breaking down a feature or epic into tasks, estimating, setting coding standards or review policy, managing tech debt or risks, delegating work to people or agents, or deciding release readiness. | — | — | understand, codebase-memory, understand-diff |
 | **SRE & DevOps — reliability, delivery pipelines and operations** | Use when defining SLOs, building or changing CI/CD pipelines or IaC, planning a release strategy, setting up monitoring and alerts, responding to or reviewing an incident, or planning capacity and backups. | — | — | appinsights-instrumentation, azure-observability, azure-deploy, azure-diagnostics |
-| **Agent roles — Claude leads analysis, design and integration; Codex builds and reviews** | Use when a task can be split between Claude and Codex: requirements, solution design, planning, delegating, implementing, testing, security review, merging or final verification. | — | — | — |
+| **Agent roles — Claude leads analysis, design, UI build and integration; Codex builds and reviews** | Use when a task can be split between Claude and Codex: requirements, solution design, planning, delegating, implementing (including who builds the UI), testing, security review, merging or final verification. | — | — | — |
 
 ## Writing documents
 

@@ -164,9 +164,22 @@ test('a fresh library gets the release templates, the agent roles style and no o
     const roles = shared.find((r) => r.keyId === 'agent-roles-claude-lead-codex-worker');
     assert.equal(roles?.alwaysApply, true, 'agent roles is always applied on a fresh install');
     assert.match(roles!.content, /Review limit: two rounds, then the leader decides/);
+    assert.match(roles!.content, /Claude develops the UI\/UX in TypeScript itself/);
+    assert.match(roles!.content, /Workers keep Personal Brain/);
+    assert.match(roles!.content, /Claude starts the Codex tasks first/);
+    assert.ok(roles!.requirements?.some((q) => q.id === 'req-sandbox-checks'));
     assert.ok(roles!.requirements?.some((q) => q.id === 'req-review-limit'));
     assert.equal(shared.filter((r) => r.alwaysApply).length, 1);
     assert.doesNotMatch(JSON.stringify(shared), /\bCAB\b/);
+    const git = shared.find((r) => r.keyId === 'git');
+    assert.ok(git?.requirements?.some((q) => q.id === 'req-git-safe-actions'));
+    const withGit = templates.filter((t) => t.styleIds.includes(git!.id)).map((t) => t.name);
+    assert.deepEqual(withGit.sort(), [
+      'Build & verify — development from agreed design',
+      'Full delivery — analysis to release',
+      'Research & proof of concept',
+      'Starter',
+    ]);
   } finally {
     db.close();
     rmSync(dir, {recursive: true, force: true});

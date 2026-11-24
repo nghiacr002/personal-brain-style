@@ -263,6 +263,9 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
   const event = db.trace({
     // trace() keeps only known agent names, so a made-up host is stored as unknown.
     agent: typeof args.host === 'string' ? args.host : 'unknown',
+    ...(typeof args.threadId === 'string' && typeof args.host === 'string'
+      ? {runId: `${args.host}:${args.threadId}`}
+      : {}),
     channel: 'review',
     eventType: 'compliance.review',
     outcome: status,

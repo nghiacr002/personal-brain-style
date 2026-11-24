@@ -574,6 +574,41 @@ function pagination(total: number) {
     : '';
 }
 let toastTimer: ReturnType<typeof setTimeout>;
+/**
+ * Library styles added after this project was last saved (a release, an upgrade or your own new
+ * style) are invisible to the project until selected, so say so where the project's styles are.
+ */
+function newStylesNotice(project: ProjectConfig) {
+  let seen = project.updatedAt;
+  try {
+    const dismissed = localStorage.getItem(`pb-new-styles-seen:${project.id}`);
+    if (dismissed && dismissed > seen) {
+      seen = dismissed;
+    }
+  } catch {
+    /* Storage unavailable: compare with the project's last save only. */
+  }
+  const fresh = items.filter(
+    (r) =>
+      !r.projectId &&
+      r.status === 'active' &&
+      r.kind === 'preference' &&
+      !r.compatibility &&
+      r.createdAt > seen &&
+      !project.assignments.some((a) => a.recordId === r.id),
+  );
+  if (!fresh.length) {
+    return '';
+  }
+  return `<div class="notice new-styles" role="status"><b>New in your library since this project was last saved</b><p>These styles are not used here until you add them.</p><ul>${fresh
+    .map(
+      (r) =>
+        `<li><span><strong>${esc(r.title)}</strong> <small class="hint">${esc(r.summary)}</small></span><button class="button ghost small" data-action="project-add-new-style" data-record-id="${esc(r.id)}">Add to project</button></li>`,
+    )
+    .join(
+      '',
+    )}</ul><button class="link-btn" data-action="project-dismiss-new-styles">Not now</button></div>`;
+}
 function toast(message: string) {
   const el = $('toast');
   el.textContent = message;
@@ -1799,7 +1834,7 @@ async function projectScreen() {
       projectTab === 'personal'
         ? availableStyles.filter((r) => r.projectId === selectedProject!.id)
         : availableStyles;
-    const styles = `<div class="section-heading"><div><h2>Project styles</h2><p class="hint">Selected styles, dependencies and private records in one place. Private records marked Not selected are not applied.</p></div><button class="button ghost small" data-action="private-style">New personalized style</button></div>
+    const styles = `${projectTab === 'styles' ? newStylesNotice(selectedProject) : ''}<div class="section-heading"><div><h2>Project styles</h2><p class="hint">Selected styles, dependencies and private records in one place. Private records marked Not selected are not applied.</p></div><button class="button ghost small" data-action="private-style">New personalized style</button></div>
       <div class="page-actions style-scope-toolbar" aria-label="Style scope"><a class="button ghost small" href="#/projects/${encodeURIComponent(selectedProject.id)}" ${projectTab === 'styles' ? 'aria-current="page"' : ''}>All styles (${availableStyles.length})</a><a class="button ghost small" href="#/projects/${encodeURIComponent(selectedProject.id)}?tab=personal" ${projectTab === 'personal' ? 'aria-current="page"' : ''}>Private to this project (${availableStyles.filter((r) => r.projectId === selectedProject!.id).length})</a></div>
       ${scopeError ? `<p role="alert">${esc(scopeError)} <button class="button ghost small" data-action="project-edit">Review selections</button></p>` : ''}
       ${
@@ -5167,6 +5202,43 @@ async function delegated(ev: MouseEvent) {
         await skillDiscovery();
         break;
       case 'project-refresh':
+        await projectScreen();
+        break;
+      case 'project-add-new-style': {
+        const project = selectedProject!;
+        button.disabled = true;
+        try {
+          selectedProject = await api<ProjectConfig>(`/api/projects/${project.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              project: {
+                name: project.name,
+                description: project.description,
+                assignments: [
+                  ...project.assignments,
+                  {recordId: button.dataset.recordId!, override: null},
+                ],
+              },
+              expectedVersion: project.version,
+            }),
+          });
+          toast('Style added to this project');
+          await projectScreen();
+        } catch (e) {
+          button.disabled = false;
+          toast(e instanceof Error ? e.message : 'Could not add the style');
+        }
+        break;
+      }
+      case 'project-dismiss-new-styles':
+        try {
+          localStorage.setItem(
+            `pb-new-styles-seen:${selectedProject!.id}`,
+            new Date().toISOString(),
+          );
+        } catch {
+          /* Without storage the notice simply shows again next time. */
+        }
         await projectScreen();
         break;
       case 'project-new':

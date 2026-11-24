@@ -112,6 +112,19 @@ test('a manual pass counts only with proof; file proofs are checked; unclaimed r
       evidence: [ev('req-doc', {proof: {kind: 'file', path: '../etc/passwd'}})],
     });
     assert.equal(escape.isError, true);
+    // A review from a known host and thread is traced to that session, not as unlinked.
+    await callTool(db, 'brain_review', {
+      projectId: p.id,
+      instructionSetId: set.instructionSetId,
+      host: 'codex',
+      threadId: 'thread-9',
+    });
+    const linked = db.db
+      .prepare(
+        "SELECT count(*) AS n FROM trace_events WHERE event_type='compliance.review' AND run_id='codex:thread-9'",
+      )
+      .get() as {n: number};
+    assert.equal(linked.n, 1);
   } finally {
     db.close();
     rmSync(dir, {recursive: true, force: true});

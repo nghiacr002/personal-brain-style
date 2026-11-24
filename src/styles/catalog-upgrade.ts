@@ -3,8 +3,9 @@ import {BrainDB, checkInput} from '../core/database.ts';
 import {BrainError, type BrainRecord} from '../core/models.ts';
 import {catalogBaseline, catalogBaselineLinks} from './catalog-baseline.ts';
 import {globalStyleCatalog} from './global-style-catalog.ts';
+import {validateRequirements} from '../core/requirements.ts';
 
-const fingerprint = (r: Partial<BrainRecord>) =>
+export const fingerprint = (r: Partial<BrainRecord>) =>
   createHash('sha256')
     .update(
       JSON.stringify({
@@ -12,7 +13,8 @@ const fingerprint = (r: Partial<BrainRecord>) =>
         principles: r.principles || [],
         reviewCriteria: r.reviewCriteria || [],
         externalSkills: r.externalSkills || [],
-        requirements: r.requirements || [],
+        // Saving normalizes requirements (for example their conditions), so compare that form.
+        requirements: validateRequirements(r.requirements || []),
         checks: r.checks || [],
       }),
     )
@@ -21,17 +23,27 @@ export function catalogUpgradePreview(db: BrainDB) {
   const rows = db.list({limit: 300}).filter((r) => !r.projectId);
   return rows.flatMap((current) => {
     const proposed = globalStyleCatalog.find((r) => r.keyId === current.keyId);
-    if (!proposed || current.content === proposed.content) {
+    // A release can change only requirements, criteria, title, tags or Use when text; those count too.
+    const surface = (r: Partial<BrainRecord>) =>
+      JSON.stringify([fingerprint(r), r.title, r.summary, r.useWhen, [...(r.tags || [])].sort()]);
+    if (!proposed || surface(current) === surface(proposed)) {
       return [];
     }
     const originalLinks = catalogBaselineLinks[current.keyId!] || [];
-    const links = (current.requiredIds || []).map((id) => db.get(id)?.keyId).sort();
+    const links = JSON.stringify((current.requiredIds || []).map((id) => db.get(id)?.keyId).sort());
+    // Links of the first release, or of the current release (later releases added links).
+    const releasedLinks = [originalLinks, proposed.requiredIds || []].map((l) =>
+      JSON.stringify([...l].sort()),
+    );
     const unchanged =
-      fingerprint(current) === catalogBaseline[current.keyId!] &&
-      JSON.stringify(links) === JSON.stringify([...originalLinks].sort()) &&
+      (catalogBaseline[current.keyId!] || []).includes(fingerprint(current)) &&
+      releasedLinks.includes(links) &&
       !current.supportingLinks?.length &&
-      !current.skillBindings?.length &&
-      !current.preferences?.length;
+      // Catalog skill bindings are release content, not personal edits.
+      (!current.skillBindings?.length ||
+        JSON.stringify(current.skillBindings) === JSON.stringify(proposed.skillBindings || [])) &&
+      (!current.preferences?.length ||
+        JSON.stringify(current.preferences) === JSON.stringify(proposed.preferences || []));
     return [
       {
         id: current.id,

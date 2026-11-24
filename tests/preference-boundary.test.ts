@@ -10,7 +10,13 @@ import {commonStandard} from '../src/styles/development-standards.ts';
 import {seedGlobalStyles} from '../src/styles/global-style-seed.ts';
 import {matchSkill} from '../src/projects/skill-discovery.ts';
 import {callTool} from '../src/agents/mcp.ts';
-import {catalogUpgradePreview, applyCatalogUpgrade} from '../src/styles/catalog-upgrade.ts';
+import {
+  catalogUpgradePreview,
+  applyCatalogUpgrade,
+  fingerprint,
+} from '../src/styles/catalog-upgrade.ts';
+import {catalogBaseline} from '../src/styles/catalog-baseline.ts';
+import {globalStyleCatalog} from '../src/styles/global-style-catalog.ts';
 
 function fixture() {
   const folder = mkdtempSync(join(tmpdir(), 'pb-boundary-')),
@@ -263,6 +269,33 @@ test('PB-09 catalog upgrades preserve personal edits and private copies', () => 
     assert.equal(proposal.eligible, false);
     assert.throws(() => applyCatalogUpgrade(f.db, r.id, proposal.version), /personal edits/);
     assert.equal(f.db.get(r.id)!.content, 'My own workflow');
+  } finally {
+    f.close();
+  }
+});
+test('an unedited copy of any released version can upgrade; every catalog style is fingerprinted', () => {
+  // Regression: the baseline held one old release, so unedited beta installs never upgraded.
+  for (const r of globalStyleCatalog) {
+    assert.ok(
+      catalogBaseline[r.keyId!]?.includes(fingerprint(r)),
+      `${r.keyId}: run node scripts/run.mjs scripts/catalog-baseline.mjs`,
+    );
+  }
+  const f = fixture();
+  try {
+    seedGlobalStyles(f.db);
+    const r = f.db.list({limit: 300}).find((r) => r.keyId === 'performance-scaling')!;
+    // Simulate an install that still holds an earlier released version of this style.
+    const earlier = f.db.update(r.id, {content: 'Earlier released wording'}, r.version);
+    catalogBaseline[r.keyId!].push(fingerprint(earlier));
+    try {
+      const proposal = catalogUpgradePreview(f.db).find((p) => p.id === r.id)!;
+      assert.equal(proposal.eligible, true);
+      applyCatalogUpgrade(f.db, r.id, proposal.version);
+      assert.match(f.db.get(r.id)!.content, /CONNECTIONS AND POOLS/);
+    } finally {
+      catalogBaseline[r.keyId!].pop();
+    }
   } finally {
     f.close();
   }

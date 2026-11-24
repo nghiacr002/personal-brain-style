@@ -131,13 +131,15 @@ The sidebar groups pages into **Workspace** (Overview, Projects, Library, Learni
 
 The Library type **Templates** holds reusable document outlines, code scaffolds and prompt starters. Each row has a Copy action; agents find templates through MCP discovery. In data and the API the record kind remains `example`.
 
-Trace Explorer, under Diagnostics, updates live every 5 seconds. See [Trace Explorer](docs/TRACE.md).
+Trace Explorer, under Diagnostics, updates live every 5 seconds. Its **Style usage** table counts, per style, how often agents loaded it (by agent and session), how often hooks offered it and the share of offers that were loaded, and how often reviews checked against it; select a style to filter the timeline. See [Trace Explorer](docs/TRACE.md).
+
+A project's Styles tab lists library styles added since the project was last saved, so a new release style or your own new style is not missed; **Add to project** selects it.
 
 ## Learning loop and project instructions
 
 Learning runs on its own in one loop: **Learn → Feedback → Consent → Reuse**. Agents relay corrections and your explicit remember/forget requests as they work, and — if you turn it on when the Learning page first asks (it is off by default) — whenever a project's customized styles change, Personal Brain asks Codex or Claude to compare them and propose shared-style updates (no agent call when nothing changed). The **Learning** page shows what it is doing and lists proposed changes; your only step is to apply or dismiss each one. Applying creates a new style version that agents reuse on their next task, and History can restore. Proposals from your projects re-check that their sources and the shared style are unchanged, and never overwrite project-private copies.
 
-Agents can use `brain_prepare` to load a version-bound task instruction set, then `brain_review` to check the same set before completion. See [Learning and instruction workflow](docs/LEARNING-AND-INSTRUCTIONS.md) for research decisions, examples and verification limits.
+Agents can use `brain_prepare` to load a version-bound task instruction set, then `brain_review` to check the same set before completion. A requirement passes only with proof of the kind it names: a command and its exit code, a repository file (optionally containing given text, which Personal Brain checks) or a captured output sample. Review criteria an agent does not claim are advisory. See [Learning and instruction workflow](docs/LEARNING-AND-INSTRUCTIONS.md) for research decisions, examples and verification limits.
 
 ## Data and upgrades
 
@@ -148,6 +150,8 @@ personal-brain backup /absolute/path/brain-backup.sqlite
 npm install -g personal-brain-style@beta
 personal-brain doctor
 ```
+
+After an upgrade, **Library → … → Review catalog updates** lists release styles that changed. A style you have not edited, from any earlier release, can be updated in one step; styles with your own edits are kept and shown for manual comparison.
 
 Stop the running server before upgrading. Restart afterward. Run `personal-brain connect …` again if the installation path or npx version changes. Keep backups before upgrades; do not run an older version against a migrated database.
 

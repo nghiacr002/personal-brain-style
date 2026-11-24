@@ -94,6 +94,8 @@ test('MCP and real hooks detect repository project and omit unrelated defaults',
     assert.match(hook.stdout, /Project coding/);
     assert.doesNotMatch(hook.stdout, /Use scoped coding/);
     assert.match(hook.stdout, /brain_get/);
+    // The agent is told its session id, so its MCP calls join the hook's trace.
+    assert.match(hook.stdout, /pass threadId \\"actual-thread\\" on every Personal Brain MCP call/);
     assert.ok(hook.stdout.includes(p.id));
     assert.equal(db.projectActivity(p.id).linked, 1);
     writeFileSync(join(root, '.personal-brain.json'), JSON.stringify({projectId: 'missing'}));

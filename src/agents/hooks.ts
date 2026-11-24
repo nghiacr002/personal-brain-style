@@ -572,6 +572,10 @@ export function executeHook(db: BrainDB, agent: AgentKind, phase: HookPhase) {
         startupContext(db, projectId) +
         discoveryNote +
         toolHint(agent) +
+        // MCP calls cannot see the host's session; with this id they join the hook's trace.
+        (sessionId
+          ? `\nSession link: pass threadId "${sessionId.slice(0, 100)}" on every Personal Brain MCP call, so the calls are traced to this session.`
+          : '') +
         (always ? '\n\n' + always : '');
       const baseline = db.bootstrapWithRecords(1600, projectId).records;
       db.trace({

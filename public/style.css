@@ -617,3 +617,4 @@ fieldset.field legend{font-size:12px;font-weight:700;color:var(--muted);margin-b
 .style-usage th:first-child{width:auto}.style-usage td{padding:10px 16px;border-top:1px solid var(--line)}.style-usage .num{text-align:right;font-variant-numeric:tabular-nums}.style-usage .link-btn{font-size:14px;text-align:left}
 .style-usage .nowrap{white-space:nowrap}
 @media(max-width:700px){.style-usage td{border-top:0;padding:0}.style-usage td[data-label]::before{content:attr(data-label) " ";color:var(--muted);font-size:12px}}
+.new-styles ul{list-style:none;padding:0;margin:10px 0;display:grid;gap:8px}.new-styles li{display:flex;justify-content:space-between;align-items:center;gap:12px}.new-styles li small{display:block;margin-top:2px}

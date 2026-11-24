@@ -134,6 +134,14 @@ export function installedSkills(folder?: string, home = homedir()) {
   }
   return {skills, issues};
 }
+// Which installed copies each agent loads natively.
+const loads: Record<string, (s: InstalledSkill) => boolean> = {
+  claude: (s) => s.agent === 'claude',
+  codex: (s) => ['codex', 'shared', 'agents'].includes(s.agent),
+  opencode: (s) =>
+    ['opencode', 'shared', 'agents'].includes(s.agent) ||
+    (s.agent === 'claude' && !/[\\/]plugins[\\/]/.test(s.file)),
+};
 export function matchSkill(reference: string, skills: InstalledSkill[], host?: string) {
   const name = reference
     .replace(/\s*\([^)]*\)\s*$/, '')
@@ -155,15 +163,22 @@ export function matchSkill(reference: string, skills: InstalledSkill[], host?: s
   if (!matches.length && name.includes(':')) {
     matches = skills.filter((s) => s.name.toLowerCase() === name.split(':').at(-1));
   }
-  // Project installation takes precedence; differing agent copies require explicit choice.
+  // A host's own copies take precedence over shared ones it can also read.
+  if (host && loads[host] && matches.some(loads[host])) {
+    matches = matches.filter(loads[host]);
+  }
+  // Project installation takes precedence; differing copies one agent loads need a choice.
   if (matches.some((s) => s.scope === 'project')) {
     matches = matches.filter((s) => s.scope === 'project');
   }
-  const versions = new Set(matches.map((s) => s.digest));
+  // Each agent loads only the copies it can see; different copies for different agents are fine.
+  const differs = (list: InstalledSkill[]) => new Set(list.map((s) => s.digest)).size > 1;
   let status: 'missing' | 'ambiguous' | 'available' = 'available';
   if (matches.length === 0) {
     status = 'missing';
-  } else if (versions.size > 1) {
+  } else if (
+    host ? differs(matches) : Object.values(loads).some((l) => differs(matches.filter(l)))
+  ) {
     status = 'ambiguous';
   }
   return {

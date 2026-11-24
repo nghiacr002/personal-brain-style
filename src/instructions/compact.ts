@@ -9,6 +9,15 @@ const SHARED = [
   'PROCEDURES\nUse relevant installed skills for technical steps. Their incidental defaults do not override explicit task choices or applicable personal preferences. A missing optional skill is not a reason to invent verification.',
 ];
 
+/** Content without the shared scope and procedures paragraphs (stated once by the caller). */
+export function withoutSharedText(content: string): string {
+  let out = content;
+  for (const text of SHARED) {
+    out = out.split(text).join('');
+  }
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /** The record as an agent should read it; stored content is unchanged. */
 export function compactForAgent<T extends BrainRecord>(record: T): T {
   let content = record.content || '';

@@ -185,8 +185,22 @@ test('PB-05 requesting host avoids unrelated agent skill copies', () => {
       digest: 'b',
     },
   ];
-  assert.equal(matchSkill('renderer', skills).status, 'ambiguous');
+  // Codex and Claude each load their own copy, so differing copies are not ambiguous.
+  assert.equal(matchSkill('renderer', skills).status, 'available');
   assert.equal(matchSkill('renderer', skills, 'codex').skills[0].id, 'a');
+  // A shared copy that differs from Claude's plugin copy: Claude uses its own, Codex the shared one.
+  const shared = [
+    {...skills[1], file: '/x/plugins/cache/b'},
+    {...skills[0], agent: 'shared', file: '/c', digest: 'c'},
+  ];
+  assert.equal(matchSkill('renderer', shared).status, 'available');
+  assert.equal(matchSkill('renderer', shared, 'claude').skills[0].id, 'b');
+  assert.equal(matchSkill('renderer', shared, 'codex').skills[0].file, '/c');
+  // Two different copies one agent loads stay ambiguous.
+  assert.equal(
+    matchSkill('renderer', [...shared, {...skills[0], file: '/d', digest: 'd'}]).status,
+    'ambiguous',
+  );
   assert.equal(matchSkill('renderer', skills, 'chatgpt').status, 'missing');
 });
 test('PB-06/PB-07 read-only resolution matches preparation and rejects changed context', async () => {

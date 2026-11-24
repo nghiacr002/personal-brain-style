@@ -78,7 +78,8 @@ test('inventory covers global, agent, plugin and project skills; reports missing
     assert.ok(inventory.issues.some((i) => i.type === 'unreadable'));
     assert.equal(matchSkill('writer (when writing)', inventory.skills).status, 'available');
     assert.equal(matchSkill('docs:docs', inventory.skills).status, 'available');
-    assert.equal(matchSkill('review', inventory.skills).status, 'ambiguous');
+    // Codex and Claude copies differ, but each agent loads only its own.
+    assert.equal(matchSkill('review', inventory.skills).status, 'available');
     assert.equal(matchSkill('absent', inventory.skills).status, 'missing');
     put(join(repo, '.claude/skills/review/SKILL.md'), skill('review', 'Project version'));
     assert.equal(

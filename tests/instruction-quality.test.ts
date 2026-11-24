@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {compactForAgent} from '../src/instructions/compact.ts';
 import assert from 'node:assert/strict';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -80,7 +81,10 @@ test('TC-REL-004 instruction selection baseline and scoped retrieval', async (t)
       const loaded = await callTool(db, 'brain_get', {projectId: project.id, id: root.id});
       assert.ok(!loaded.isError);
       const content = JSON.parse(loaded.content[0].text);
-      assert.equal(content.content, root.content);
+      // Agents get the record without the shared boilerplate and repeated sections.
+      assert.equal(content.content, compactForAgent(root).content);
+      assert.ok(content.content.length <= root.content.length);
+      assert.doesNotMatch(content.content, /Apply this (specialist guidance|template) only/);
       assert.deepEqual(
         new Set(content.requiredLinked.map((r: {id: string}) => r.id)),
         new Set(

@@ -178,6 +178,15 @@ const HELP = {
         limitations: 'Demo events never count in the metrics and are not evidence of real agent behavior.',
         example: 'Generate, tick Include demo traces, and follow one demo run from hook to review.',
     },
+    trace_styles: {
+        title: 'Style usage',
+        group: 'Trace Explorer',
+        what: 'How often agents used each style in the selected project scope.',
+        how: 'Loaded counts successful brain_get and brain_prepare calls that returned the style, split by agent; Sessions counts the distinct sessions that loaded it. Offered counts hook messages that suggested it, and Reviewed counts compliance reviews that checked work against it. The loaded percentage next to Offered compares loads with offers: a low figure means hooks offer the style for tasks it does not fit, so its tags or Use when text need tightening. Select a style name to filter the timeline to it.',
+        why: 'Shows which styles agents actually rely on, which are only offered, and which are never used.',
+        limitations: 'A load shows that an agent read the style, not that it followed it. Errors, blocked calls and demo events are not counted.',
+        example: 'Agent roles loaded 40 times by Claude and 12 by Codex across 18 sessions.',
+    },
     trace_timeline: {
         title: 'Observed event timeline',
         group: 'Trace Explorer',
@@ -3063,6 +3072,22 @@ async function activity() {
         .map((r) => `<div class="activity-line"><span class="activity-icon">↺</span><div class="activity-text"><b>${esc(r.action)} · ${esc(r.detail)}</b><p>${esc(r.target)}</p></div><span class="activity-time">${esc(formatTime(r.createdAt))}</span></div>`)
         .join('') || empty('No activity', 'Create a record to start your revision history')}${pagination(records.length)}</div>`);
 }
+let traceStylesAll = false;
+function styleUsagePanel(styles) {
+    const shown = traceStylesAll ? styles : styles.slice(0, 10);
+    const body = shown
+        .map((s) => {
+        const agents = Object.entries(s.byAgent)
+            .sort((a, b) => b[1] - a[1])
+            .map(([a, n], i, all) => `<span class="nowrap">${esc(agentName(a))} ${n}${i < all.length - 1 ? ' ·' : ''}</span>`)
+            .join(' ');
+        return `<tr><td><button class="link-btn" data-trace-record="${esc(s.recordId)}" title="Show this style's events">${esc(s.title || 'Deleted record ' + s.recordId.slice(0, 8))}</button>${s.kind ? ` <small class="hint">${esc(s.kind)}${s.version ? ' · v' + s.version : ''}</small>` : ''}</td><td class="num" data-label="Loaded"><b>${s.loaded}</b></td><td data-label="By agent">${agents || '—'}</td><td class="num" data-label="Sessions">${s.sessions}</td><td class="num" data-label="Offered">${s.offered}${s.offered ? `<small class="hint nowrap" title="Loads as a share of hook offers; low means the style is offered for tasks it does not fit"> · ${Math.min(100, Math.round((100 * s.loaded) / s.offered))}% loaded</small>` : ''}</td><td class="num" data-label="Reviewed">${s.reviewed}</td><td class="nowrap" data-label="Last loaded">${s.lastUsed ? esc(formatTime(s.lastUsed)) : '—'}</td></tr>`;
+    })
+        .join('');
+    return `<section class="card panel space-top-18"><div class="panel-head"><div><h2>Style usage ${infoButton('trace_styles')}</h2><p>Most loaded first. Counts cover the selected project, all time.</p></div>${styles.length > 10 ? `<button class="button ghost small" data-action="trace-styles-toggle">${traceStylesAll ? 'Show top 10' : `Show all ${styles.length}`}</button>` : ''}</div>
+    ${styles.length ? `<div class="table-scroll"><table class="record-table style-usage"><thead><tr><th scope="col">Style</th><th scope="col" class="num">Loaded</th><th scope="col">By agent</th><th scope="col" class="num">Sessions</th><th scope="col" class="num">Offered</th><th scope="col" class="num">Reviewed</th><th scope="col">Last loaded</th></tr></thead><tbody>${body}</tbody></table></div>` : empty('No style usage recorded yet', 'Counts appear when agents load styles through Personal Brain')}
+  </section>`;
+}
 let learnPoll;
 const agentName = (a) => ({ claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', chatgpt: 'ChatGPT' })[a] || a;
 function elapsed(from) {
@@ -3183,6 +3208,7 @@ async function traceExplorer() {
       ${reverse ? `<div class="notice"><b>Reverse trace active:</b> ${esc(reverse.title)} — current v${reverse.version}. Event badges show the version recorded at emission, which can differ from the current version.</div>` : ''}
       <div class="trace-actions"><button class="button ghost small" data-action="trace-refresh">Refresh</button><span class="hint">${events.length} matching events shown · ${stats.events} real events in this project scope</span></div>
     </div>
+    ${styleUsagePanel(stats.styles || [])}
     <section class="trace-results space-top-18"><div class="card panel">
        <div class="panel-head"><div><h2>Observed event timeline ${infoButton('trace_timeline')}</h2><p>Newest first. Each record was produced by a hook or MCP call.</p></div><div class="live-status"><label class="check-inline"><input type="checkbox" id="traceLive" ${traceLive ? 'checked' : ''} /> Live updates</label><span class="hint" id="traceUpdated" role="status">${traceLive ? 'Checked ' + new Date().toLocaleTimeString() : 'Paused'}</span></div></div>
        <div class="trace-timeline">${rows || empty('No matching trace events', 'Run Claude, Codex, OpenCode or ChatGPT with Personal Brain connected; their calls appear here')}</div>${pagination(events.length)}
@@ -3224,6 +3250,13 @@ async function traceExplorer() {
         traceTimer = setTimeout(tick, 5000);
     };
     traceTimer = setTimeout(tick, 5000);
+    document.querySelectorAll('[data-trace-record]').forEach((button) => button.addEventListener('click', async () => {
+        page = 1;
+        traceRecord = button.dataset.traceRecord;
+        updateUrl();
+        await traceExplorer();
+        document.querySelector('.trace-results')?.scrollIntoView({ block: 'start' });
+    }));
     for (const id of ['traceProject', 'traceAgent', 'traceChannel', 'traceRecord', 'traceRun']) {
         $(id).addEventListener('change', async () => {
             page = 1;
@@ -4091,6 +4124,11 @@ async function delegated(ev) {
                 await projectScreen();
                 break;
             case 'trace-refresh': {
+                await traceExplorer();
+                break;
+            }
+            case 'trace-styles-toggle': {
+                traceStylesAll = !traceStylesAll;
                 await traceExplorer();
                 break;
             }

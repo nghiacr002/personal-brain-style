@@ -354,8 +354,13 @@ export function taskContext(
   }
   const domains = classify(task);
   const scoped = db.scopedRecords(projectId);
-  const candidates = db
-    .discover(task, undefined, 30, projectId)
+  // Offer only strong matches: at least 30% of the best score (and 6), matched on the title,
+  // tags, useWhen, summary or key, not only on words in the body. Body-only matches made hooks
+  // offer styles agents never loaded (Mermaid: offered 163 times, loaded 0).
+  const found = db.discover(task, undefined, 30, projectId);
+  const floor = Math.max(6, (found[0]?.score || 0) * 0.3);
+  const candidates = found
+    .filter((m) => m.score >= floor && m.matches.some((x) => x.field !== 'guidance'))
     .map((match) => ({record: scoped.find((r) => r.id === match.id)!}));
   const selected: BrainRecord[] = [];
   // Share ranking with MCP; bound only the delivered index size.

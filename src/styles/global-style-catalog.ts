@@ -1,5 +1,5 @@
 // Release catalog: user preferences, outcome criteria and external procedure references.
-import {consolidateCatalog} from './standards-catalog.ts';
+import {consolidateCatalog, ROLE_TAGS} from './standards-catalog.ts';
 import {applyCatalogUpdates} from './catalog-updates.ts';
 import type {RecordInput} from '../core/models.ts';
 export const previousCatalog: Array<RecordInput & {id: string}> = [
@@ -5219,4 +5219,7 @@ export const catalogDomains = [
   },
 ];
 
-export const globalStyleCatalog = applyCatalogUpdates(consolidateCatalog(previousCatalog));
+// Persona tags are dropped from every catalog record, including language standards and updates.
+export const globalStyleCatalog = applyCatalogUpdates(consolidateCatalog(previousCatalog)).map(
+  (r) => ({...r, tags: r.tags.filter((t) => !ROLE_TAGS.has(t.toLowerCase()))}),
+);

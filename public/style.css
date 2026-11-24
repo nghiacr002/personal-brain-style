@@ -613,3 +613,7 @@ fieldset.field legend{font-size:12px;font-weight:700;color:var(--muted);margin-b
 .template-hint{margin-bottom:16px}
 #templatesDialog .assignment-choice[hidden]{display:none}
 .always-apply small{display:block;margin-top:4px}
+/* Trace Explorer style usage: numbers right-aligned, style names as links */
+.style-usage th:first-child{width:auto}.style-usage td{padding:10px 16px;border-top:1px solid var(--line)}.style-usage .num{text-align:right;font-variant-numeric:tabular-nums}.style-usage .link-btn{font-size:14px;text-align:left}
+.style-usage .nowrap{white-space:nowrap}
+@media(max-width:700px){.style-usage td{border-top:0;padding:0}.style-usage td[data-label]::before{content:attr(data-label) " ";color:var(--muted);font-size:12px}}

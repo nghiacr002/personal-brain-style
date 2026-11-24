@@ -18,7 +18,15 @@ import {
 } from '../projects/skill-discovery.ts';
 import {BrainDB} from '../core/database.ts';
 import {ACTIVITIES, activityHint} from '../core/preference-contract.ts';
-import {BrainError, KINDS, type Kind, type Domain, type TaskContext} from '../core/models.ts';
+import {
+  BrainError,
+  KINDS,
+  type BrainRecord,
+  type Kind,
+  type Domain,
+  type TaskContext,
+} from '../core/models.ts';
+import {compactForAgent} from '../instructions/compact.ts';
 import {invokeBackend, inspectBackend} from './bridge.ts';
 import {packageVersion} from './launcher.ts';
 
@@ -88,6 +96,7 @@ const requirementsSchema = {
       id: str,
       label: str,
       type: {type: 'string', enum: ['artifact', 'manual']},
+      verify: {type: 'string', enum: ['command', 'file', 'sample']},
       extension: str,
       extensions: {type: 'array', items: str},
       when: whenSchema,
@@ -95,6 +104,10 @@ const requirementsSchema = {
     ['id', 'label', 'type'],
   ),
 };
+
+function compactRecords<T extends {records: BrainRecord[]}>(result: T): T {
+  return {...result, records: result.records.map(compactForAgent)};
+}
 
 export function tools() {
   return [
@@ -279,7 +292,7 @@ export function tools() {
     {
       name: 'brain_review',
       description:
-        'Run deterministic text checks, or review project artifacts against applicable styles. For artifact review supply projectId and instructionSetId from brain_prepare (or legacy task/recordIds), repository-relative artifacts and evidence bound to checklist record versions. Agent-reported passes remain unverified; file presence does not prove editability or visual quality. Reports are saved in project activity.',
+        'Run deterministic text checks, or review project artifacts against applicable styles. For artifact review supply projectId and instructionSetId from brain_prepare (or legacy task/recordIds), repository-relative artifacts and evidence bound to checklist record versions. A pass counts only with proof: a command with exit code 0, a repository file (optionally containing given text, checked by the server) or a captured output sample; a pass without proof stays not verified. Review criteria you do not claim are advisory. File presence does not prove editability or visual quality. Reports are saved in project activity.',
       inputSchema: schemaObject({
         cwd: str,
         threadId: str,
@@ -301,6 +314,17 @@ export function tools() {
               requirementId: str,
               status: {type: 'string', enum: ['pass', 'fail', 'not_verified']},
               note: str,
+              proof: schemaObject(
+                {
+                  kind: {type: 'string', enum: ['command', 'file', 'sample']},
+                  command: str,
+                  exitCode: {type: 'integer'},
+                  path: str,
+                  contains: str,
+                  excerpt: str,
+                },
+                ['kind'],
+              ),
             },
             ['recordId', 'recordVersion', 'requirementId', 'status', 'note'],
           ),
@@ -571,12 +595,16 @@ export async function callTool(
         if (!projectId) {
           throw new BrainError('Explicit projectId required');
         }
-        return text({...resolveInstructions(db, projectId, args), complianceInstructions});
+        return text(
+          compactRecords({...resolveInstructions(db, projectId, args), complianceInstructions}),
+        );
       case 'brain_prepare':
         if (!projectId) {
           throw new BrainError('Explicit projectId required');
         }
-        return text({...prepareInstructions(db, projectId, args), complianceInstructions});
+        return text(
+          compactRecords({...prepareInstructions(db, projectId, args), complianceInstructions}),
+        );
       case 'brain_bootstrap':
         return text(db.bootstrap(3500, projectId) + '\n\n' + complianceInstructions);
       case 'brain_discover': {
@@ -613,10 +641,10 @@ export async function callTool(
         }
         const inventory = installedSkills(folder);
         return text({
-          ...r,
+          ...compactForAgent(r),
           complianceInstructions,
           requirementChecklist: requirementChecklist([r, ...linked]),
-          requiredLinked: linked,
+          requiredLinked: linked.map(compactForAgent),
           skillAvailability: skillReferences(
             [r, ...linked],
             inventory.skills,

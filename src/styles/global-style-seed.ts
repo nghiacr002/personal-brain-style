@@ -78,6 +78,7 @@ const catalogAdditions: Record<string, string[]> = {
   global_style_catalog_writing_formats_v1: ['doc-markdown', 'doc-html', 'doc-word'],
   global_style_catalog_agent_roles_v1: ['agent-roles-claude-lead-codex-worker'],
   global_style_catalog_git_v1: ['git'],
+  global_style_catalog_performance_v1: ['performance-scaling'],
 };
 
 export function installCatalogAdditions(db: BrainDB): number {

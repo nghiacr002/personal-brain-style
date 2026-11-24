@@ -28,6 +28,7 @@ body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sa
 main { max-width: 1180px; margin: 0 auto; padding-block: 32px 48px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid; gap: 28px; }
+main > * { min-width: 0; }
 header { display: grid; gap: 6px; }
 .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 h1 { margin: 0; font-size: clamp(24px, 3.4vw, 32px); line-height: 1.2; text-wrap: balance; }
@@ -42,11 +43,23 @@ p { margin: 0; max-width: 70ch; }
 .ln { width: 26px; height: 0; border-top: 2px solid var(--muted); }
 .ln.dash { border-top-style: dashed; }
 .ln.dot { border-top-style: dotted; }
-.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 14px; }
 .rule { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
 .rule b { font-size: 14.5px; }
 .rule p { font-size: 14px; color: var(--muted); }
 code { font-family: var(--mono); font-size: .9em; }
+.routes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 14px; }
+.route { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+.route b { font-size: 15px; }
+.route .when { font-size: 13.5px; color: var(--muted); }
+.steps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+.steps i { font-style: normal; color: var(--muted); }
+.st { border: 1.5px solid; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+.st.c { border-color: var(--claude); background: var(--claude-tint); }
+.st.x { border-color: var(--codex); background: var(--codex-tint); }
+.st.u { border-color: var(--user); background: var(--user-tint); }
+.st.e { border-color: var(--line); border-style: dashed; }
+.modifier { border-left: 4px solid var(--user); }
 footer { font-size: 13px; color: var(--muted); }
 svg text { font-family: var(--sans); }
 </style>
@@ -55,17 +68,30 @@ svg text { font-family: var(--sans); }
 
 <main>
   <header>
-    <div class="eyebrow">Personal Brain style · Agent roles v11</div>
+    <div class="eyebrow">Personal Brain style · Agent roles v16</div>
     <h1>Agent roles flow</h1>
-    <p class="lead">Claude owns analysis, design, the UI build and integration; Codex starts building the server, data and logic first and reviews every branch as it finishes. You confirm requirements, make significant decisions and decide serious review findings. The diagram below shows who does each step and where the work comes back to you.</p>
+    <p class="lead">Claude owns analysis, design, the UI build and integration; Codex starts building the server, data and logic first. Each job takes the smallest route that fits, large work ships in slices, and high risk adds its controls on any route. You confirm requirements, make significant decisions and decide serious review findings. The diagram below shows who does each step and where the work comes back to you.</p>
   </header>
+
+  <section aria-labelledby="routes-title">
+    <h2 id="routes-title">Pick a route first</h2>
+    <div class="routes">
+      <div class="route"><b>Quick</b><p class="when">A few files, no new behaviour beyond the ask.</p><div class="steps"><span class="st c">one agent builds + tests</span><i>→</i><span class="st c">brief report</span></div></div>
+      <div class="route"><b>Bug</b><p class="when">A defect that can be reproduced.</p><div class="steps"><span class="st x">discovery</span><i>→</i><span class="st c">failing test</span><i>→</i><span class="st x">fix (Claude if UI)</span><i>→</i><span class="st e">review by risk</span><i>→</i><span class="st c">report with cause</span></div></div>
+      <div class="route"><b>Feature</b><p class="when">One feature on the existing architecture: UI, backend or full-stack.</p><div class="steps"><span class="st c">short plan</span><i>→</i><span class="st u">approve once</span><i>→</i><span class="st c">stub</span><i>→</i><span class="st x">parallel build</span><i>→</i><span class="st e">review by risk</span><i>→</i><span class="st c">integrate</span></div></div>
+      <div class="route"><b>Refactor</b><p class="when">No change in behaviour; a behaviour change found on the way becomes a Bug or Feature.</p><div class="steps"><span class="st x">discovery</span><i>→</i><span class="st c">characterization tests</span><i>→</i><span class="st x">build</span><i>→</i><span class="st e">review by risk</span><i>→</i><span class="st c">integrate</span></div></div>
+      <div class="route"><b>Large or new project</b><p class="when">New architecture or several features.</p><div class="steps"><span class="st c">analysis + design once</span><i>→</i><span class="st x">design review</span><i>→</i><span class="st u">approve</span></div><div class="steps"><span class="st c">slice: plan</span><i>→</i><span class="st x">build</span><i>→</i><span class="st e">review</span><i>→</i><span class="st c">merge</span><i>→</i><span class="when" style="color: var(--muted)">↺ next slice, planned during review</span></div></div>
+      <div class="route"><b>Review only</b><p class="when">You ask for a review.</p><div class="steps"><span class="st x">read-only review</span><i>→</i><span class="st c">findings by severity + verdict</span></div></div>
+      <div class="route modifier"><b>High risk, on any route</b><p class="when">Stored data, migrations, backups, deletion, auth, permissions, privacy, money or external integrations.</p><div class="steps"><span class="st c">risk tests first</span><i>→</i><span class="st u">you approve the plan</span><i>→</i><span class="st x">high effort</span><i>→</i><span class="st x">fresh Codex review + security</span></div><p class="when">A route never removes these. Start on the smallest route and move up when discovery shows more.</p></div>
+    </div>
+  </section>
 
   <section aria-labelledby="flow-title">
     <h2 id="flow-title">The flow, by who does it</h2>
     <div class="frame">
       <svg viewBox="0 0 1130 490" role="img" aria-labelledby="svg-title svg-desc">
         <title id="svg-title">Agent roles swimlane flow</title>
-        <desc id="svg-desc">Three lanes: You, Claude and Codex. Claude runs business analysis, solution architecture and planning, builds the UI in TypeScript, decides open findings after two review rounds, then integrates and verifies. Codex does read-only discovery, design review, builds server, data and logic tasks, and independently reviews every branch including Claude's UI branch. You confirm requirements, make significant decisions, decide serious findings and receive the per-requirement report.</desc>
+        <desc id="svg-desc">Three lanes: You, Claude and Codex. Claude runs business analysis, solution architecture and planning with a risk per task, builds the UI in TypeScript, reviews low-risk Codex branches, decides open findings after two review rounds, then integrates and verifies. Codex does read-only discovery, design review, builds server, data and logic tasks, and reviews high-risk branches and Claude's UI branch. You confirm requirements, make significant decisions, decide serious findings and receive the per-requirement report.</desc>
         <defs>
           <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0 0 L10 5 L0 10 z" style="fill: var(--muted)"/>
@@ -90,7 +116,7 @@ svg text { font-family: var(--sans); }
           <text x="360" y="25">2 · ARCHITECTURE</text>
           <text x="530" y="25">3 · PLAN</text>
           <text x="700" y="25">4 · BUILD</text>
-          <text x="870" y="25">REVIEW</text>
+          <text x="870" y="25">REVIEW BY RISK</text>
           <text x="1040" y="25">5 · INTEGRATE</text>
         </g>
 
@@ -103,6 +129,7 @@ svg text { font-family: var(--sans); }
           <path d="M625 410 H490 V253" stroke-dasharray="5 4" marker-end="url(#ah)"/>
           <path d="M760 253 L830 357" marker-end="url(#ah)"/>
           <path d="M775 395 H795" marker-end="url(#ah)"/>
+          <path d="M760 367 L830 253" marker-end="url(#ah)"/>
           <path d="M870 357 V253" marker-end="url(#ah)"/>
           <path d="M945 225 H965" marker-end="url(#ah)"/>
           <path d="M190 197 V118" stroke-dasharray="5 4" marker-start="url(#ah)" marker-end="url(#ah)"/>
@@ -115,8 +142,9 @@ svg text { font-family: var(--sans); }
         <g font-size="11" style="fill: var(--muted)">
           <text x="586" y="330">Codex tasks</text>
           <text x="496" y="300">blocked</text>
-          <text x="780" y="304" text-anchor="end">UI branch</text>
-          <text x="876" y="290">≤ 2 rounds</text>
+          <text x="752" y="275" text-anchor="end">UI branch</text>
+          <text x="752" y="350" text-anchor="end">low risk</text>
+          <text x="876" y="300">≤ 2 rounds</text>
           <text x="196" y="160">gate</text>
           <text x="366" y="160">gate</text>
           <text x="876" y="160">ask</text>
@@ -129,7 +157,7 @@ svg text { font-family: var(--sans); }
           <g>
             <rect x="115" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
             <text x="190" y="86" font-weight="600" style="fill: var(--fg)">Confirm requirements</text>
-            <text x="190" y="104" font-size="11" style="fill: var(--muted)">medium: with design, once</text>
+            <text x="190" y="104" font-size="11" style="fill: var(--muted)">Feature: plan, once</text>
           </g>
           <g>
             <rect x="285" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
@@ -162,8 +190,8 @@ svg text { font-family: var(--sans); }
           </g>
           <g>
             <rect x="455" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
-            <text x="530" y="221" font-weight="600" style="fill: var(--fg)">Plan + acceptance tests</text>
-            <text x="530" y="239" font-size="11" style="fill: var(--muted)">contract stub first</text>
+            <text x="530" y="221" font-weight="600" style="fill: var(--fg)">Plan, risk + tests</text>
+            <text x="530" y="239" font-size="11" style="fill: var(--muted)">risk cases, stub first</text>
           </g>
           <g>
             <rect x="625" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="2.5"/>
@@ -172,13 +200,13 @@ svg text { font-family: var(--sans); }
           </g>
           <g>
             <rect x="795" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
-            <text x="870" y="221" font-weight="600" style="fill: var(--fg)">Leader decides</text>
-            <text x="870" y="239" font-size="11" style="fill: var(--muted)">open findings, round 2</text>
+            <text x="870" y="221" font-weight="600" style="fill: var(--fg)">Review low risk</text>
+            <text x="870" y="239" font-size="11" style="fill: var(--muted)">decide after ≤ 2 rounds</text>
           </g>
           <g>
             <rect x="965" y="197" width="150" height="56" rx="8" style="fill: var(--claude-tint); stroke: var(--claude)" stroke-width="1.5"/>
             <text x="1040" y="221" font-weight="600" style="fill: var(--fg)">Integrate + verify</text>
-            <text x="1040" y="239" font-size="11" style="fill: var(--muted)">merged review, tests</text>
+            <text x="1040" y="239" font-size="11" style="fill: var(--muted)">reports first, then tests</text>
           </g>
         </g>
 
@@ -197,16 +225,16 @@ svg text { font-family: var(--sans); }
           <g>
             <rect x="625" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="2.5"/>
             <text x="700" y="391" font-weight="600" style="fill: var(--fg)">Build server + logic</text>
-            <text x="700" y="409" font-size="11" style="fill: var(--muted)">started first, parallel</text>
+            <text x="700" y="409" font-size="11" style="fill: var(--muted)">first; effort by risk</text>
           </g>
           <g>
             <rect x="795" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="1.5"/>
-            <text x="870" y="391" font-weight="600" style="fill: var(--fg)">Independent review</text>
-            <text x="870" y="409" font-size="11" style="fill: var(--muted)">each branch as it finishes</text>
+            <text x="870" y="391" font-weight="600" style="fill: var(--fg)">Review high risk</text>
+            <text x="870" y="409" font-size="11" style="fill: var(--muted)">+ Claude's UI branch</text>
           </g>
         </g>
-        <text x="120" y="472" font-size="11" style="fill: var(--muted)">Small: one agent, straight to build · Medium: one plan, one approval · Large: every step</text>
-        <text x="700" y="452" text-anchor="middle" font-size="11" style="fill: var(--muted)">each worker: own branch + worktree, Personal Brain on; Claude runs what the sandbox can't</text>
+        <text x="120" y="472" font-size="11" style="fill: var(--muted)">This is the full Feature flow; each route above runs only the steps it names</text>
+        <text x="700" y="452" text-anchor="middle" font-size="11" style="fill: var(--muted)">each worker: own branch + worktree, loads only its hand-off's styles; Claude runs what the sandbox can't</text>
       </svg>
       <div class="legend">
         <span><i class="sw" style="border-color: var(--user); background: var(--user-tint)"></i>You</span>
@@ -222,19 +250,23 @@ svg text { font-family: var(--sans); }
   <section aria-labelledby="rules-title">
     <h2 id="rules-title">Rules the diagram doesn't show</h2>
     <div class="rules">
-      <div class="rule"><b>Three sizes</b><p>Small work: one agent, straight to build. Medium: one plan file with requirement IDs, contract and tasks, approved once. Large: every step and gate.</p></div>
-      <div class="rule"><b>Codex starts first</b><p>After planning, Claude starts the Codex tasks, then builds the UI and reads worker reports as they arrive, so no worker waits.</p></div>
-      <div class="rule"><b>Contract stub first</b><p>When work spans UI and server, the first task is the shared types plus a mock of the API. The UI and the server are then built at the same time.</p></div>
-      <div class="rule"><b>Review each branch as it finishes</b><p>Approved branches merge without waiting for the others. Large work also gets one review of the whole merged diff. The author never gives the final review.</p></div>
-      <div class="rule"><b>Two review rounds, then Claude decides</b><p>Round 2 checks only the fixes; Claude does it when they're small, a fresh reviewer when they're serious. No third round: Claude fixes, accepts, defers or drops each open finding.</p></div>
+      <div class="rule"><b>Slices, not a waterfall</b><p>Large work ships as thin vertical slices, each about a day: plan, build, review, merge. Requirements and design are refined per slice, so a wrong assumption costs one slice.</p></div>
+      <div class="rule"><b>Risk sets the effort</b><p>High risk means the task touches stored data, migrations, backups, deletion, auth, permissions, privacy, money or external integrations. Those workers and their reviews run at high reasoning effort; routine work runs at medium.</p></div>
+      <div class="rule"><b>Risk cases tested first</b><p>Tasks that change stored data get acceptance tests before building for legacy data migration, retry after a partial failure, interrupted or concurrent writes, and inherited permissions, so a review doesn't find them in round 2.</p></div>
+      <div class="rule"><b>Review by risk</b><p>One review covers code and security. A fresh Codex run reviews high-risk branches and every branch Claude wrote; Claude reviews low-risk Codex branches from the diff. The author never gives the final review.</p></div>
+      <div class="rule"><b>Two review rounds, then Claude decides</b><p>Round 2 checks only the fixes; Claude does it when they're small, a fresh reviewer when they're serious. No third round: Claude fixes, accepts, defers or drops each open finding, and you decide security or data-loss ones.</p></div>
+      <div class="rule"><b>Codex starts first, on a stub</b><p>After planning, Claude starts the Codex tasks, then builds the UI against the contract stub (shared types plus a mock API) and reads reports as they arrive.</p></div>
+      <div class="rule"><b>Self-contained hand-off</b><p>Each hand-off carries the worker card as text, the projectId and the recordIds of the task's styles. The worker calls <code>brain_prepare</code> with them directly and never loads this playbook.</p></div>
+      <div class="rule"><b>Workers keep Personal Brain</b><p>Never <code>enabled=false</code> or <code>--disable hooks</code>. Reviews use <code>codex exec --sandbox read-only</code> with the hand-off on stdin, not <code>codex exec review --base</code>.</p></div>
+      <div class="rule"><b>Claude workers use Code Mode</b><p>When Claude hands coding to another Claude, it starts a headless worker in the task worktree: <code>claude -p --settings '{"env":{"CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"1"}}'</code>. In-session subagents can't use Code Mode.</p></div>
+      <div class="rule"><b>Reports before diffs</b><p>Claude reads each report, its test results and the review verdict, and opens the diff only where a finding, a failed check or a high-risk area points.</p></div>
       <div class="rule"><b>What the sandbox can't run</b><p>Hand-offs list checks the sandbox blocks, such as browser tests on local ports. Claude runs them, plus the rendered, keyboard and accessibility checks of the UI.</p></div>
-      <div class="rule"><b>Workers keep Personal Brain</b><p>Never <code>enabled=false</code> or <code>--disable hooks</code>. If a worker can't reach Personal Brain, Claude stops and asks you.</p></div>
       <div class="rule"><b>Blocked: one retry</b><p>A blocked or timed-out worker gets Claude's decision and one restart. If it's blocked again, Claude takes the task over.</p></div>
       <div class="rule"><b>Requirement changes go back</b><p>A new or changed requirement goes back through analysis, design and planning, and built work is re-checked against it.</p></div>
     </div>
   </section>
 
-  <footer>Source: Personal Brain style "Agent roles — Claude leads analysis, design, UI build and integration; Codex builds and reviews", version 11, read 2026-11-22.</footer>
+  <footer>Source: Personal Brain style "Agent roles — Claude leads analysis, design, UI build and integration; Codex builds and reviews", version 16, read 2026-11-24.</footer>
 </main>
 </body>
 </html>

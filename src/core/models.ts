@@ -24,6 +24,8 @@ export type Requirement = {
   id: string;
   label: string;
   type: 'artifact' | 'manual';
+  /** The proof a manual requirement expects in brain_review evidence. */
+  verify?: 'command' | 'file' | 'sample';
   extension?: string;
   extensions?: string[];
   when?: Applicability;

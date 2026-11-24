@@ -179,3 +179,31 @@ test('examples and referenced skill names are searchable without embedding their
     rmSync(dir, {recursive: true, force: true});
   }
 });
+
+test('hooks do not offer a style that matches only on body words or far below the best match', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-offer-'));
+  const db = new BrainDB(join(dir, 'brain.sqlite'));
+  try {
+    const strong = db.create({
+      ...input,
+      title: 'Connection pools',
+      tags: ['connection-pool', 'database'],
+      useWhen: 'Sizing a database connection pool',
+    });
+    const bodyOnly = db.create({
+      ...input,
+      title: 'Diagrams as code',
+      tags: ['mermaid'],
+      useWhen: 'Drawing sequence diagrams',
+      content: 'A sequence diagram can show a database connection pool.',
+    });
+    const offered = taskContext(db, 'Size the database connection pool')!;
+    assert.match(offered, new RegExp(strong.id));
+    assert.doesNotMatch(offered, new RegExp(bodyOnly.id), 'body-only match is not offered');
+    // brain_discover still returns the full ranked shortlist.
+    assert.ok(db.discover('Size the database connection pool').some((r) => r.id === bodyOnly.id));
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
+});

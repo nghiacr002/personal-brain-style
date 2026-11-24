@@ -1,6 +1,6 @@
 import {resolveInstructions} from './resolve.ts';
 import {checkInstructionSet} from './instruction-set.ts';
-import {realpathSync, statSync} from 'node:fs';
+import {readFileSync, realpathSync, statSync} from 'node:fs';
 import {isAbsolute, relative, resolve, extname, sep} from 'node:path';
 import {BrainDB} from '../core/database.ts';
 import {BrainError} from '../core/models.ts';
@@ -32,7 +32,15 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
   if (!Array.isArray(evidence) || evidence.length > 300) {
     throw new BrainError('Evidence must be an array of at most 300 entries');
   }
-  const byKey = new Map<string, {status: string; note: string}>();
+  type Proof = {
+    kind: 'command' | 'file' | 'sample';
+    command?: string;
+    exitCode?: number;
+    path?: string;
+    contains?: string;
+    excerpt?: string;
+  };
+  const byKey = new Map<string, {status: string; note: string; proof?: Proof}>();
   for (const e of evidence) {
     if (
       !e ||
@@ -47,6 +55,11 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
     ) {
       throw new BrainError(
         'Invalid evidence: recordId, recordVersion, requirementId, status and note are required',
+      );
+    }
+    if (e.proof !== undefined && !validProof(e.proof)) {
+      throw new BrainError(
+        'Invalid proof: kind command needs command and exitCode; file needs a repository-relative path (contains optional, up to 200 characters); sample needs an excerpt up to 2000 characters',
       );
     }
     const requirement = checklist.find(
@@ -75,27 +88,46 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
     byKey.set(key, e);
   }
   const paths = args.artifacts ?? [];
-  if (
-    !Array.isArray(paths) ||
-    paths.length > 30 ||
-    !paths.every(
-      (p) =>
-        typeof p === 'string' &&
-        p.length > 0 &&
-        p.length < 500 &&
-        !isAbsolute(p) &&
-        !p.split(/[\\/]/).includes('..') &&
-        !p.includes('\0'),
-    )
-  ) {
+  if (!Array.isArray(paths) || paths.length > 30 || !paths.every(safePath)) {
     throw new BrainError(
       'Artifacts must be at most 30 repository-relative paths without traversal',
     );
   }
   let root: string | undefined;
-  if (paths.length) {
+  const needsRoot = paths.length || [...byKey.values()].some((c) => c.proof?.kind === 'file');
+  if (needsRoot) {
     root = realpathSync(projectFolder(db, projectId));
   }
+  // A file proof is checked here: the file exists inside the repository and contains the text.
+  const fileProof = (proof: Proof): {ok: boolean; why: string} => {
+    if (!safePath(proof.path!)) {
+      return {ok: false, why: 'file proof path must be repository-relative'};
+    }
+    try {
+      const target = realpathSync(resolve(root!, proof.path!));
+      const rel = relative(root!, target);
+      if (
+        rel === '..' ||
+        rel.startsWith('..' + sep) ||
+        isAbsolute(rel) ||
+        !statSync(target).isFile()
+      ) {
+        return {ok: false, why: `${proof.path} is not a file in the repository`};
+      }
+      if (
+        proof.contains &&
+        !readFileSync(target, 'utf8').slice(0, 2_000_000).includes(proof.contains)
+      ) {
+        return {ok: false, why: `${proof.path} does not contain the given text`};
+      }
+      return {
+        ok: true,
+        why: proof.contains ? `${proof.path} contains the given text` : `${proof.path} exists`,
+      };
+    } catch {
+      return {ok: false, why: `${proof.path} was not found`};
+    }
+  };
   const artifacts = paths.map((path) => {
     try {
       const target = realpathSync(resolve(root!, path));
@@ -135,7 +167,10 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
         )
       : matching.some((artifact) => artifact.exists);
     // File metadata proves presence only; editability, meaning and visual quality stay manual.
-    let status: 'not_applicable' | 'optional' | 'fail' | 'pass' | 'not_verified';
+    let status: 'not_applicable' | 'optional' | 'advisory' | 'fail' | 'pass' | 'not_verified';
+    let verification = 'agent-report-only',
+      proofNote = '';
+    const proof = claim?.proof;
     if (r.applicability === 'not_applicable') {
       status = 'not_applicable';
     } else if (r.optional) {
@@ -144,16 +179,36 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
       status = 'fail';
     } else if (r.type === 'artifact') {
       status = present ? 'pass' : 'fail';
+      verification = 'file-presence-only';
+    } else if (claim?.status === 'pass' && proof) {
+      const verify = (r as {verify?: string}).verify;
+      if (verify && verify !== proof.kind) {
+        status = 'not_verified';
+        proofNote = `requirement expects ${verify} proof, got ${proof.kind}`;
+      } else if (proof.kind === 'file') {
+        const checked = fileProof(proof);
+        status = checked.ok ? 'pass' : 'fail';
+        verification = 'file-checked';
+        proofNote = checked.why;
+      } else if (proof.kind === 'command') {
+        status = proof.exitCode === 0 ? 'pass' : 'fail';
+        verification = 'agent-command';
+        proofNote = `${proof.command} exited ${proof.exitCode}`;
+      } else {
+        status = 'pass';
+        verification = 'agent-sample';
+      }
+    } else if ((r as {advisory?: boolean}).advisory && !claim) {
+      // Review criteria guide the reviewer; unclaimed ones do not make the report unverified.
+      status = 'advisory';
     } else {
       status = 'not_verified';
     }
     return {
       ...r,
       status,
-      verification:
-        r.type === 'artifact' && claim?.status !== 'fail'
-          ? 'file-presence-only'
-          : 'agent-report-only',
+      verification,
+      ...(proof ? {proof, proofNote} : {}),
       agentReported: claim?.status ?? null,
       note: claim?.note ?? '',
       artifacts: matching.map((a) => a.path),
@@ -181,7 +236,8 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
     status = 'fail';
   } else if (
     resolved.unresolved.length ||
-    (!results.length && !textFindings.length) ||
+    // Nothing passed and no text checks ran: advisory rows alone verify nothing.
+    (!results.some((r) => r.status === 'pass') && !textFindings.length) ||
     pendingTextChecks > 0 ||
     results.some((r) => r.status === 'not_verified')
   ) {
@@ -198,7 +254,7 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
     artifacts,
     textFindings,
     pendingTextChecks,
-    note: 'Pass covers the listed automated checks only. File presence does not prove format validity or editability. Agent-reported passes remain Not verified. This report does not certify full compliance.',
+    note: 'A manual pass needs proof: file proofs were checked by Personal Brain; command and sample proofs are recorded as the agent reported them. A pass without proof stays Not verified. Unclaimed review criteria are advisory. File presence does not prove format validity or editability. This report does not certify full compliance.',
   };
   const serialized = JSON.stringify(report);
   if (serialized.length > 100000) {
@@ -215,4 +271,30 @@ export function reviewArtifacts(db: BrainDB, projectId: string, args: Record<str
     metadata: {projectId, complianceReport: serialized, sessionLinked: false},
   });
   return {reviewId: event.id, ...report};
+}
+
+function safePath(p: unknown): p is string {
+  return (
+    typeof p === 'string' &&
+    p.length > 0 &&
+    p.length < 500 &&
+    !isAbsolute(p) &&
+    !p.split(/[\\/]/).includes('..') &&
+    !p.includes('\0')
+  );
+}
+
+function validProof(p: unknown): boolean {
+  if (!p || typeof p !== 'object') {
+    return false;
+  }
+  const proof = p as Record<string, unknown>;
+  const text = (v: unknown, max: number) => typeof v === 'string' && !!v.trim() && v.length <= max;
+  if (proof.kind === 'command') {
+    return text(proof.command, 500) && Number.isInteger(proof.exitCode);
+  }
+  if (proof.kind === 'file') {
+    return safePath(proof.path) && (proof.contains === undefined || text(proof.contains, 200));
+  }
+  return proof.kind === 'sample' && text(proof.excerpt, 2000);
 }

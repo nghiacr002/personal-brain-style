@@ -202,7 +202,24 @@ test('PB-06/PB-07 read-only resolution matches preparation and rejects changed c
           instructionSetId: set.instructionSetId,
           context: {activity: 'plan'},
         }),
-      /context differs .*activity: "plan", prepared "implement"; formats: null, prepared \[\]\)\. Omit context/,
+      /context differs .*\(activity: "plan", prepared "implement"\)\. Omit context/,
+    );
+    // Case, order and a reworded task are not differences (they failed most Codex reviews).
+    const ok = checkInstructionSet(f.db, p.id, {
+      instructionSetId: set.instructionSetId,
+      task: 'Review the work',
+      context: {activity: 'Implement', formats: []},
+    });
+    assert.equal(ok.task, 'Work');
+    const typed = prepareInstructions(f.db, p.id, {
+      ...args,
+      context: {activity: 'review', languages: ['typescript', 'sql']},
+    });
+    assert.doesNotThrow(() =>
+      checkInstructionSet(f.db, p.id, {
+        instructionSetId: typed.instructionSetId,
+        context: {languages: ['SQL', 'TypeScript']},
+      }),
     );
   } finally {
     f.close();

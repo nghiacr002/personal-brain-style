@@ -2,6 +2,7 @@ import {resolveInstructions} from './resolve.ts';
 import {createHash, randomUUID} from 'node:crypto';
 import {BrainDB} from '../core/database.ts';
 import {BrainError, type BrainRecord} from '../core/models.ts';
+import {validateTaskContext} from '../core/preference-contract.ts';
 
 const digest = (records: BrainRecord[]) =>
   createHash('sha256').update(JSON.stringify(records)).digest('hex');
@@ -80,27 +81,33 @@ export function checkInstructionSet(db: BrainDB, projectId: string, args: Record
       409,
     );
   }
-  if (args.task !== undefined && args.task !== set.task) {
-    throw new BrainError('Review task differs from the prepared instruction set');
-  }
+  // The instruction set binds the task: a reworded task in the review is ignored, not an error
+  // (it cost agents a failed call and a retry on most reviews).
   if (
     args.recordIds !== undefined &&
     JSON.stringify(args.recordIds) !== JSON.stringify(set.recordIds)
   ) {
     throw new BrainError('Review scope differs from the prepared instruction set');
   }
-  if (args.context !== undefined && JSON.stringify(args.context) !== JSON.stringify(set.context)) {
-    const given = args.context as Record<string, unknown>,
-      prepared = set.context as Record<string, unknown>;
-    const fields = [...new Set([...Object.keys(given || {}), ...Object.keys(prepared || {})])]
-      .filter((k) => JSON.stringify(given?.[k]) !== JSON.stringify(prepared?.[k]))
+  if (args.context !== undefined) {
+    // Compare after the normalization prepare applied ("TypeScript" was stored as "typescript"),
+    // in any order, and only the fields the review states.
+    const given = validateTaskContext(args.context) as Record<string, unknown>,
+      prepared = (set.context || {}) as Record<string, unknown>;
+    const same = (a: unknown, b: unknown) =>
+      JSON.stringify(Array.isArray(a) ? [...a].sort() : a) ===
+      JSON.stringify(Array.isArray(b) ? [...b].sort() : b);
+    const fields = Object.keys(given)
+      .filter((k) => !same(given[k], prepared[k]))
       .map(
         (k) =>
           `${k}: ${JSON.stringify(given?.[k] ?? null)}, prepared ${JSON.stringify(prepared?.[k] ?? null)}`,
       );
-    throw new BrainError(
-      `Review context differs from the prepared instruction set (${fields.join('; ')}). Omit context to use the prepared one.`,
-    );
+    if (fields.length) {
+      throw new BrainError(
+        `Review context differs from the prepared instruction set (${fields.join('; ')}). Omit context to use the prepared one.`,
+      );
+    }
   }
   return {...args, task: set.task, recordIds: set.recordIds, context: set.context};
 }

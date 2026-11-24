@@ -405,3 +405,55 @@ test('upgrade from legacy style database adds trace tables without losing record
     rmSync(dir, {recursive: true, force: true});
   }
 });
+
+test('style usage counts loads per agent and session, offers and reviews, without errors, demos or duplicate hook loads', () => {
+  const f = fixture();
+  try {
+    const style = f.db.create({
+      kind: 'preference',
+      domain: 'coding',
+      title: 'Used style',
+      summary: 'S',
+      content: 'C',
+      tags: [],
+      priority: 50,
+      status: 'active',
+      checks: [],
+      backend: null,
+    });
+    const t = (
+      agent: string,
+      eventType: string,
+      runId: string,
+      outcome = 'success',
+      demo = false,
+    ) =>
+      f.db.trace({
+        agent,
+        channel: eventType.split('.')[0],
+        eventType,
+        outcome,
+        runId,
+        recordIds: [style.id],
+        demo,
+      });
+    t('claude', 'mcp.brain_get', 'run-a');
+    t('claude', 'hook.tool.load', 'run-a', 'observed'); // the same load seen by the hook: not counted again
+    t('claude', 'mcp.brain_prepare', 'run-a');
+    t('codex', 'mcp.brain_prepare', 'run-b');
+    t('codex', 'mcp.brain_get', 'run-b', 'error');
+    t('codex', 'mcp.brain_get', 'run-c', 'success', true);
+    t('claude', 'hook.prompt.context', 'run-a', 'emitted');
+    t('codex', 'compliance.review', 'run-b', 'fail');
+    const [row] = f.db.traceStats().styles;
+    assert.equal(row.title, 'Used style');
+    assert.equal(row.loaded, 3);
+    assert.deepEqual(row.byAgent, {claude: 2, codex: 1});
+    assert.equal(row.sessions, 2);
+    assert.equal(row.offered, 1);
+    assert.equal(row.reviewed, 1);
+    assert.ok(row.lastUsed);
+  } finally {
+    f.close();
+  }
+});

@@ -42,6 +42,9 @@ export function validateRequirements(value: unknown): Requirement[] {
     ) {
       throw new BrainError('Invalid artifact extension alternatives');
     }
+    if (r.verify !== undefined && !['command', 'file', 'sample'].includes(r.verify)) {
+      throw new BrainError('Requirement verify must be command, file or sample');
+    }
     if (r.type === 'manual' && (r.extension !== undefined || r.extensions !== undefined)) {
       throw new BrainError('Manual requirements cannot specify an extension');
     }
@@ -54,6 +57,7 @@ export function validateRequirements(value: unknown): Requirement[] {
       id: r.id,
       label: r.label.trim(),
       type: r.type,
+      ...(r.verify !== undefined ? {verify: r.verify} : {}),
       ...extensionFields,
       ...(r.when !== undefined ? {when: validateApplicability(r.when)} : {}),
     };
@@ -71,6 +75,7 @@ export function requirementChecklist(records: BrainRecord[], context: TaskContex
         id: `review-${i + 1}`,
         label,
         type: 'manual' as const,
+        advisory: true,
       })),
       ...(r.skillBindings || []).map((skill, i) => ({
         id: `binding-${i + 1}`,

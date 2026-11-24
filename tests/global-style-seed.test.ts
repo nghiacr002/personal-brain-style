@@ -148,7 +148,7 @@ test('existing libraries receive later catalog additions once, linked to their w
   }
 });
 
-test('a fresh library gets the release templates, the agent roles style and no organization-specific CAB guidance', () => {
+test('a fresh library gets the release templates, the agent roles style and no organization-specific CAB guidance', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-seed-templates-'));
   const db = new BrainDB(join(dir, 'brain.sqlite'));
   try {
@@ -167,10 +167,69 @@ test('a fresh library gets the release templates, the agent roles style and no o
     assert.match(roles!.content, /Claude develops the UI\/UX in TypeScript itself/);
     assert.match(roles!.content, /Workers keep Personal Brain/);
     assert.match(roles!.content, /Claude starts the Codex tasks first/);
+    // v14: workers load only their hand-off's styles, reviews follow risk, risk cases are tested first.
+    assert.match(roles!.content, /Codex workers and reviewers do not load it/);
+    assert.match(roles!.content, /Review by risk/);
+    assert.match(roles!.content, /model_reasoning_effort/);
+    assert.match(roles!.content, /interrupted or concurrent write/);
+    // v15: routes by type of work, high risk as a modifier, large work in slices.
+    for (const route of [
+      'Quick',
+      'Bug',
+      'Feature',
+      'Refactor',
+      'Large or new project',
+      'Review only',
+    ]) {
+      assert.match(roles!.content, new RegExp(`- ${route} \\(`), route);
+    }
+    assert.match(roles!.content, /A route never removes these/);
+    assert.match(roles!.content, /thin vertical slices/);
+    // v16: headless Claude coding workers run with Code Mode on.
+    assert.match(roles!.content, /CLAUDE_CODE_EXPERIMENTAL_CODE_MODE/);
+    assert.doesNotMatch(roles!.content, /codex exec review --base </);
     assert.ok(roles!.requirements?.some((q) => q.id === 'req-sandbox-checks'));
     assert.ok(roles!.requirements?.some((q) => q.id === 'req-review-limit'));
     assert.equal(shared.filter((r) => r.alwaysApply).length, 1);
     assert.doesNotMatch(JSON.stringify(shared), /\bCAB\b/);
+    // Senior service standards: OpenTelemetry and log levels, performance and multi-instance scaling.
+    const logging = shared.find((r) => r.keyId === 'logging-tracing');
+    assert.match(logging!.content, /service\.instance\.id/);
+    assert.match(logging!.content, /LOG LEVELS \(the default threshold in production is INFO/);
+    assert.ok(logging!.requirements?.some((q) => q.id === 'req-otel-export-bounded'));
+    const perf = shared.find((r) => r.keyId === 'performance-scaling');
+    for (const section of [
+      'MEMORY',
+      'CONNECTIONS AND POOLS',
+      'MULTIPLE INSTANCES',
+      'RUNTIME NOTES',
+    ]) {
+      assert.match(perf!.content, new RegExp(`^${section}$`, 'm'), section);
+    }
+    const withPerf = templates.filter((t) => t.styleIds.includes(perf!.id)).map((t) => t.name);
+    assert.deepEqual(withPerf.sort(), [
+      'Build & verify — development from agreed design',
+      'Full delivery — analysis to release',
+    ]);
+    const dev = shared.find((r) => r.keyId === 'development');
+    // No persona tags: they split into words like "code" that matched every prompt.
+    const {ROLE_TAGS} = await import('../src/styles/standards-catalog.ts');
+    assert.deepEqual(
+      shared.flatMap((r) => r.tags.filter((t) => ROLE_TAGS.has(t.toLowerCase()))),
+      [],
+    );
+    // Language styles carry the service or app runtime rules, checked with captured proof.
+    for (const key of ['coding-typescript', 'coding-csharp', 'coding-python', 'coding-java']) {
+      const lang = shared.find((r) => r.keyId === key)!;
+      assert.match(lang.content, /WHEN SERVICE RUNTIME/, key);
+      const runtime = lang.requirements?.find((q) => q.id.endsWith('-runtime'));
+      assert.equal(runtime?.verify, 'sample', key);
+    }
+    assert.equal(
+      shared.find((r) => r.keyId === 'review-standard')!.requirements?.[0].verify,
+      'file',
+    );
+    assert.match(dev!.content, /Production readiness is part of done/);
     const git = shared.find((r) => r.keyId === 'git');
     assert.ok(git?.requirements?.some((q) => q.id === 'req-git-safe-actions'));
     const withGit = templates.filter((t) => t.styleIds.includes(git!.id)).map((t) => t.name);

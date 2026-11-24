@@ -1,6 +1,6 @@
 # Style catalog
 
-Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`; do not edit by hand. A fresh library is seeded with these 64 records in 9 capabilities. Existing libraries are never overwritten.
+Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`; do not edit by hand. A fresh library is seeded with these 65 records in 9 capabilities. Existing libraries are never overwritten.
 
 ## How the catalog fits together
 
@@ -18,7 +18,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | Architecture | 9 |
 | Drawing | 3 |
 | UI/UX design | 2 |
-| Engineering standards | 22 |
+| Engineering standards | 23 |
 | Delivery & operations | 4 |
 | Writing documents | 15 |
 
@@ -64,9 +64,9 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 
 | Style | Use when | Requires | Required by | Skills |
 | --- | --- | --- | --- | --- |
-| **Drawing — clear architecture, flows and data models** | Use when creating or revising C4 architecture, sequence, flow, state, ER, deployment or data-flow diagrams, or choosing which diagram format a deliverable should use. | — | Draw.io — editable architecture, flow and ER diagrams; Mermaid — architecture, sequence, flow and ER diagrams as code | archify, plantuml-skill, excalidraw |
+| **Drawing — clear architecture, flows and data models** | Use when creating or revising C4 architecture, sequence, flow, state, ER, deployment or data-flow diagrams, or choosing which diagram format a deliverable should use. | — | Draw.io — editable architecture, flow and ER diagrams; Mermaid — architecture, sequence, flow and ER diagrams as text | archify, plantuml-skill, excalidraw |
 | **Draw.io — editable architecture, flow and ER diagrams** | Use when a deliverable must be a draw.io or diagrams.net file, or needs vendor cloud icons, swimlanes, network topology, precise layout or editable PNG, SVG or PDF exports. | Drawing — clear architecture, flows and data models | — | drawio-skill |
-| **Mermaid — architecture, sequence, flow and ER diagrams as code** | Use when a diagram must live in Markdown or Git as a .mmd file or mermaid block: flowcharts, sequence, ER, state, class or C4 context views reviewed as code. | Drawing — clear architecture, flows and data models | — | creating-mermaid-diagrams |
+| **Mermaid — architecture, sequence, flow and ER diagrams as text** | Use when a diagram must live in Markdown or Git as a .mmd file or mermaid block: flowcharts, sequence, ER, state, class or C4 context views reviewed as text. | Drawing — clear architecture, flows and data models | — | creating-mermaid-diagrams |
 
 ## UI/UX design
 
@@ -92,7 +92,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | **Project structure — .NET backend** | Use when creating a .NET solution, adding a feature slice or project, deciding where endpoints, handlers, EF Core configuration, migrations, tests or settings live, or splitting a solution into layers. | — | — | understand, codebase-memory |
 | **Coding style — readable, consistent code (compatibility)** | Use when writing, renaming, refactoring or reviewing code in any language, setting up a formatter or linter, or settling a naming or comment question. | Global Development Standard | — | — |
 | **Coding patterns — implementation patterns and anti-patterns** | Use when implementing error handling, input parsing, mapping, retries, idempotency, outbox, pagination, caching, async work or frontend state, or reviewing code for anti-patterns. | — | — | understand, codebase-memory |
-| **Logging and tracing — structured logs, traces and metrics in code** | Use when adding or reviewing log statements, OpenTelemetry tracing or metrics, correlation ids, redaction, frontend error reporting or mobile crash reporting. | — | — | appinsights-instrumentation, azure-observability |
+| **Logging and tracing — OpenTelemetry logs, traces, metrics and log levels** | Use when adding or reviewing log statements or log levels, OpenTelemetry tracing, metrics or exporters, correlation ids, sampling, redaction, telemetry cost, frontend error reporting or mobile crash reporting. | — | — | appinsights-instrumentation, azure-observability |
 | **Development — TypeScript** | Use when writing or reviewing TypeScript code. Apply only framework/runtime sections matching the task. | Global Development Standard | Frontend standards — TypeScript web (compatibility); Backend standards — TypeScript / Node.js (compatibility) | — |
 | **Development — C# / .NET** | Use when writing or reviewing C# / .NET code. Apply only framework/runtime sections matching the task. | Global Development Standard | Backend standards — .NET / C# (compatibility) | — |
 | **Development — Python** | Use when writing or reviewing Python code. Apply only framework/runtime sections matching the task. | Global Development Standard | — | — |
@@ -101,6 +101,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 | **Development — Kotlin** | Use when writing or reviewing Kotlin code. Apply only framework/runtime sections matching the task. | Global Development Standard | — | — |
 | **Development — Dart** | Use when writing or reviewing Dart code. Apply only framework/runtime sections matching the task. | Global Development Standard | — | — |
 | **Git — branches, commits and safe history** | Use when creating branches or worktrees, committing, writing commit messages, opening or merging pull requests, rebasing, resolving conflicts, tagging releases or cleaning up a repository. | — | — | — |
+| **Performance and scaling — memory, connection pools, throughput and multiple instances** | Use when building or reviewing a service, API, worker or job with concurrent load, databases, caches, queues or outbound HTTP, more than one instance, or latency, throughput, memory or cost targets. | — | — | — |
 
 ## Delivery & operations
 
@@ -115,7 +116,7 @@ Generated from `src/styles/global-style-catalog.ts` by `scripts/catalog-doc.mjs`
 
 | Style | Use when | Requires | Required by | Skills |
 | --- | --- | --- | --- | --- |
-| **Document writing — clear, evidenced HTML with explanatory diagrams** | Use when writing or revising documents, including reports, guides, specifications, decision records, runbooks, analyses and release requests. | Quality control — evidence-based verification | Markdown — repository documents as reviewable text; HTML — self-contained, accessible web documents; Word — editable .docx documents with real structure; Product specification (PRD); Product roadmap; Business requirements document (BRD); Architecture decision record (ADR); Test plan and test cases; Runbook and operations guide; High-level design (HLD); Low-level design (LLD); API specification; Database design document; Integration specification | full-output-enforcement |
+| **Document writing — clear, evidenced HTML with explanatory diagrams** | Use when writing or revising documents, including reports, guides, specifications, decision records, runbooks, analyses and CAB submissions. Apply the CAB supporting template only to CAB submissions. | Quality control — evidence-based verification | Markdown — repository documents as reviewable text; HTML — self-contained, accessible web documents; Word — editable .docx documents with real structure; Product specification (PRD); Product roadmap; Business requirements document (BRD); Architecture decision record (ADR); Test plan and test cases; Runbook and operations guide; High-level design (HLD); Low-level design (LLD); API specification; Database design document; Integration specification | full-output-enforcement |
 | **Markdown — repository documents as reviewable text** | Use when the deliverable is a .md file: README, specification, ADR, runbook, changelog or report kept in Git or rendered by a docs site or wiki. | Document writing — clear, evidenced HTML with explanatory diagrams | — | creating-mermaid-diagrams |
 | **HTML — self-contained, accessible web documents** | Use when the deliverable is an .html document: a report, explainer, dashboard-style summary, published page or an existing HTML document being revised. | Document writing — clear, evidenced HTML with explanatory diagrams | — | frontend-design |
 | **Word — editable .docx documents with real structure** | Use when the deliverable is a Word (.docx) file or template: a specification, proposal, report, contract-style document or form to send, sign, print or edit in Microsoft Word. | Document writing — clear, evidenced HTML with explanatory diagrams | — | docx |

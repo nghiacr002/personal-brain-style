@@ -1,6 +1,55 @@
 import type {RecordInput} from '../core/models.ts';
 import {commonStandard, languageStandards} from './development-standards.ts';
 
+/**
+ * Persona tags describe a reader, not a task, and split into words ("code-reviewer" -> "code")
+ * that match almost every prompt, so hooks offered styles nobody loaded. The catalog drops them;
+ * topic tags (devops, diagram) stay.
+ */
+export const ROLE_TAGS = new Set([
+  'tech-lead',
+  'tech lead',
+  'architect',
+  'engineer',
+  'backend-developer',
+  'developer',
+  'product-owner',
+  'analyst',
+  'tester',
+  'sre',
+  'code-reviewer',
+  'reviewer',
+  'product-manager',
+  'frontend-developer',
+  'cloud architect',
+  'technical-writer',
+  'solution architect',
+  'solution-architect',
+  'senior engineer',
+  'qa-engineer',
+  'platform engineer',
+  'platform-engineer',
+  'mobile-developer',
+  'integration-architect',
+  'integration architect',
+  'designer',
+  'business-analyst',
+  'software architect',
+  'security engineer',
+  'security architect',
+  'network architect',
+  'ml-engineer',
+  'frontend-engineer',
+  'engineering-manager',
+  'data-architect',
+  'data architect',
+  'data engineer',
+  'consultant',
+  'backend lead',
+  'api-designer',
+  'code architecture',
+]);
+
 type Entry = RecordInput & {id: string};
 export const compatibilityTargets: Record<string, string> = {
   'coding-style': 'development',

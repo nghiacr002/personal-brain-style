@@ -196,7 +196,7 @@ export function checkInput(raw: unknown): RecordInput {
 export type ProjectTemplate = {id: string; name: string; styleIds: string[]; builtIn?: boolean};
 const STARTER_TEMPLATE = 'starter';
 const stopWords = new Set(
-  'the a an and or to of for in on with is it this that my me please let should have use when how can do we you all as at by from be are new using what which who where why there here plus'.split(
+  'the a an and or to of for in on with is it this that my me please let should have use when how can do we you all as at by from be are new using what which who where why there here plus over per out after before then than into about also just more most some any only very will would could not no yes ok its our your their them they been being was were has had does did done get got make made need needs want like one two three time times way still again other each every same so if but up now today see look sure thanks lets'.split(
     ' ',
   ),
 );
@@ -2561,8 +2561,71 @@ export class BrainDB {
       retrieval: get('mcp.brain_get'),
       reviews: get('mcp.brain_review'),
       feedback: get('mcp.brain_feedback'),
+      styles: this.styleUsage(scope, args),
       note: 'Observed calls and delivered instructions are not proof the agent followed them. Artifact quality must be evaluated separately.',
     };
+  }
+  /**
+   * Per style: how often agents loaded its full instructions (brain_get or brain_prepare), in how
+   * many sessions, how often hooks offered it and reviews checked against it. Successful real
+   * events only; hook.tool.load is skipped because it observes the same MCP load again.
+   */
+  private styleUsage(scope: string, args: string[]) {
+    const rows = this.db
+      .prepare(
+        `SELECT r.value AS id, t.agent, t.event_type AS type, t.run_id AS run, t.occurred_at AS at
+         FROM trace_events t, json_each(t.record_ids) r
+         WHERE t.demo=0 AND t.outcome NOT IN ('error','blocked')
+           AND t.event_type IN ('mcp.brain_get','mcp.brain_prepare','hook.prompt.context','hook.session.context','compliance.review')${scope}`,
+      )
+      .all(...args) as Array<{id: string; agent: string; type: string; run: string; at: string}>;
+    const stats = new Map<
+      string,
+      {
+        loaded: number;
+        byAgent: Record<string, number>;
+        runs: Set<string>;
+        offered: number;
+        reviewed: number;
+        lastUsed: string | null;
+      }
+    >();
+    for (const row of rows) {
+      let s = stats.get(row.id);
+      if (!s) {
+        s = {loaded: 0, byAgent: {}, runs: new Set(), offered: 0, reviewed: 0, lastUsed: null};
+        stats.set(row.id, s);
+      }
+      if (row.type === 'compliance.review') {
+        s.reviewed++;
+      } else if (row.type.startsWith('hook.')) {
+        s.offered++;
+      } else {
+        s.loaded++;
+        s.byAgent[row.agent] = (s.byAgent[row.agent] || 0) + 1;
+        s.runs.add(row.run);
+        if (!s.lastUsed || row.at > s.lastUsed) {
+          s.lastUsed = row.at;
+        }
+      }
+    }
+    return [...stats.entries()]
+      .map(([id, s]) => {
+        const record = this.get(id);
+        return {
+          recordId: id,
+          title: record?.title ?? null,
+          kind: record?.kind ?? null,
+          version: record?.version ?? null,
+          loaded: s.loaded,
+          byAgent: s.byAgent,
+          sessions: s.runs.size,
+          offered: s.offered,
+          reviewed: s.reviewed,
+          lastUsed: s.lastUsed,
+        };
+      })
+      .sort((a, b) => b.loaded - a.loaded || b.offered - a.offered);
   }
   seedTraceDemo() {
     if (

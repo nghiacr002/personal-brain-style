@@ -6,6 +6,15 @@ Personal Brain stores how you want work done: communication preferences, quality
 
 Task resolution makes applicability, conflicts and provenance visible. It does not guarantee that a host model follows instructions. See [the preference contract](docs/PREFERENCE-CONTRACT.md) for precedence, conditional guidance and safe catalog upgrades.
 
+## What you get
+
+- **A style library** of 65 release records: development and language standards (TypeScript, C#, Python, Java, Swift, Kotlin, Dart), logging and tracing, performance and scaling, architecture, diagrams, UI/UX, review, git and 11 document templates.
+- **Projects** that select styles, adapt them privately to a repository and report the skills and tools they still need.
+- **Agent connections** for Claude Code, Codex CLI and OpenCode (hooks and MCP), ChatGPT (read-only) and Claude Desktop.
+- **Proof-based reviews**: an agent's pass counts only with a command, a file Personal Brain checks or a captured output.
+- **Usage and effectiveness**: how often each style is loaded, and with/without comparisons on your own tasks.
+- **A learning loop** that proposes style updates from your corrections and projects; nothing changes without your consent.
+
 ## How it works
 
 Choose shared styles, adapt them privately to your repository, and let your agent retrieve the instructions needed for each task. A learning loop — learn, feedback, consent, reuse — brings reusable lessons back to the shared library, and nothing changes without your consent.
@@ -38,7 +47,7 @@ flowchart TD
     class Personalize,MCP,Agent,Skills,Work,Review,Analysis agent;
 ```
 
-**Legend:** orange = shared styles and proposals; green = project context and records; blue = agent workflow. Arrows show information flow or an explicit action. Styles and review evidence are stored locally in SQLite. Learning from projects sends selected instructions to the chosen agent provider; applying a proposal updates shared styles without overwriting private copies. Recorded reviews do not prove that an agent followed every instruction.
+**Legend:** orange = shared styles and proposals; green = project context and records; blue = agent workflow. Arrows show information flow or an explicit action. (The diagram renders on GitHub; on npm it shows as Mermaid source.) Styles and review evidence are stored locally in SQLite. Learning from projects sends selected instructions to the chosen agent provider; applying a proposal updates shared styles without overwriting private copies. Recorded reviews do not prove that an agent followed every instruction.
 
 ## Export and import library items
 
@@ -48,7 +57,7 @@ Choose **Import library**, open an exported JSON file, inspect the preview and s
 
 ## Install
 
-Requires Node.js 22.13+; Node 24 LTS is recommended. This is a beta package; the commands below become available after publication.
+Requires Node.js 22.13+; Node 24 LTS is recommended. Releases are published under the `beta` tag.
 
 ```sh
 npm install -g personal-brain-style@beta
@@ -61,11 +70,15 @@ For a temporary preview: `npx personal-brain-style@beta setup`. A global install
 
 ## Fresh-install global styles
 
-The first start with a new data directory installs the bundled release catalog: 52 records (51 styles and one review checklist) in nine capabilities: Foundations; Quality & review; Product & analysis; Architecture; Drawing; UI/UX design; Engineering standards; Delivery & operations; Writing documents. This works with `personal-brain setup`, `personal-brain mcp` and `personal-brain seed`. Dependencies receive local IDs. The full list is in [Style catalog](docs/STYLE-CATALOG.md).
+The first start with a new data directory installs the bundled release catalog: 65 records (53 styles, one review checklist and 11 document templates; seven are compatibility records that keep old links working and are hidden from lists) in nine capabilities: Foundations; Quality & review; Product & analysis; Architecture; Drawing; UI/UX design; Engineering standards; Delivery & operations; Writing documents. This works with `personal-brain setup`, `personal-brain mcp` and `personal-brain seed`. Dependencies receive local IDs. The full list is in [Style catalog](docs/STYLE-CATALOG.md).
 
 All nine capabilities are **combinable**: a project may select several styles from one capability. Switch a capability to **Pick one** (styles are alternatives, such as two palettes) under **Capabilities → Rename**, or choose **Combine styles** / **Pick one** when adding it. Pick one is refused while any project selects two styles in that capability. A style may require up to 12 others, without cycles; required styles load transitively. Format styles (Draw.io, Mermaid) are selected per project, never required.
 
 Writing documents holds Document writing plus 11 document templates (PRD, Roadmap, BRD, ADR, HLD, LLD, API specification, Database design, Test plan and test cases, Integration specification, Runbook). A style that produces a document requires its template; the requirement applies only when that document is in scope. Styles name skills by their plain installed name with a "(when …)" condition. Nothing requires installing new skills, and a missing skill never blocks work.
+
+One style is **always applied**: _Agent roles_, sent to agents at every session start. It routes work by type (Quick, Bug, Feature, Refactor, Large or new project in slices, Review only), treats high risk as a modifier that adds risk tests, approval and a fresh review, and splits work between Claude (lead, analysis, design, UI and integration) and Codex (building and review). Headless Claude coding workers run with Claude Code's experimental Code Mode. See the [workflow diagram](docs/agent-roles-flow.html).
+
+Project templates preselect styles for a new project: **Starter** (built in), **Analysis & design only**, **Build & verify — development from agreed design**, **Full delivery — analysis to release** and **Research & proof of concept**. Manage them under **Projects → Templates**.
 
 Existing libraries and edits are preserved. Restarting does not reset styles or add deleted records. The release catalog contains no projects, private styles, conversations, audit history or tool credentials. It is a release snapshot, not synchronization between computers. Maintainers update `src/styles/global-style-catalog.ts` from reviewed global records before releasing changes.
 
@@ -75,8 +88,9 @@ Open **Projects → New Project**. The wizard guides you through:
 
 1. **Project & folder:** enter a name, then use **Browse folders** to select an existing repository on the computer running Personal Brain, or paste its absolute path. The standard operating-system folder dialog opens on the server computer; no files are uploaded. Linux requires Zenity and a graphical session. If a dialog cannot open, paste the path instead. Already-linked folders are rejected without changing their links.
 2. **Discover & personalize with AI:** optionally ask an installed, signed-in Codex or Claude CLI to recommend styles and draft project-specific guidelines. This sends bounded repository evidence and style guidelines to the chosen provider. Review the reasons and proposed guidelines on each card, then choose **Use suggestion**. Adaptations preserve the base guidelines and are saved as project-only overrides; global styles stay unchanged. You can cancel, retry or continue manually.
-3. **Select styles:** search immediately by name, capability or keyword. In a combinable capability you can select several styles; in a Pick one capability, one. Selected styles remain visible; customization drafts survive search and Back navigation.
-4. **Review:** check the folder and selections, then create the project and repository link. Required dependencies are validated before saving.
+3. **Configure:** optionally start from a template, then search immediately by name, capability or keyword. In a combinable capability you can select several styles; in a Pick one capability, one. Selected styles remain visible; customization drafts survive search and Back navigation.
+4. **Check gaps:** see what the selected styles need to work — skills, required styles, tools and development tooling — and how to set each up. Gaps are optional; skip and fix them later from the project's **Gaps** tab. Different copies of a skill for different agents are fine (Claude loads its own, Codex and OpenCode load `~/.agents/skills`); only two different copies that the same agent would load are flagged.
+5. **Review:** check the folder and selections, then create the project and repository link. Required dependencies are validated before saving.
 
 AI discovery uses repository instructions, README and build manifests, not an exhaustive code review. Existing projects use the same workflow through **Repository setup → Discover & personalize with AI**, then save their reviewed selections. Closing or reloading an unfinished wizard discards its unsaved draft after the browser's leave warning.
 
@@ -127,19 +141,21 @@ The `--desktop` option does not install Claude Code/Codex hooks. Existing activa
 
 ## Using the UI
 
-The sidebar groups pages into **Workspace** (Overview, Projects, Library, Learning), **Setup** (Agent setup, Capabilities) and **Diagnostics** (Trace Explorer, Skill discovery, Style discovery, Startup index). Diagnostics is collapsed and opens when one of its pages is active. The footer shows the version and UI build time.
+The sidebar groups pages into **Workspace** (Overview, Projects, Library, Learning, Effectiveness), **Setup** (Agent setup, Capabilities) and **Diagnostics** (Trace Explorer, Skill discovery, Style discovery, Startup index). Diagnostics is collapsed and opens when one of its pages is active. The footer shows the version and UI build time.
 
 The Library type **Templates** holds reusable document outlines, code scaffolds and prompt starters. Each row has a Copy action; agents find templates through MCP discovery. In data and the API the record kind remains `example`.
 
 Trace Explorer, under Diagnostics, updates live every 5 seconds. Its **Style usage** table counts, per style, how often agents loaded it (by agent and session), how often hooks offered it and the share of offers that were loaded, and how often reviews checked against it; select a style to filter the timeline. See [Trace Explorer](docs/TRACE.md).
 
-A project's Styles tab lists library styles added since the project was last saved, so a new release style or your own new style is not missed; **Add to project** selects it.
+**Effectiveness** measures whether styles help: how often your prompts still correct the agent, and a controlled comparison that runs the same task with and without the project styles in Codex or Claude and scores both answers with the same checks (contains, absent, regex).
+
+A project's tabs are Styles, Dependency map, Gaps, Agent activity and Repository setup. The Styles tab lists library styles added since the project was last saved, so a new release style or your own new style is not missed; **Add to project** selects it.
 
 ## Learning loop and project instructions
 
 Learning runs on its own in one loop: **Learn → Feedback → Consent → Reuse**. Agents relay corrections and your explicit remember/forget requests as they work, and — if you turn it on when the Learning page first asks (it is off by default) — whenever a project's customized styles change, Personal Brain asks Codex or Claude to compare them and propose shared-style updates (no agent call when nothing changed). The **Learning** page shows what it is doing and lists proposed changes; your only step is to apply or dismiss each one. Applying creates a new style version that agents reuse on their next task, and History can restore. Proposals from your projects re-check that their sources and the shared style are unchanged, and never overwrite project-private copies.
 
-Agents can use `brain_prepare` to load a version-bound task instruction set, then `brain_review` to check the same set before completion. A requirement passes only with proof of the kind it names: a command and its exit code, a repository file (optionally containing given text, which Personal Brain checks) or a captured output sample. Review criteria an agent does not claim are advisory. See [Learning and instruction workflow](docs/LEARNING-AND-INSTRUCTIONS.md) for research decisions, examples and verification limits.
+Agents can use `brain_prepare` to load a version-bound task instruction set, then `brain_review` to check the same set before completion. A requirement passes only with proof of the kind it names: a command and its exit code, a repository file (optionally containing given text, which Personal Brain checks) or a captured output sample. Review criteria an agent does not claim are advisory. A review with no passing requirement stays _not verified_. See [Learning and instruction workflow](docs/LEARNING-AND-INSTRUCTIONS.md) for research decisions, examples and verification limits.
 
 ## Data and upgrades
 
@@ -181,9 +197,15 @@ dist/             Generated npm package contents (do not edit)
 
 Keep agent and HTTP adapters thin; place shared behavior in the relevant source module. Update importing tests when moving a module. Keep the `src/cli.ts` entry point stable for existing agent registrations. The package build recursively compiles source modules and preserves their directory layout.
 
+```sh
+npm install
+npm run build:package
+npm test
+npm pack
+node scripts/test-package.mjs
 ```
 
-After editing the style catalog, regenerate its documentation with `node scripts/run.mjs scripts/catalog-doc.mjs` (writes docs/STYLE-CATALOG.md).
+After editing the style catalog, regenerate its documentation with `node scripts/run.mjs scripts/catalog-doc.mjs` (writes docs/STYLE-CATALOG.md), then record the release fingerprints with `node scripts/run.mjs scripts/catalog-baseline.mjs` so unedited styles stay upgradable. Release steps are in [npm release](docs/NPM-RELEASE.md).
 
 ### Common development standard and language substyles
 
@@ -204,12 +226,6 @@ offer guarded Undo. Fresh seeds already include the hierarchy. Compatibility
 records are hidden from normal Library lists/discovery but retain old references.
 Restart long-running MCP hosts after upgrading to load the extended context schema.
 See the [rule mapping and migration report](docs/research/development-standards-implementation-2026-11-07.md).
-npm install
-npm run build:package
-npm test
-npm pack
-node scripts/test-package.mjs
-```
 
 The npm artifact includes compiled JavaScript and the prebuilt browser UI. No runtime npm dependencies are required. The CLI and UI run locally on loopback; retrieved content is shared with the agent provider when requested. Trace events show observed activity, not proof of model compliance.
 
@@ -228,5 +244,7 @@ Agents can call `brain_create_project_style` with an explicit `projectId`, the c
 The style is private to that project and selected by default. Use `select: false` to save an unselected alternative. If that capability is Pick one and already has a selected style, update it with `brain_update_project_style` or change the selection in Configure project. Matching uses the immutable `keyId`, not the display title. A global match is selected and personalized for the project; a private match is updated rather than duplicated. Different projects can own the same private key until publishing establishes its global identity. Publishing reuses an existing global key and never overwrites its content; private variants retain their content and link to the global style. Global edits belong in the Library or the Learning page. New keys are generated from the title when omitted. The editor displays the key and locks it after creation. Existing conflicting legacy records retain distinct keys and their original content/history. Restart an existing MCP connection to discover the new tool; the ChatGPT read-only connection does not expose it.
 
 ## Instruction delivery and quality
+
+Agents receive compact instructions: shared boilerplate and sections that repeat a style's summary, _Use when_ or principles are removed before delivery. Hooks offer a style only when the prompt matches its title, tags or _Use when_ text strongly enough, not only body words. The session hook gives the agent its session ID to pass as `threadId`, so MCP calls and reviews appear under that session in Trace Explorer.
 
 See [delivery diagnostics and the retrieval baseline](docs/INSTRUCTION-QUALITY.md) for doctor observations, MCP compatibility and the repeatable `npm run test:quality` check.

@@ -1035,37 +1035,97 @@ async function saveDomainName(id) {
             e instanceof Error ? e.message : String(e);
     }
 }
-function overview() {
-    const s = summary;
-    const recent = [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4);
-    layout('Overview', recent[0]
-        ? `Last change: ${recent[0].title} · ${formatTime(recent[0].updatedAt)}`
-        : 'Manage global styles and the styles each project uses.', `<button class="button primary" data-view="projects">Open projects</button>`, `<section class="metrics">${[
-        ['✦', s.counts.preference, 'My Preferences', 'Global working principles'],
-        [
-            '▦',
-            items
-                .filter((r) => r.kind === 'preference')
-                .reduce((n, r) => n + (r.externalSkills?.length || 0) + (r.skillBindings?.length || 0), 0),
-            'Procedure references',
-            'Defined within My Preferences',
-        ],
-        [
-            '✓',
-            items
-                .filter((r) => r.kind === 'preference')
-                .reduce((n, r) => n + (r.reviewCriteria?.length || 0), 0),
-            'Style review criteria',
-            'Defined within My Preferences',
-        ],
-        ['↺', s.revisions, 'Revisions', 'Versioned changes'],
+async function overview() {
+    const soft = (url) => api(url).catch(() => null);
+    const [health, effect, setup, projects] = await Promise.all([
+        soft('/api/learning'),
+        soft('/api/effectiveness'),
+        soft('/api/activation'),
+        soft('/api/projects'),
+    ]);
+    if (active !== 'overview') {
+        return;
+    }
+    const checks = [];
+    const add = (tone, text, action, href) => checks.push({ tone, text, action, href });
+    const pending = health?.pending ?? 0;
+    if (pending) {
+        const late = (health?.oldestPendingDays ?? 0) >= 7;
+        add(late ? 'bad' : 'warn', `${pending} proposed style change${pending === 1 ? '' : 's'} waiting for your OK${late ? `, oldest ${health.oldestPendingDays} days` : ''}`, 'Review', '#/feedback');
+    }
+    for (const [key, st] of Object.entries(setup && typeof setup === 'object' ? setup : {})) {
+        if (st && typeof st === 'object' && 'installed' in st) {
+            if (!st.installed) {
+                add('warn', `${agentName(key)} is not connected, so it never receives your styles`, 'Set up', '#/activation');
+            }
+            else if (st.changed) {
+                add('bad', `${agentName(key)} hooks are out of date; reconnect so it gets current styles`, 'Reconnect', '#/activation');
+            }
+        }
+    }
+    for (const a of effect?.adoption || []) {
+        const work = a.workSessions || 0;
+        if (work >= 3 && (a.coveredSessions || 0) / work < 0.5) {
+            add('bad', `${agentName(a.agent)} loaded your styles in only ${a.coveredSessions || 0} of ${work} work sessions`, 'See agents', '#/effectiveness');
+        }
+    }
+    const repeats = (effect?.weeks || []).reduce((n, w) => n + (w.repeats || 0), 0);
+    if (repeats) {
+        add('bad', `Agents broke ${repeats} approved lesson${repeats === 1 ? '' : 's'} again`, 'See daily work', '#/effectiveness?tab=daily');
+    }
+    const failing = (health?.styleChecks || []).filter((c) => c.failed);
+    if (failing.length) {
+        add('warn', `${failing.length} style${failing.length === 1 ? '' : 's'} failed requirements in agent reviews`, 'See style checks', '#/feedback?tab=checks');
+    }
+    const stale = health?.staleExports || [];
+    if (stale.length) {
+        add('warn', `${stale.length} exported rule file${stale.length === 1 ? ' is' : 's are'} older than the styles they copy`, 'See files', '#/feedback?tab=checks');
+    }
+    const p = health?.projects;
+    if (p && (p.state === 'no-agent' || p.error)) {
+        add('bad', p.error
+            ? `Automatic learning failed: ${p.error}`
+            : 'Automatic learning needs the Codex or Claude command-line tool', 'Check', '#/feedback?tab=auto');
+    }
+    const skillIssues = items.filter((r) => r.skillWarnings?.length).length;
+    if (skillIssues) {
+        add('warn', `${skillIssues} style${skillIssues === 1 ? ' references a skill' : 's reference skills'} that are missing or ambiguous`, 'See skills', '#/skills?status=issues');
+    }
+    if (projects && !projects.length) {
+        add('warn', 'No project yet; styles apply only once a repository is linked to a project', 'Create project', '#/projects/new');
+    }
+    const missing = [
+        [health, 'learning'],
+        [effect, 'agent usage'],
+        [setup, 'agent setup'],
     ]
-        .map((a) => `<div class="card metric"><h2>${a[1]}</h2><div class="field-caption"><button class="link-btn" data-view="${a[2] === 'Revisions' ? 'history' : 'preference'}">${a[2]}</button>${infoButton({ 'My Preferences': 'preference', 'Procedure references': 'external_skills', 'Style review criteria': 'review_criteria', Revisions: 'revisions_metric' }[String(a[2])] || 'preference')}</div></div>`)
-        .join('')}</section>
-  <section class="columns"><div class="card panel"><div class="panel-head"><div><h2>Knowledge library ${infoButton('knowledge_library')}</h2><p>Your most recent working preferences</p></div><button class="link-btn" data-view="preference">Browse library →</button></div>${recent.map((r) => `<div class="activity-line"><div class="activity-text"><button class="link-btn recent-record" data-edit="${esc(r.id)}">${esc(r.title)}</button><p>${esc(domainName(r.domain))} · ${esc(r.kind)} · v${r.version}</p></div><span class="activity-time">${esc(formatTime(r.updatedAt))}</span></div>`).join('') || empty('No records', 'Create your first style to get started')}</div>
-  <div class="card panel capability-panel"><h3>Capabilities</h3><div class="cap-list">${domainRegistry()
-        .map((d) => `<a class="cap-pill" href="#/library?domain=${encodeURIComponent(d.id)}">${esc(d.name)}</a>`)
-        .join('')}</div><button class="link-btn panel-foot" data-view="domains">Manage capabilities →</button></div></section>`);
+        .filter(([v]) => !v)
+        .map(([, name]) => name);
+    if (missing.length) {
+        add('warn', `Could not check ${missing.join(', ')}; the local server did not answer`, 'Retry', '#/overview');
+    }
+    const work = (effect?.adoption || []).reduce((n, a) => n + (a.workSessions || 0), 0), covered = (effect?.adoption || []).reduce((n, a) => n + (a.coveredSessions || 0), 0);
+    const styles = items.filter((r) => r.kind === 'preference' && !r.compatibility).length;
+    const metric = (title, value, note, href, tone = '') => `<${href ? `a href="${href}"` : 'div'} class="card trace-metric overview-metric"><div class="trace-metric-top"><span>${esc(title)}</span></div><b class="${tone}">${value}</b><small>${note}</small></${href ? 'a' : 'div'}>`;
+    const summaryRow = `<section class="trace-metrics effect-metrics" aria-label="Summary">${[
+        metric('Needs you', String(checks.length), checks.length ? 'Items listed below' : 'Nothing to decide', '', checks.some((c) => c.tone === 'bad') ? 'bad' : ''),
+        metric('Work sessions using styles', work ? pctText(pct(covered, work)) : '—', work ? `${covered} of ${work}, last 14 days` : 'No edits recorded yet', '#/effectiveness', work && covered / work < 0.5 ? 'bad' : ''),
+        metric('Projects', String(projects?.length ?? '—'), 'Each links a repository to its styles', '#/projects'),
+        metric('Styles', String(styles), `${health?.applied ?? 0} learned changes in use`, '#/library'),
+    ].join('')}</section>`;
+    const order = { bad: 0, warn: 1 };
+    const list = checks.length
+        ? `<ul class="overview-checks">${checks
+            .sort((a, b) => order[a.tone] - order[b.tone])
+            .map((c) => `<li class="${c.tone}"><span class="overview-dot" aria-hidden="true"></span><span class="sr-only">${c.tone === 'bad' ? 'Problem:' : 'To do:'}</span><span>${esc(c.text)}</span>${c.href === '#/overview' ? `<button class="button ghost small" data-view="overview">${esc(c.action)}</button>` : `<a class="button ghost small" href="${c.href}">${esc(c.action)}</a>`}</li>`)
+            .join('')}</ul>`
+        : empty('All clear', 'No decisions waiting, every agent is connected and loading your styles.');
+    const recent = [...items]
+        .filter((r) => !r.projectId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 5);
+    layout('Overview', 'What needs your decision, and whether your agents are using your styles.', '', `${summaryRow}<section class="card panel"><div class="panel-head"><div><h2>Needs your attention</h2><p class="hint">Problems first. Each item opens the page where you fix it.</p></div></div>${list}</section>
+    <section class="card panel"><div class="panel-head"><div><h2>Recently changed styles</h2></div><a class="link-btn" href="#/library">Open library →</a></div>${recent.map((r) => `<div class="activity-line"><div class="activity-text"><button class="link-btn recent-record" data-edit="${esc(r.id)}">${esc(r.title)}</button><p>${esc(domainName(r.domain))} · v${r.version}</p></div><span class="activity-time">${esc(formatTime(r.updatedAt))}</span></div>`).join('') || empty('No styles yet', 'Create your first style in the library')}</section>`);
 }
 function records(kind) {
     items = items.filter((r) => !r.projectId);
@@ -2439,6 +2499,7 @@ function discover() {
     layout('Style discovery', 'Find styles, skills and tools for one task.', '', `${diagnosticScope()}<div class="split-box discovery-grid"><section class="card panel"><h2>Find the right skill ${infoButton('discover')}</h2><p>Describe the task in natural language.</p><div class="field space-top-20"><label for="discoveryTask">Task</label><textarea id="discoveryTask" rows="4">Draw an editable IoT platform architecture diagram with clear service boundaries</textarea></div><button class="button primary" data-action="discover">Discover capabilities</button></section><section class="card panel"><h2>Discovery results</h2><div class="code-output" id="discoveryResults">Run a discovery search to inspect matching skills, styles, and tools.</div></section></div>`);
 }
 const inboxFilter = { status: 'pending' };
+let inboxScope = '';
 const sourceLabel = { user: 'From you', agent: 'From agent', projects: 'From your projects' };
 const rewrittenFieldLabels = [
     ['summary', 'Summary'],
@@ -2456,7 +2517,7 @@ function projectEvidence(f) {
         return text ? `<h4>${label}</h4><pre>${esc(text)}</pre>` : '';
     })
         .join('');
-    return `${f.resolution ? `<p><b>Your conflict resolution:</b> ${esc(f.resolution)}</p>` : ''}<details><summary>Learned from ${f.sources.length} source style(s)</summary><ul>${f.sources.map((s) => `<li>${esc(s.title)}${s.version ? ` · v${s.version}` : ''} · ${esc(s.project)}</li>`).join('')}</ul></details>${fields ? `<details><summary>Also updates summary, keywords, principles and criteria</summary>${fields}<p class="hint">Mandatory requirements, checks, required links and skills stay as they are.</p></details>` : ''}<p class="hint">Applying creates a new version of the shared style for every project that uses it. Project-only copies are not changed.</p>`;
+    return `<details><summary>Learned from ${f.sources.length} source style(s)</summary><ul>${f.sources.map((s) => `<li>${esc(s.title)}${s.version ? ` · v${s.version}` : ''} · ${esc(s.project)}</li>`).join('')}</ul></details>${fields ? `<details><summary>Also updates summary, keywords, principles and criteria</summary>${fields}<p class="hint">Mandatory requirements, checks, required links and skills stay as they are.</p></details>` : ''}`;
 }
 const handoffTargets = [
     ['agents', 'AGENTS.md — Codex and most other agents'],
@@ -2506,97 +2567,126 @@ function readableNote(r) {
     return note.replace(/\b[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(:[0-9a-f-]{36})?\b/g, 'a project style');
 }
 const OBLIGATION_SENTENCE = /\b(must|never|always|required|do not|don't|shall|mandatory)\b/i;
-const sentences = (text) => text.match(/[^.!?\n]+[.!?]*[ \t]*|\n+/g) || [];
-const sentenceKey = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-const wordsOf = (s) => new Set(sentenceKey(s).split(' ').filter(Boolean));
-function similarSentences(a, b) {
+const lineKey = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+const wordsOf = (s) => new Set(lineKey(s).split(' ').filter(Boolean));
+function similarLines(a, b) {
     const x = wordsOf(a), y = wordsOf(b);
     const shared = [...x].filter((w) => y.has(w)).length;
     return shared / (Math.min(x.size, y.size) || 1) >= 0.5;
 }
-function wordDiff(before, after) {
-    const a = sentences(before), b = sentences(after);
+function lcs(a, b, eq) {
     const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
     for (let i = a.length - 1; i >= 0; i--) {
         for (let j = b.length - 1; j >= 0; j--) {
-            dp[i][j] =
-                sentenceKey(a[i]) === sentenceKey(b[j])
-                    ? dp[i + 1][j + 1] + 1
-                    : Math.max(dp[i + 1][j], dp[i][j + 1]);
+            dp[i][j] = eq(a[i], b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
         }
     }
-    let out = '';
-    let dels = [], inss = [];
-    const whole = (tag, s) => s.trim()
-        ? `<${tag}${tag === 'del' && OBLIGATION_SENTENCE.test(s) ? ' class="lost"' : ''}>${esc(s)}</${tag}>`
-        : esc(s);
-    const flush = () => {
-        for (let k = 0; k < Math.max(dels.length, inss.length); k++) {
-            const d = dels[k], n = inss[k];
-            if (d !== undefined && n !== undefined && similarSentences(d, n)) {
-                out += tokenDiff(d, n);
-            }
-            else {
-                out += (d !== undefined ? whole('del', d) : '') + (n !== undefined ? whole('ins', n) : '');
-            }
-        }
-        dels = [];
-        inss = [];
-    };
+    const ops = [];
     let i = 0, j = 0;
     while (i < a.length || j < b.length) {
-        if (i < a.length && j < b.length && sentenceKey(a[i]) === sentenceKey(b[j])) {
-            flush();
-            out += esc(b[j++]);
+        if (i < a.length && j < b.length && eq(a[i], b[j])) {
+            ops.push(['same', b[j++]]);
             i++;
         }
         else if (j < b.length && (i === a.length || dp[i][j + 1] >= dp[i + 1][j])) {
-            inss.push(b[j++]);
+            ops.push(['ins', b[j++]]);
         }
         else {
-            dels.push(a[i++]);
+            ops.push(['del', a[i++]]);
+        }
+    }
+    return ops;
+}
+function wordSides(before, after) {
+    const a = before.split(/(\s+)/), b = after.split(/(\s+)/);
+    let old = '', now = '';
+    for (const [op, w] of lcs(a, b, (x, y) => x === y)) {
+        if (op === 'same') {
+            old += esc(w);
+            now += esc(w);
+        }
+        else if (op === 'del') {
+            old += w.trim()
+                ? `<del${OBLIGATION_WORD.test(w) ? ' class="lost"' : ''}>${esc(w)}</del>`
+                : esc(w);
+        }
+        else {
+            now += w.trim() ? `<ins>${esc(w)}</ins>` : esc(w);
+        }
+    }
+    return [old, now];
+}
+function lineDiff(before, after, context = 3) {
+    const a = before ? before.split('\n') : [], b = after ? after.split('\n') : [];
+    const ops = lcs(a, b, (x, y) => lineKey(x) === lineKey(y) && (x.trim() !== '' || y.trim() === ''));
+    const rows = [];
+    let oldNo = 0, newNo = 0, dels = [], inss = [];
+    const flush = () => {
+        const pairs = Math.min(dels.length, inss.length);
+        const out = [];
+        const added = [];
+        dels.forEach((d, k) => {
+            const n = k < pairs ? inss[k] : undefined;
+            const [oldHtml, newHtml] = n !== undefined && similarLines(d, n)
+                ? wordSides(d, n)
+                : [esc(d), n === undefined ? '' : esc(n)];
+            out.push({ op: 'del', old: ++oldNo, html: oldHtml, lost: OBLIGATION_SENTENCE.test(d) });
+            if (n !== undefined) {
+                added.push({ op: 'ins', new: 0, html: newHtml });
+            }
+        });
+        for (const n of inss.slice(pairs)) {
+            added.push({ op: 'ins', new: 0, html: esc(n) });
+        }
+        for (const r of added) {
+            r.new = ++newNo;
+        }
+        rows.push(...out, ...added);
+        dels = [];
+        inss = [];
+    };
+    for (const [op, line] of ops) {
+        if (op === 'same') {
+            flush();
+            rows.push({ op, old: ++oldNo, new: ++newNo, html: esc(line) });
+        }
+        else {
+            (op === 'del' ? dels : inss).push(line);
         }
     }
     flush();
-    return out;
-}
-function tokenDiff(before, after) {
-    const a = before.split(/(\s+)/);
-    const b = after.split(/(\s+)/);
-    const lost = (w) => (OBLIGATION_WORD.test(w) ? ' class="lost"' : '');
-    if (a.length * b.length > 4_000_000) {
-        return `<del>${esc(before)}</del><ins>${esc(after)}</ins>`;
-    }
-    const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
-    for (let i = a.length - 1; i >= 0; i--) {
-        for (let j = b.length - 1; j >= 0; j--) {
-            dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const changed = rows.map((r, i) => (r.op === 'same' ? -1 : i)).filter((i) => i >= 0);
+    const keep = new Set();
+    for (const i of changed) {
+        for (let k = Math.max(0, i - context); k <= Math.min(rows.length - 1, i + context); k++) {
+            keep.add(k);
         }
     }
-    let out = '';
-    let i = 0;
-    let j = 0;
-    while (i < a.length || j < b.length) {
-        if (i < a.length && j < b.length && a[i] === b[j]) {
-            out += esc(a[i++]);
-            j++;
+    const sign = { same: ' ', del: '-', ins: '+' };
+    let html = '', skipped = 0;
+    const fold = () => {
+        if (skipped) {
+            html += `<tr class="diff-fold"><td colspan="4">⋯ ${skipped} unchanged line${skipped === 1 ? '' : 's'}</td></tr>`;
+            skipped = 0;
         }
-        else if (j < b.length && (i === a.length || dp[i][j + 1] >= dp[i + 1][j])) {
-            out += `<ins>${esc(b[j++])}</ins>`;
+    };
+    rows.forEach((r, i) => {
+        if (!keep.has(i)) {
+            skipped++;
+            return;
         }
-        else {
-            out += `<del${lost(a[i])}>${esc(a[i++])}</del>`;
-        }
-    }
-    return out;
-}
-function evidenceBar(e) {
-    const total = e.independent + e.counter;
-    if (!total) {
-        return '';
-    }
-    const pct = Math.round((e.independent / total) * 100);
-    return `<svg class="evidence-bar" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="${e.independent} correction(s) for, ${e.counter} accepted outcome(s) against"><rect class="ev-for" width="${pct}" height="6"/><rect class="ev-against" x="${pct}" width="${100 - pct}" height="6"/></svg>`;
+        fold();
+        html += `<tr class="diff-${r.op}${r.lost ? ' lost' : ''}"><td class="diff-no">${r.old ?? ''}</td><td class="diff-no">${r.new ?? ''}</td><td class="diff-sign" aria-label="${{ same: 'unchanged', del: 'removed', ins: 'added' }[r.op]}">${sign[r.op]}</td><td class="diff-line">${r.html || ' '}</td></tr>`;
+    });
+    fold();
+    const count = (op) => rows.filter((r) => r.op === op).length;
+    return {
+        added: count('ins'),
+        removed: count('del'),
+        html: changed.length
+            ? `<div class="table-scroll"><table class="git-diff"><colgroup><col class="diff-col-no"><col class="diff-col-no"><col class="diff-col-sign"><col></colgroup><tbody>${html}</tbody></table></div>`
+            : '<p class="hint">No text changes.</p>',
+    };
 }
 function reviewLine(x, version) {
     if (!x.passed && !x.failed) {
@@ -2618,7 +2708,10 @@ function styleChecksCard(rows) {
     if (!rows.length) {
         return '';
     }
-    return `<section class="card panel"><h2>How your styles hold up</h2><p class="hint">Requirement results from agents' compliance reviews of each style's current version. Most results are reported by the agent itself, so treat them as a signal, not proof.</p><ul>${rows.map((r) => `<li><button class="link-btn" data-edit="${esc(r.id)}">${esc(r.title)}</button> · v${r.version} · ${r.passed} passed${r.failed ? ` · <span class="bad">${r.failed} failed</span>` : ''}${byAgent(r.agents)}</li>`).join('')}</ul></section>`;
+    const body = rows
+        .map((r) => `<tr><td data-label="Style"><button class="link-btn" data-edit="${esc(r.id)}">${esc(r.title)}</button> <small class="hint">v${r.version}</small></td><td class="num" data-label="Passed">${r.passed}</td><td class="num" data-label="Failed">${r.failed ? `<span class="bad">${r.failed}</span>` : '0'}</td><td data-label="By agent">${byAgent(r.agents).replace('<br>', '') || '—'}</td></tr>`)
+        .join('');
+    return `<section class="card panel"><h2>How your styles hold up</h2><p class="hint">Requirement results from agents' compliance reviews of each style's current version. Most results are reported by the agent itself, so treat them as a signal, not proof.</p><div class="table-scroll"><table class="record-table effect-table"><thead><tr><th scope="col">Style</th><th scope="col" class="num">Passed</th><th scope="col" class="num">Failed</th><th scope="col">By agent</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }
 function inboxItem(r, projectName) {
     const t = r.target;
@@ -2634,22 +2727,26 @@ function inboxItem(r, projectName) {
                 r.analysis.conflicts.join(' | ')
             : '',
     ].filter(Boolean);
-    let change = '';
+    let change = '', separate = '';
     if (r.action === 'forget') {
         change = `<p>Archive <b>${esc(t?.title || 'missing style')}</b>. Reversible from History.</p>`;
     }
     else if (r.proposedContent != null) {
+        const revise = !!t && r.action === 'revise';
         const title = r.proposal
             ? 'New style: ' + esc(r.proposal.title) + ' · ' + esc(r.proposal.domain)
-            : esc(t?.title || 'Style') + ` · v${r.baseVersion} → proposed`;
-        const body = t && r.action === 'revise'
-            ? `<pre class="diff">${wordDiff(t.content, r.proposedContent)}</pre><details><summary>Show current and proposed separately</summary><h4>Current</h4><pre>${esc(t.content)}</pre><h4>Proposed</h4><pre>${esc(r.proposedContent)}</pre></details>`
-            : `<pre class="diff"><ins>${esc(r.proposedContent)}</ins></pre>`;
-        change = `<p class="diff-title"><b>${title}</b></p>${body}`;
+            : `${esc(t?.title || 'Style')} <span class="hint">v${r.baseVersion} → proposed</span>`;
+        const d = lineDiff(revise ? t.content : '', r.proposedContent);
+        change = `<div class="diff-file"><div class="diff-head"><b>${title}</b><span class="diff-stat"><span class="good">+${d.added}</span> <span class="bad">−${d.removed}</span></span></div>${d.html}</div>`;
+        separate = revise
+            ? `<details><summary>Show current and proposed in full</summary><h4>Current</h4><pre>${esc(t.content)}</pre><h4>Proposed</h4><pre>${esc(r.proposedContent)}</pre></details>`
+            : '';
     }
     const projectOnly = r.action === 'revise' && r.projectId && t?.shared && r.proposedContent != null
         ? `<button class="button small" data-feedback-decision="accept" data-feedback-scope="project" data-feedback-id="${r.id}">Project only</button>`
-        : '';
+        : (r.analysis?.projectOnly || [])
+            .map((p) => `<button class="button small" data-feedback-decision="accept" data-feedback-scope="project" data-feedback-project="${esc(p.projectId)}" data-feedback-id="${r.id}" title="Save the proposed text as ${esc(p.name)}'s own copy; the global style stays as it is">Apply to ${esc(p.name)} only</button>`)
+            .join('');
     const applyLabel = r.action === 'revise' && r.proposedContent == null ? 'Acknowledge' : 'Apply';
     const blocked = r.stale || !!r.fixtureFailures.length;
     const needsReview = needsOwnReview(r);
@@ -2661,17 +2758,18 @@ function inboxItem(r, projectName) {
         ? `<details data-proposal-editor><summary class="button small">Edit</summary><form data-proposal-form="${esc(r.id)}" aria-label="Edit proposal for ${esc(t?.title || 'style')}"><div class="field"><label for="proposal-content-${esc(r.id)}">Proposed text</label><textarea id="proposal-content-${esc(r.id)}" name="content" rows="14" required maxlength="100000">${esc(r.proposedContent)}</textarea></div>${r.analysis?.conflicts.length ? `<div class="field"><label for="proposal-resolution-${esc(r.id)}">How you resolved the conflicts (optional)</label><textarea id="proposal-resolution-${esc(r.id)}" name="conflictResolution" rows="2" maxlength="4000"></textarea></div>` : ''}<p class="bad" data-proposal-error role="alert" tabindex="-1"></p><button type="submit" class="button primary small">Save and apply</button></form></details>`
         : '';
     const actions = r.status === 'pending'
-        ? `<div class="row-actions">${apply}${blocked ? '' : projectOnly}${r.evidenceIds.length ? `<button class="button small" data-feedback-decision="split" data-feedback-id="${r.id}">Split</button>` : ''}<button class="button ghost small" data-feedback-decision="dismiss" data-feedback-id="${r.id}">Dismiss</button></div>${editor}`
+        ? `<div class="row-actions proposal-actions">${apply}${blocked ? '' : projectOnly}${r.evidenceIds.length ? `<button class="button small" data-feedback-decision="split" data-feedback-id="${r.id}">Split</button>` : ''}<button class="button ghost small" data-feedback-decision="dismiss" data-feedback-id="${r.id}">Dismiss</button>${editor}</div>`
         : `<p class="hint">${esc(r.status)}${r.appliedVersion ? ` · applied as v${r.appliedVersion}` : ''}</p>`;
     const tools = r.recordId && t
-        ? `<details class="space-top-18"><summary>Why is this style applied or missing?</summary><button class="button ghost small" data-explain="${r.recordId}" data-explain-project="${r.projectId || ''}">Explain</button><pre id="explain-${r.id}" data-explain-out="${r.recordId}"></pre></details>${r.action === 'revise'
+        ? `<details><summary>Why is this style applied or missing?</summary><button class="button ghost small" data-explain="${r.recordId}" data-explain-project="${r.projectId || ''}">Explain</button><pre id="explain-${r.id}" data-explain-out="${r.recordId}"></pre></details>${r.action === 'revise'
             ? `<details><summary>Regression fixtures for ${esc(t.title)}</summary><p class="hint">Phrases a revision must keep, and phrases it must not introduce. One per line. A failing fixture blocks Apply.</p><div class="field"><label for="fxKeep-${r.id}">Must keep</label><textarea id="fxKeep-${r.id}" rows="3" data-fixture-keep="${r.recordId}"></textarea></div><div class="field"><label for="fxAvoid-${r.id}">Must not contain</label><textarea id="fxAvoid-${r.id}" rows="2" data-fixture-avoid="${r.recordId}"></textarea></div><button class="button small" data-fixture-load="${r.id}" data-fixture-record="${r.recordId}" data-fixture-project="${r.projectId || ''}">Load</button> <button class="button small" data-fixture-save="${r.id}" data-fixture-record="${r.recordId}" data-fixture-project="${r.projectId || ''}">Save fixtures</button></details>`
             : ''}`
         : '';
     const evidence = r.recordId
-        ? `<div class="evidence">${evidenceBar(r.evidence)}<p class="hint">${r.evidence.independent} correction(s) · ${r.evidence.counter} accepted outcome(s) under the current rule${r.evidenceIds.length ? ` · consolidates ${r.evidenceIds.length} item(s)` : ''}${reviewLine(r.evidence.reviews, t?.version)}</p></div>`
+        ? `<div class="evidence"><p class="hint">${r.evidence.independent} correction(s) · ${r.evidence.counter} accepted outcome(s) under the current rule${r.evidenceIds.length ? ` · consolidates ${r.evidenceIds.length} item(s)` : ''}${reviewLine(r.evidence.reviews, t?.version)}</p></div>`
         : '';
-    return `<div class="feedback-item diag-${r.diagnosis}"><div class="spread-row"><label class="inline-check"><input type="checkbox" data-inbox-select="${r.id}" data-inbox-blocked="${needsReview}" aria-label="Select item"> ${ch(actionLabel[r.action])} ${ch(sourceLabel[r.source])}${r.projectId ? ' ' + ch(projectName(r.projectId)) : ' ' + ch('Global')}</label><span class="hint">${esc(formatTime(r.createdAt))}</span></div><p class="hint">${esc(diagnosisLabel[r.diagnosis])}</p><p>${esc(readableNote(r))}</p>${warnings.map((w) => `<p class="bad">${esc(w)}</p>`).join('')}${actions}${evidence}${change}${r.analysis ? projectEvidence(r.analysis) : ''}${tools}</div>`;
+    const more = separate + (r.analysis ? projectEvidence(r.analysis) : '') + tools;
+    return `<div class="feedback-item diag-${r.diagnosis}"><div class="spread-row"><label class="inline-check"><input type="checkbox" data-inbox-select="${r.id}" data-inbox-blocked="${needsReview}" aria-label="Select item"> ${ch(actionLabel[r.action])} ${ch(sourceLabel[r.source])}${r.projectId ? ' ' + ch(projectName(r.projectId)) : ' ' + ch('Global')}</label><span class="hint">${esc(formatTime(r.createdAt))}</span></div>${r.diagnosis === 'revision' ? '' : `<p class="hint">${esc(diagnosisLabel[r.diagnosis])}</p>`}<p>${esc(readableNote(r))}</p>${warnings.map((w) => `<p class="bad">${esc(w)}</p>`).join('')}${evidence}${change}${r.analysis?.resolution ? `<p><b>Your conflict resolution:</b> ${esc(r.analysis.resolution)}</p>` : ''}${r.analysis && r.status === 'pending' ? `<p class="hint">Apply creates a new version of the global style for every project that uses it.${r.analysis.projectOnly?.length ? ` Apply to ${esc(r.analysis.projectOnly.map((p) => p.name).join(' or '))} only saves a private copy there and leaves the global style unchanged.` : ' Project-only copies are not changed.'}</p>` : ''}${actions}${more ? `<details class="proposal-more"><summary>More about this change</summary>${more}</details>` : ''}</div>`;
 }
 function comparisonResult(run) {
     if (run.status === 'ready') {
@@ -2755,22 +2853,22 @@ function bindAutoStatus(health) {
         if (!latest || active !== 'feedback') {
             return;
         }
-        const card = document.getElementById('learnStatus');
-        if (!card) {
-            return;
-        }
         if (wasRunning !== (latest.projects.state === 'running') &&
             !document.querySelector('[data-proposal-editor][open]')) {
             await feedback();
             return;
         }
-        card.outerHTML = autoLearningStatus(latest);
+        const card = document.getElementById('learnStatus');
+        if (card) {
+            card.outerHTML = autoLearningStatus(latest);
+        }
         bindAutoStatus(latest);
     }, wasRunning ? 2500 : 30000);
 }
+let learnTab = 'proposals';
 async function feedback() {
     const q = new URLSearchParams(Object.entries(inboxFilter).filter(([, v]) => v));
-    const [records, health, projects] = await Promise.all([
+    const [all, health, projects] = await Promise.all([
         api('/api/feedback?' + q),
         api('/api/learning'),
         api('/api/projects'),
@@ -2779,12 +2877,34 @@ async function feedback() {
         return;
     }
     const projectName = (id) => projects.find((p) => p.id === id)?.name || 'Project';
+    const changesTo = (r) => r.projectId || 'global';
+    const learnedFrom = (r) => new Set((r.analysis?.sources || []).map((x) => x.projectId).filter((id) => !!id));
+    const matches = (r, scope) => scope.startsWith('from:') ? learnedFrom(r).has(scope.slice(5)) : changesTo(r) === scope;
+    const records = all.filter((r) => !inboxScope || matches(r, inboxScope));
+    const tally = (keys) => {
+        const counts = new Map();
+        for (const r of all) {
+            for (const k of keys(r)) {
+                counts.set(k, (counts.get(k) || 0) + 1);
+            }
+        }
+        return counts;
+    };
+    const opt = (value, label, n) => `<option value="${esc(value)}"${value === inboxScope ? ' selected' : ''}>${esc(label)} (${n})</option>`;
+    const editKey = (id) => (id === 'global' ? '' : projectName(id));
+    const edits = [...tally((r) => [changesTo(r)])].sort(([a], [b]) => editKey(a).localeCompare(editKey(b)));
+    const sources = [...tally((r) => [...learnedFrom(r)].map((id) => 'from:' + id))].sort(([a], [b]) => projectName(a.slice(5)).localeCompare(projectName(b.slice(5))));
+    const scopeSelect = `<label class="inline-field learn-scope">Show<select id="learnScope"><option value="">All proposals (${all.length})</option><optgroup label="Changes to">${edits
+        .map(([id, n]) => opt(id, id === 'global' ? 'Global styles' : `${projectName(id)} styles`, n))
+        .join('')}</optgroup>${sources.length
+        ? `<optgroup label="Learned from">${sources.map(([id, n]) => opt(id, projectName(id.slice(5)), n)).join('')}</optgroup>`
+        : ''}</select></label>`;
     const option = (value, label, current) => `<option value="${esc(value)}"${value === current ? ' selected' : ''}>${esc(label)}</option>`;
     const step = (name, value, label, cls = '') => `<li class="flow-step${cls}"><span class="flow-name">${name}</span><b>${value}</b><span>${esc(label)}</span></li>`;
     const late = (health.oldestPendingDays ?? 0) >= 7 ? ' late' : '';
     const flow = `<section class="learning-flow" aria-label="Learning loop"><ol>${step('Learn', health.pending + health.accepted + health.dismissed, 'lessons captured')}${step('Feedback', health.pending, 'waiting for your OK', health.pending ? ' attention' + late : '')}${step('Consent', health.accepted, `applied · ${health.dismissed} dismissed`)}${step('Reuse', health.applied - health.reverted, health.reverted ? `in use · ${health.reverted} reverted` : 'in use by agents', health.reverted ? ' warn' : '')}</ol></section>`;
     const tab = (status, label) => `<button class="button small${inboxFilter.status === status ? ' primary' : ' soft'}" data-learn-tab="${status}" aria-pressed="${inboxFilter.status === status}">${label}</button>`;
-    const tabs = `<div class="row-actions" role="group" aria-label="Show">${tab('pending', `Waiting (${health.pending})`)}${tab('accepted', 'Applied')}${tab('dismissed', 'Dismissed')}</div>`;
+    const tabs = `<div class="row-actions learn-filters">${scopeSelect}<div class="row-actions" role="group" aria-label="Show">${tab('pending', `Waiting (${health.pending})`)}${tab('accepted', 'Applied')}${tab('dismissed', 'Dismissed')}</div></div>`;
     const reviewOnly = records.filter(needsOwnReview).length;
     const bulk = inboxFilter.status === 'pending' && records.length > 1
         ? `<div class="row-actions learn-bulk"><label class="inline-check"><input type="checkbox" id="learnSelectAll"> Select all</label><button class="button small" data-inbox-bulk="accept">Apply selected</button><button class="button ghost small" data-inbox-bulk="dismiss">Dismiss selected</button>${reviewOnly ? `<span class="hint">${reviewOnly} of ${records.length} drop mandatory text, conflict or are out of date, so Apply selected skips them. Open each one to apply or edit it.</span>` : ''}</div>`
@@ -2802,14 +2922,36 @@ async function feedback() {
     };
     const [emptyTitle, emptyHint] = emptyText[inboxFilter.status] || emptyText.pending;
     const auto = health.recentAutomatic.length
-        ? `<h3 class="space-top-18">Recent automatic actions</h3>${health.recentAutomatic.map((a) => `<p class="hint">${esc(formatTime(a.at))} · ${esc(a.detail)}</p>`).join('')}`
+        ? `<section class="card panel"><h2>Recent automatic actions</h2>${health.recentAutomatic.map((a) => `<p class="hint">${esc(formatTime(a.at))} · ${esc(a.detail)}</p>`).join('')}</section>`
         : '';
-    const settings = `<details class="card panel learning-settings space-top-18"><summary><span aria-hidden="true">⚙</span> Settings</summary><div class="field space-top-20"><label for="learnMode">Learning</label><select id="learnMode">${option('suggest', 'On — ask me before changing anything', health.mode)}${option('explicit', 'On — save my own remember/forget requests right away', health.mode)}${option('off', 'Off — stop learning', health.mode)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAutoProjects"${health.autoProjects ? ' checked' : ''}> Compare my projects automatically when their styles change</label><div class="field"><label for="learnAgent">Agent used to compare projects</label><select id="learnAgent">${option('', 'Automatic (Codex, else Claude)', health.agent)}${option('codex', 'Codex', health.agent)}${option('claude', 'Claude', health.agent)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAuto"${health.autoConsolidate ? ' checked' : ''}> Merge identical proposals into one</label><div class="field"><label for="learnRetention">Forget decided items after (days, 0 = never)</label><input id="learnRetention" type="number" min="0" max="3650" value="${health.retentionDays}"></div><fieldset class="field"><legend>Don't learn from these projects</legend>${projects.map((p) => `<label class="inline-check"><input type="checkbox" data-learn-pause="${p.id}"${health.pausedProjects.includes(p.id) ? ' checked' : ''}> ${esc(p.name)}</label>`).join('') || '<p class="hint">No projects</p>'}</fieldset><button class="button primary" data-action="learning-settings">Save settings</button><p class="hint">${health.suppressions} dismissed idea(s) won't be suggested again.</p>${health.suppressions ? '<button class="button ghost small" data-action="learning-clear-suppressions">Allow dismissed ideas again</button>' : ''}${auto}</details>`;
+    const settings = `<section class="card panel learning-settings"><h2>Settings</h2><div class="field space-top-20"><label for="learnMode">Learning</label><select id="learnMode">${option('suggest', 'On — ask me before changing anything', health.mode)}${option('explicit', 'On — save my own remember/forget requests right away', health.mode)}${option('off', 'Off — stop learning', health.mode)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAutoProjects"${health.autoProjects ? ' checked' : ''}> Compare my projects automatically when their styles change</label><div class="field"><label for="learnAgent">Agent used to compare projects</label><select id="learnAgent">${option('', 'Automatic (Codex, else Claude)', health.agent)}${option('codex', 'Codex', health.agent)}${option('claude', 'Claude', health.agent)}</select></div><label class="inline-check learn-auto"><input type="checkbox" id="learnAuto"${health.autoConsolidate ? ' checked' : ''}> Merge identical proposals into one</label><div class="field"><label for="learnRetention">Forget decided items after (days, 0 = never)</label><input id="learnRetention" type="number" min="0" max="3650" value="${health.retentionDays}"></div><fieldset class="field"><legend>Don't learn from these projects</legend>${projects.map((p) => `<label class="inline-check"><input type="checkbox" data-learn-pause="${p.id}"${health.pausedProjects.includes(p.id) ? ' checked' : ''}> ${esc(p.name)}</label>`).join('') || '<p class="hint">No projects</p>'}</fieldset><p class="hint">${health.suppressions} dismissed idea(s) won't be suggested again.${health.suppressions ? ' <button class="link-btn" data-action="learning-clear-suppressions">Allow dismissed ideas again</button>' : ''}</p><button class="button primary" data-action="learning-settings">Save settings</button></section>`;
     const askAutoLearning = `<section class="card panel learning-ask" aria-labelledby="learnAskTitle"><h2 id="learnAskTitle">Learn from your projects automatically?</h2><p>When a project's customized styles change, Personal Brain asks your Codex or Claude command-line tool to compare them and suggest updates to your shared styles. This uses your agent account. Nothing changes until you apply a suggestion, and you can change this later in Settings.</p><div class="row-actions"><button class="button primary" data-learn-auto-answer="on">Turn on</button><button class="button ghost" data-learn-auto-answer="off">Keep it off</button></div></section>`;
-    const tell = `<details class="card panel learning-tell space-top-18"><summary>Tell Personal Brain something yourself</summary><div class="field space-top-20"><label for="fbNote">What should agents do differently?</label><textarea id="fbNote" rows="4" placeholder="e.g. Never compress code into one line"></textarea></div><button class="button primary small" data-action="feedback">Send</button></details>`;
-    layout('Learning', 'Personal Brain learns from your agents and projects on its own. You only say yes or no to each proposed change.', '', `${health.autoProjectsAsked ? '' : askAutoLearning}${autoLearningStatus(health)}${flow}${staleExportsCard(health.staleExports)}${styleChecksCard(health.styleChecks)}<section class="card panel"><div class="spread-row"><h2>Proposed changes ${infoButton('feedback')}</h2>${tabs}</div>${bulk}<div class="feedback-list space-top-18">${pageItems(records)
-        .map((r) => inboxItem(r, projectName))
-        .join('') || empty(emptyTitle, emptyHint)}</div>${pagination(records.length)}</section>${tell}${settings}`);
+    const tell = `<details class="card panel learning-tell"><summary>Tell Personal Brain something yourself</summary><div class="field space-top-20"><label for="fbNote">What should agents do differently?</label><textarea id="fbNote" rows="4" placeholder="e.g. Never compress code into one line"></textarea></div><button class="button primary small" data-action="feedback">Send</button></details>`;
+    const [tone, state] = learningState(health.projects);
+    const checks = staleExportsCard(health.staleExports) + styleChecksCard(health.styleChecks);
+    const nav = `<nav class="project-tabs" aria-label="Learning sections">${[
+        ['proposals', `Proposed changes${health.pending ? ` (${health.pending})` : ''}`],
+        ['checks', 'Style checks'],
+        ['auto', `Automatic learning <span class="learn-badge ${tone}">${state}</span>`],
+        ['settings', 'Settings'],
+    ]
+        .map(([key, title]) => `<a href="#/feedback${key === 'proposals' ? '' : '?tab=' + key}" ${learnTab === key ? 'aria-current="page"' : ''}>${title}</a>`)
+        .join('')}</nav>`;
+    const bodies = {
+        proposals: () => `<section class="card panel"><div class="spread-row"><h2>Proposed changes ${infoButton('feedback')}</h2>${tabs}</div>${bulk}<div class="feedback-list space-top-18">${pageItems(records)
+            .map((r) => inboxItem(r, projectName))
+            .join('') || empty(emptyTitle, emptyHint)}</div>${pagination(records.length)}</section>${tell}`,
+        checks: () => checks ||
+            `<section class="card panel">${empty('No style results yet', 'Results appear when agents review their work against your styles')}</section>`,
+        auto: () => autoLearningStatus(health) + auto,
+        settings: () => settings,
+    };
+    layout('Learning', 'Personal Brain learns from your agents and projects on its own. You only say yes or no to each proposed change.', '', `${health.autoProjectsAsked ? '' : askAutoLearning}${flow}${nav}<div class="learn-body">${bodies[learnTab]()}</div>`);
+    $('learnScope')?.addEventListener('change', async (ev) => {
+        inboxScope = ev.target.value;
+        page = 1;
+        await feedback();
+    });
     main.querySelectorAll('[data-learn-tab]').forEach((b) => b.addEventListener('click', async () => {
         inboxFilter.status = b.dataset.learnTab;
         page = 1;
@@ -2846,75 +2988,70 @@ let benchEditing = null;
 let benchPoll;
 const pct = (passed, total) => (total ? Math.round((passed / total) * 100) : null);
 const pctText = (v) => (v === null ? '—' : v + '%');
+function sessionShare(covered, work) {
+    const share = Math.round((covered / work) * 100);
+    return `<meter class="effect-meter" min="0" max="100" low="50" optimum="100" value="${share}" aria-hidden="true"></meter><span class="${share < 50 ? 'bad' : ''}">${share}%</span> <span class="hint">${covered} of ${work}</span>`;
+}
 function adoptionTable(rows = []) {
     if (!rows.length) {
-        return '<p class="hint">No agent activity in the last 14 days.</p>';
+        return empty('No agent activity yet', 'Connect an agent in Agent setup; its hooks record activity here.');
     }
-    const row = (a) => {
-        const per10 = a.prompts ? Math.round((a.loads / a.prompts) * 100) / 10 : null;
-        let rate = '<span class="hint">no hooks</span>';
-        if (per10 !== null) {
-            rate = per10 < 1 ? `<span class="bad">${per10}</span>` : String(per10);
-        }
-        let work = '<span class="hint">not recorded yet</span>';
-        if (a.workSessions) {
-            const share = Math.round(((a.coveredSessions || 0) / a.workSessions) * 100);
-            const text = `${a.coveredSessions} of ${a.workSessions} · ${share}%`;
-            work = share < 50 ? `<span class="bad">${text}</span>` : text;
-        }
-        return `<tr><td>${esc(agentName(a.agent))}</td><td>${work}</td><td class="num">${a.sessions}</td><td class="num">${a.prompts}</td><td class="num">${a.loads}</td><td class="num">${rate}</td><td class="num">${a.reviews}</td><td class="num">${a.lessons}</td><td class="num">${a.errors ? `<span class="bad">${a.errors}</span>` : 0}</td></tr>`;
-    };
-    return `<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Agent</th><th scope="col">Work sessions that loaded styles</th><th scope="col">Sessions</th><th scope="col">Prompts</th><th scope="col">Style loads</th><th scope="col">Loads per 10 prompts</th><th scope="col">Reviews</th><th scope="col">Lessons sent</th><th scope="col">Tool errors</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
+    const row = (a) => `<tr><td data-label="Agent"><strong>${esc(agentName(a.agent))}</strong></td><td data-label="Work sessions using styles">${a.workSessions ? sessionShare(a.coveredSessions || 0, a.workSessions) : '<span class="hint">No edits recorded yet</span>'}</td><td class="num" data-label="Style loads">${a.loads}</td><td class="num" data-label="Reviews">${a.reviews}</td><td class="num" data-label="Lessons sent">${a.lessons}</td><td class="num" data-label="Tool errors">${a.errors ? `<span class="bad">${a.errors}</span>` : 0}</td></tr>`;
+    return `<div class="table-scroll"><table class="record-table effect-table"><thead><tr><th scope="col">Agent</th><th scope="col">Work sessions using styles</th><th scope="col" class="num">Style loads</th><th scope="col" class="num">Reviews</th><th scope="col" class="num">Lessons sent</th><th scope="col" class="num">Tool errors</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
 }
+const weekLabel = (w) => w.replace(/^(\d{4})-(\d+)$/, 'Week $2, $1');
+const correctionRate = (w) => w.corrections === null ? null : pct(w.corrections, w.recordedPrompts);
 function weeksTable(weeks) {
     if (!weeks.length) {
         return empty('No agent prompts yet', 'Connect an agent; prompts are counted through its hooks.');
     }
     const row = (w) => {
         const rate = w.corrections === null
-            ? '<span class="hint">not recorded</span>'
-            : `${w.corrections} · ${pctText(pct(w.corrections, w.recordedPrompts))} of prompts`;
-        return `<tr><td>${esc(w.week)}</td><td class="num">${w.prompts}</td><td class="num">${w.sessions}</td><td>${rate}</td><td class="num">${w.lessons}</td><td class="num">${w.repeats ? `<span class="bad">${w.repeats}</span>` : 0}</td></tr>`;
+            ? '<span class="hint">Not recorded</span>'
+            : `${pctText(correctionRate(w))} <span class="hint">${w.corrections} of ${w.recordedPrompts}</span>`;
+        return `<tr><td data-label="Week">${esc(weekLabel(w.week))}</td><td class="num" data-label="Prompts">${w.prompts}</td><td data-label="Corrections">${rate}</td><td class="num" data-label="Lessons captured">${w.lessons}</td><td class="num" data-label="Repeated lessons">${w.repeats ? `<span class="bad">${w.repeats}</span>` : 0}</td></tr>`;
     };
-    return `<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Week</th><th scope="col">Prompts</th><th scope="col">Sessions</th><th scope="col">Corrections</th><th scope="col">Lessons captured</th><th scope="col">Repeats of approved lessons</th></tr></thead><tbody>${weeks.map(row).join('')}</tbody></table></div>`;
+    return `<div class="table-scroll"><table class="record-table effect-table"><thead><tr><th scope="col">Week</th><th scope="col" class="num">Prompts</th><th scope="col">Corrections</th><th scope="col" class="num">Lessons captured</th><th scope="col" class="num">Repeated lessons</th></tr></thead><tbody>${[...weeks].reverse().map(row).join('')}</tbody></table></div>`;
 }
-function benchSummary(run, tasks) {
-    const done = run.results.filter((r) => !r.error);
-    const rate = (rows) => pct(rows.reduce((n, r) => n + r.passed, 0), rows.reduce((n, r) => n + r.total, 0));
-    const gap = (w, wo) => {
-        if (w === null || wo === null) {
-            return '—';
-        }
-        const d = w - wo;
-        const tone = { 1: 'good', [-1]: 'bad' }[Math.sign(d)] || '';
-        return `<b class="${tone}">${d > 0 ? '+' : ''}${d} pts</b>`;
+const benchRate = (rows) => pct(rows.reduce((n, r) => n + r.passed, 0), rows.reduce((n, r) => n + r.total, 0));
+function benchGap(run, agent, taskId) {
+    const pick = (condition) => run.results.filter((r) => !r.error &&
+        r.condition === condition &&
+        (!agent || r.agent === agent) &&
+        (!taskId || r.taskId === taskId));
+    const w = benchRate(pick('with')), wo = benchRate(pick('without'));
+    return {
+        w,
+        wo,
+        d: w === null || wo === null ? null : w - wo,
+        misses: pick('with').flatMap((r) => r.failed),
     };
-    const pick = (agent, condition, taskId) => done.filter((r) => r.agent === agent && r.condition === condition && (!taskId || r.taskId === taskId));
-    const agentRows = run.agents
-        .map((a) => {
-        const w = rate(pick(a, 'with')), wo = rate(pick(a, 'without'));
-        const errors = run.results.filter((r) => r.agent === a && r.error).length;
-        return `<tr><td>${esc(agentName(a))}</td><td class="num">${pctText(w)}</td><td class="num">${pctText(wo)}</td><td>${gap(w, wo)}</td><td class="num">${errors ? `<span class="bad">${errors}</span>` : 0}</td></tr>`;
-    })
-        .join('');
-    const taskRows = run.taskIds
+}
+const gapTone = (d) => ({ 1: 'good', [-1]: 'bad' })[Math.sign(d ?? 0)] || '';
+const gapText = (d) => d === null ? '—' : `<b class="${gapTone(d)}">${d > 0 ? '+' : ''}${d} pts</b>`;
+function benchSummary(run, tasks) {
+    const rows = run.taskIds
         .flatMap((id) => run.agents.map((a) => {
         const title = tasks.find((t) => t.id === id)?.title || 'Deleted task';
-        const w = rate(pick(a, 'with', id)), wo = rate(pick(a, 'without', id));
-        const misses = [...new Set(pick(a, 'with', id).flatMap((r) => r.failed))];
-        return `<tr><td>${esc(title)}</td><td>${esc(agentName(a))}</td><td class="num">${pctText(w)}</td><td class="num">${pctText(wo)}</td><td>${gap(w, wo)}</td><td>${misses.map((m) => `<code>${esc(m)}</code>`).join(' ') || '—'}</td></tr>`;
+        const g = benchGap(run, a, id);
+        const misses = [...new Set(g.misses)];
+        return `<tr><td data-label="Task">${esc(title)}${run.agents.length > 1 ? ` <span class="hint">${esc(agentName(a))}</span>` : ''}</td><td class="num" data-label="With styles">${pctText(g.w)}</td><td class="num" data-label="Without">${pctText(g.wo)}</td><td class="num" data-label="Difference">${gapText(g.d)}</td><td data-label="Missed with styles">${misses.map((m) => `<code>${esc(m)}</code>`).join(' ') || '<span class="hint">None</span>'}</td></tr>`;
     }))
         .join('');
-    const firstError = run.results.find((r) => r.error)?.error;
-    const progress = run.status === 'running'
+    const errors = run.results.filter((r) => r.error);
+    const status = run.status === 'running'
         ? `<p class="hint" aria-live="polite">Running · ${run.results.length} of ${run.planned} agent calls done <button class="link-btn" data-bench-stop="${esc(run.id)}">Stop</button></p>`
-        : `<p class="hint">${esc(formatTime(run.createdAt))} · ${esc(run.status)} · ${run.results.length} of ${run.planned} calls · ${run.runs} run(s) per task</p>`;
-    return `${progress}${firstError ? `<p class="bad">${esc(firstError)}</p>` : ''}<div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Agent</th><th scope="col">With styles</th><th scope="col">Without</th><th scope="col">Difference</th><th scope="col">Errors</th></tr></thead><tbody>${agentRows}</tbody></table></div><details class="space-top-18"><summary>Per task</summary><div class="table-scroll"><table class="record-table"><thead><tr><th scope="col">Task</th><th scope="col">Agent</th><th scope="col">With</th><th scope="col">Without</th><th scope="col">Difference</th><th scope="col">Checks missed with styles</th></tr></thead><tbody>${taskRows}</tbody></table></div></details>`;
+        : `<p class="hint">${esc(formatTime(run.createdAt))} · ${run.agents.map(agentName).join(', ')} · ${run.runs} run(s) per task · ${run.results.length} of ${run.planned} calls${run.status === 'ready' ? '' : ' · ' + esc(run.status)}</p>`;
+    const errorNote = errors.length
+        ? `<p class="bad" role="alert">${errors.length} call(s) failed: ${esc(errors[0].error || '')}</p>`
+        : '';
+    return `${status}${errorNote}<div class="table-scroll"><table class="record-table effect-table"><thead><tr><th scope="col">Task</th><th scope="col" class="num">With styles</th><th scope="col" class="num">Without</th><th scope="col" class="num">Difference</th><th scope="col">Checks missed with styles</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function benchTaskForm(task, projects) {
     const checks = task ? task.checks.map((c) => `${c.kind}: ${c.value}`).join('\n') : '';
-    return `<form id="benchTaskForm" class="space-top-18"><h3>${task ? 'Edit task' : 'Add a task'}</h3><div class="field"><label for="benchTitle">Title</label><input id="benchTitle" name="title" required maxlength="150" value="${esc(task?.title || '')}"></div><div class="field"><label for="benchProject">Project whose styles it tests</label><select id="benchProject" name="projectId" required>${projects.map((p) => `<option value="${esc(p.id)}"${p.id === task?.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div><div class="field"><label for="benchPrompt">Prompt — a real request from your work</label><textarea id="benchPrompt" name="prompt" rows="5" required maxlength="20000">${esc(task?.prompt || '')}</textarea></div><div class="field"><label for="benchChecks">Checks, one per line</label><textarea id="benchChecks" name="checks" rows="4" required aria-describedby="benchChecksHelp" placeholder="contains: <html&#10;absent: TODO&#10;regex: flowchart|sequenceDiagram">${esc(checks)}</textarea><p class="hint" id="benchChecksHelp">Start each line with <code>contains:</code>, <code>absent:</code> or <code>regex:</code>. Matching ignores case. Base them on what your styles ask for, so the comparison shows whether the styles are followed.</p></div><p class="bad" id="benchTaskError" role="alert"></p><div class="row-actions"><button type="submit" class="button primary small">${task ? 'Save task' : 'Add task'}</button>${task ? '<button type="button" class="button ghost small" data-bench-cancel-edit>Cancel</button>' : ''}</div></form>`;
+    return `<form id="benchTaskForm" class="effect-task-form"><h3>${task ? 'Edit task' : 'New task'}</h3><div class="effect-form-grid"><div class="field"><label for="benchTitle">Title</label><input id="benchTitle" name="title" required maxlength="150" value="${esc(task?.title || '')}"></div><div class="field"><label for="benchProject">Project whose styles it tests</label><select id="benchProject" name="projectId" required>${projects.map((p) => `<option value="${esc(p.id)}"${p.id === task?.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div><div class="field"><label for="benchPrompt">Prompt — a real request from your work</label><textarea id="benchPrompt" name="prompt" rows="4" required maxlength="20000">${esc(task?.prompt || '')}</textarea></div><div class="field"><label for="benchChecks">Checks, one per line</label><textarea id="benchChecks" name="checks" rows="4" required aria-describedby="benchChecksHelp" placeholder="contains: <html&#10;absent: TODO&#10;regex: flowchart|sequenceDiagram">${esc(checks)}</textarea><p class="hint" id="benchChecksHelp">Start each line with <code>contains:</code>, <code>absent:</code> or <code>regex:</code>; matching ignores case. Check what your styles ask for.</p></div><p class="bad" id="benchTaskError" role="alert"></p><div class="row-actions"><button type="submit" class="button primary small">${task ? 'Save task' : 'Add task'}</button><button type="button" class="button ghost small" data-bench-cancel-edit>Cancel</button></div></form>`;
 }
+let effectTab = 'agents';
 async function effectiveness() {
     clearTimeout(benchPoll);
     const [data, projects] = await Promise.all([
@@ -2924,41 +3061,79 @@ async function effectiveness() {
     if (active !== 'effectiveness') {
         return;
     }
-    const { weeks, adoption, tasks, runs } = data;
+    const { weeks, adoption = [], tasks, runs } = data;
     const latest = runs[0];
     const running = latest?.status === 'running';
     const projectName = (id) => projects.find((p) => p.id === id)?.name || 'Removed project';
-    const taskList = tasks.length
-        ? `<ul>${tasks.map((t) => `<li><label class="inline-check"><input type="checkbox" data-bench-task="${esc(t.id)}" checked> ${esc(t.title)}</label> <span class="hint">${esc(projectName(t.projectId))} · ${t.checks.length} check(s)</span> <button class="link-btn" data-bench-edit="${esc(t.id)}">Edit</button> <button class="link-btn" data-bench-delete="${esc(t.id)}">Delete</button></li>`).join('')}</ul>`
-        : '<p class="hint">No tasks yet. Add 5–20 real requests from your work below.</p>';
-    const runForm = tasks.length
-        ? `<fieldset class="field"><legend>Agents</legend><label class="inline-check"><input type="checkbox" data-bench-agent="codex" checked> Codex</label> <label class="inline-check"><input type="checkbox" data-bench-agent="claude" checked> Claude</label></fieldset><div class="field"><label for="benchRuns">Runs per task (agent answers vary, so 3 is more reliable)</label><select id="benchRuns">${[1, 2, 3, 4, 5].map((n) => `<option${n === 3 ? ' selected' : ''}>${n}</option>`).join('')}</select></div><p class="hint" id="benchPlanned"></p><button class="button primary" data-action="bench-run"${running ? ' disabled' : ''}>Run comparison</button><p class="hint">Uses your Codex/Claude account. Each task runs twice per run: with the project styles in the prompt and without.</p>`
-        : '';
-    const older = runs
-        .slice(1)
-        .map((r) => `<details><summary>${esc(formatTime(r.createdAt))} · ${r.agents.map(agentName).join(', ')} · ${esc(r.status)}</summary>${benchSummary(r, tasks)}</details>`)
-        .join('');
-    layout('Effectiveness', 'Is Personal Brain making AI output better? Track corrections in daily work, and compare the same tasks with and without your styles.', '', `<section class="card panel"><h2>Styles in use, by agent</h2><p class="hint">Last 14 days. One set of styles only works if every agent loads it: a style load is the agent reading your styles before working. A work session is one where the agent edited files; it should load your styles in most of them. Loads per 10 prompts also counts chat, so it reads low.</p>${adoptionTable(adoption)}</section><section class="card panel"><h2>Daily work</h2><p class="hint">Corrections are prompts where you state a lasting preference ("always…", "next time…", "don't…") — they should fall as styles cover more. A repeat is a captured lesson that matches one you already approved, which means that style is not being followed.</p>${weeksTable(weeks)}</section><section class="card panel"><h2>With vs without your styles</h2>${latest ? benchSummary(latest, tasks) : '<p class="hint">No comparison yet.</p>'}${older ? `<h3 class="space-top-18">Earlier comparisons</h3>${older}` : ''}<h3 class="space-top-18">Tasks</h3>${taskList}${runForm}${benchTaskForm(tasks.find((t) => t.id === benchEditing) || null, projects)}</section>`);
+    const work = adoption.reduce((n, a) => n + (a.workSessions || 0), 0), covered = adoption.reduce((n, a) => n + (a.coveredSessions || 0), 0);
+    const recorded = weeks.filter((w) => w.corrections !== null);
+    const [thisWeek, lastWeek] = [recorded.at(-1), recorded.at(-2)];
+    const repeats = weeks.reduce((n, w) => n + w.repeats, 0);
+    const gap = latest ? benchGap(latest).d : null;
+    const metric = (title, value, note, tone = '') => `<div class="card trace-metric"><div class="trace-metric-top"><span>${esc(title)}</span></div><b class="${tone}">${value}</b><small>${note}</small></div>`;
+    const summary = `<section class="trace-metrics effect-metrics" aria-label="Summary">${[
+        metric('Work sessions using styles', work ? pctText(pct(covered, work)) : '—', work ? `${covered} of ${work} sessions with edits, last 14 days` : 'No edits recorded yet', work && covered / work < 0.5 ? 'bad' : ''),
+        metric('Corrections', thisWeek ? pctText(correctionRate(thisWeek)) : '—', thisWeek
+            ? `of prompts in ${esc(weekLabel(thisWeek.week))}${lastWeek ? ` · ${pctText(correctionRate(lastWeek))} the week before` : ''}`
+            : 'Not recorded yet'),
+        metric('Repeated lessons', String(repeats), repeats ? 'Approved lessons the agent broke again' : 'No approved lesson broken again', repeats ? 'bad' : ''),
+        metric('With vs without styles', gap === null ? '—' : `${gap > 0 ? '+' : ''}${gap} pts`, latest ? `Latest comparison, ${esc(formatTime(latest.createdAt))}` : 'No comparison yet', gapTone(gap)),
+    ].join('')}</section>`;
+    const tabs = `<nav class="project-tabs" aria-label="Effectiveness sections">${[
+        ['agents', 'Agents'],
+        ['daily', 'Daily work'],
+        ['compare', 'With vs without'],
+    ]
+        .map(([key, title]) => `<a href="#/effectiveness${key === 'agents' ? '' : '?tab=' + key}" ${effectTab === key ? 'aria-current="page"' : ''}>${title}</a>`)
+        .join('')}</nav>`;
+    let body;
+    if (effectTab === 'agents') {
+        body = `<section class="card panel"><div class="panel-head"><div><h2>Styles in use, by agent</h2><p class="hint">Last 14 days. A work session is one where the agent edited files; it should load your styles in most of them.</p></div></div>${adoptionTable(adoption)}</section>`;
+    }
+    else if (effectTab === 'daily') {
+        body = `<section class="card panel"><div class="panel-head"><div><h2>Daily work</h2><p class="hint">Corrections are prompts that state a lasting preference ("always…", "next time…", "don't…"); they should fall as styles cover more. A repeated lesson means an approved style is not being followed.</p></div></div>${weeksTable(weeks)}</section>`;
+    }
+    else {
+        const editing = benchEditing === 'new' ? null : tasks.find((t) => t.id === benchEditing) || null;
+        const form = benchEditing ? benchTaskForm(editing, projects) : '';
+        const taskRows = tasks
+            .map((t) => `<tr><td data-label="Include"><input type="checkbox" data-bench-task="${esc(t.id)}" checked aria-label="Include ${esc(t.title)}"></td><td data-label="Task"><strong>${esc(t.title)}</strong></td><td data-label="Project">${esc(projectName(t.projectId))}</td><td class="num" data-label="Checks">${t.checks.length}</td><td><div class="row-actions">${iconAction('edit', 'Edit ' + t.title, `data-bench-edit="${esc(t.id)}"`)}${iconAction('remove', 'Delete ' + t.title, `data-bench-delete="${esc(t.id)}"`)}</div></td></tr>`)
+            .join('');
+        const runBar = `<div class="effect-run-bar"><fieldset class="inline-field"><legend class="sr-only">Agents</legend><span class="effect-run-label">Agents</span><label class="inline-check"><input type="checkbox" data-bench-agent="codex" checked> Codex</label><label class="inline-check"><input type="checkbox" data-bench-agent="claude" checked> Claude</label></fieldset><label class="inline-field effect-run-label">Runs per task<select id="benchRuns">${[1, 2, 3, 4, 5].map((n) => `<option${n === 3 ? ' selected' : ''}>${n}</option>`).join('')}</select></label><button class="button primary" data-action="bench-run"${running ? ' disabled' : ''}>Run comparison</button><span class="hint" id="benchPlanned" aria-live="polite"></span></div><p class="hint">Uses your Codex or Claude account. Each run answers every task twice: with the project styles and without. Three runs per task smooth out answers that vary.</p>`;
+        const tasksBlock = tasks.length
+            ? `<div class="table-scroll"><table class="record-table effect-table"><thead><tr><th scope="col"><span class="sr-only">Include</span></th><th scope="col">Task</th><th scope="col">Project</th><th scope="col" class="num">Checks</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${taskRows}</tbody></table></div>${runBar}`
+            : empty('No tasks yet', 'Add 5–20 real requests from your work, each with checks for what your styles ask for.');
+        const older = runs
+            .slice(1)
+            .map((r) => `<details class="effect-older"><summary>${esc(formatTime(r.createdAt))} · ${r.agents.map(agentName).join(', ')} · ${gapText(benchGap(r).d)}</summary>${benchSummary(r, tasks)}</details>`)
+            .join('');
+        body = `<section class="card panel"><div class="panel-head"><div><h2>Latest result</h2><p class="hint">Share of checks passed by the same task, answered with and without your styles.</p></div></div>${latest ? benchSummary(latest, tasks) : empty('No comparison yet', 'Choose tasks below and run a comparison.')}${older ? `<h3 class="space-top-18">Earlier comparisons</h3>${older}` : ''}</section><section class="card panel"><div class="panel-head"><div><h2>Tasks</h2><p class="hint">Select the tasks to compare.</p></div>${benchEditing ? '' : '<button class="button ghost small" data-bench-add>＋ New task</button>'}</div>${form}${tasksBlock}</section>`;
+    }
+    layout('Effectiveness', 'Is Personal Brain making AI output better? Agent use, corrections in daily work, and the same tasks with and without your styles.', '', summary + tabs + body);
     const planned = () => {
+        const out = document.getElementById('benchPlanned');
+        if (!out) {
+            return;
+        }
         const n = main.querySelectorAll('[data-bench-task]:checked').length *
             main.querySelectorAll('[data-bench-agent]:checked').length *
-            Number($('benchRuns')?.value || 0) *
+            Number($('benchRuns').value) *
             2;
-        const out = document.getElementById('benchPlanned');
-        if (out) {
-            out.textContent = `${n} agent call(s)${n > 60 ? ' — too many, the limit is 60' : ''}`;
-        }
+        out.textContent = `${n} agent call(s)${n > 60 ? ' — the limit is 60' : ''}`;
+        main.querySelector('[data-action="bench-run"]').disabled =
+            running || n === 0 || n > 60;
     };
     planned();
     main
         .querySelectorAll('[data-bench-task], [data-bench-agent], #benchRuns')
         .forEach((el) => el.addEventListener('change', planned));
-    $('benchTaskForm').addEventListener('submit', async (ev) => {
+    document.getElementById('benchTaskForm')?.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         const form = new FormData(ev.target);
+        const id = benchEditing === 'new' ? null : benchEditing;
         try {
-            await api(benchEditing ? `/api/bench/tasks/${benchEditing}` : '/api/bench/tasks', {
-                method: benchEditing ? 'PUT' : 'POST',
+            await api(id ? `/api/bench/tasks/${id}` : '/api/bench/tasks', {
+                method: id ? 'PUT' : 'POST',
                 body: JSON.stringify({
                     title: form.get('title'),
                     projectId: form.get('projectId'),
@@ -2980,8 +3155,8 @@ async function effectiveness() {
 }
 async function benchClick(button) {
     const d = button.dataset;
-    if (d.benchEdit) {
-        benchEditing = d.benchEdit;
+    if (d.benchEdit || d.benchAdd !== undefined) {
+        benchEditing = d.benchEdit || 'new';
         await effectiveness();
         $('benchTitle').focus();
     }
@@ -3019,8 +3194,8 @@ async function benchClick(button) {
 }
 const OBLIGATION_ERROR = 'Proposal drops mandatory statements';
 const CONFLICT_ERROR = 'Resolve conflicting guidance';
-async function decideInboxItem(id, decision, scope, edit) {
-    const body = { decision, scope, ...edit };
+async function decideInboxItem(id, decision, scope, edit, projectId) {
+    const body = { decision, scope, projectId, ...edit };
     for (;;) {
         try {
             return await api(`/api/feedback/${id}/decision`, {
@@ -3136,6 +3311,7 @@ function traceQuery() {
     }
     return query.toString();
 }
+let traceTab = 'timeline';
 let traceTimer, traceLive = true;
 async function traceExplorer() {
     clearTimeout(traceTimer);
@@ -3212,31 +3388,39 @@ async function traceExplorer() {
       <div class="trace-rail"><span class="trace-dot ${esc(e.channel)}${/error|fail|denied|reject/i.test(e.outcome) ? ' bad' : ''}"></span></div>
       <div class="trace-body">
         <div class="trace-heading"><div><span class="chip ${esc(e.channel)}">${esc(e.channel)}</span><b>${esc(e.eventType)}</b>${e.demo ? '<span class="trace-tag">DEMO ONLY</span>' : ''}</div><time>${esc(formatTime(e.occurredAt))}</time></div>
-        <div class="trace-sub"><span class="tag">${esc(projects.find((p) => p.id === e.metadata?.projectId)?.name || 'No project')}</span><span class="agent-label">${esc(e.agent)}</span><span class="trace-outcome ${/error|fail|denied|reject/i.test(e.outcome) ? 'bad' : 'ok'}">${esc(e.outcome)}</span><code>${esc(e.runId)}</code></div>
+        <div class="trace-sub"><span class="tag">${esc(projects.find((p) => p.id === e.metadata?.projectId)?.name || 'No project')}</span><span class="agent-label">${esc(agentName(e.agent))}</span><span class="trace-outcome ${/error|fail|denied|reject/i.test(e.outcome) ? 'bad' : 'ok'}">${esc(e.outcome)}</span>${traceRun === e.runId ? `<code>${esc(e.runId)}</code>` : `<button class="link-btn trace-session" data-trace-run="${esc(e.runId)}" title="Show only this session">${esc(e.runId)}</button>`}</div>
         ${refs ? `<div class="trace-refs">${refs}</div>` : ''}
-        <details><summary>Request / response audit</summary><h4>Request metadata</h4><pre>${esc(JSON.stringify({ event: e.eventType, sessionId: e.runId, tool: e.metadata.tool, domain: e.metadata.domain, taskCharacters: e.metadata.promptChars }, null, 2))}</pre><h4>Response metadata</h4><pre>${esc(JSON.stringify({ outcome: e.outcome, recordIds: e.recordIds, recordVersions: e.recordVersions, resultCount: e.metadata.resultCount, checkCount: e.metadata.checkCount, passed: e.metadata.passed, reviewStatus: e.metadata.reviewStatus, evidenceCount: e.metadata.evidenceCount }, null, 2))}</pre><p class="hint">Metadata only; request and response bodies were not recorded.</p></details><details><summary>Inspect recorded evidence</summary><div class="trace-metadata">${meta || 'No metadata was captured'}</div></details>
+        <details><summary>Details</summary><h4>Request</h4><pre>${esc(JSON.stringify({ event: e.eventType, sessionId: e.runId, tool: e.metadata.tool, domain: e.metadata.domain, taskCharacters: e.metadata.promptChars }, null, 2))}</pre><h4>Response</h4><pre>${esc(JSON.stringify({ outcome: e.outcome, recordIds: e.recordIds, recordVersions: e.recordVersions, resultCount: e.metadata.resultCount, checkCount: e.metadata.checkCount, passed: e.metadata.passed, reviewStatus: e.metadata.reviewStatus, evidenceCount: e.metadata.evidenceCount }, null, 2))}</pre><h4>Recorded evidence</h4><div class="trace-metadata">${meta || 'No metadata was captured'}</div><p class="hint">Metadata only; request and response bodies were not recorded.</p></details>
       </div>
     </article>`;
     })
         .join('');
-    layout('Trace Explorer', 'Inspect observed style retrieval and review activity by project.', '', `<section class="trace-metrics">${kpi.map(([value, title, key, description]) => `<div class="card trace-metric"><div class="trace-metric-top"><span>${esc(title)}</span>${infoButton(String(key))}</div><b>${value}</b><small>${esc(description)}</small></div>`).join('')}</section>
-    <div class="card panel trace-controls">
-      <div class="panel-head"><div><h2>Filter activity ${infoButton('trace_filters')}</h2></div><button class="button soft small" data-action="trace-export">Export visible JSON</button></div>
-      <div class="trace-filters">
-        <label>Project<select id="traceProject"><option value="all">All projects</option><option value="unscoped" ${traceProject === 'unscoped' ? 'selected' : ''}>No project</option>${projects.map((p) => `<option value="${esc(p.id)}" ${traceProject === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label>Agent<select id="traceAgent"><option value="all">All agents</option>${['claude', 'codex', 'opencode', 'chatgpt', 'unknown'].map((a) => `<option value="${a}" ${traceAgent === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
-        <label>Channel<select id="traceChannel"><option value="all">All channels</option>${['hook', 'mcp'].map((a) => `<option value="${a}" ${traceChannel === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
-        <label class="filter-wide">Style or skill<select id="traceRecord"><option value="all">All styles and skills</option>${recordOptions}</select></label>
-        <label class="filter-session">Session ID<input id="traceRun" value="${esc(traceRun)}" placeholder="All sessions" /></label>
-      </div>
+    const select = (id, label, opts, cls = '') => `<label${cls ? ` class="${cls}"` : ''}>${label}<select id="${id}">${opts}</select></label>`;
+    const projectSelect = select('traceProject', 'Project', `<option value="all">All projects</option><option value="unscoped" ${traceProject === 'unscoped' ? 'selected' : ''}>No project</option>${projects.map((p) => `<option value="${esc(p.id)}" ${traceProject === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}`);
+    const nav = `<nav class="project-tabs" aria-label="Trace sections">${[
+        ['timeline', 'Event timeline'],
+        ['styles', `Style usage${stats.styles?.length ? ` (${stats.styles.length})` : ''}`],
+    ]
+        .map(([key, title]) => {
+        const q = new URLSearchParams(currentRoute().split('?')[1] || '');
+        if (key === 'styles') {
+            q.set('tab', 'styles');
+        }
+        else {
+            q.delete('tab');
+        }
+        return `<a href="#/trace?${esc(q.toString())}" ${traceTab === key ? 'aria-current="page"' : ''}>${title}</a>`;
+    })
+        .join('')}</nav>`;
+    const timeline = `<section class="card panel trace-results">
+      <div class="panel-head"><div><h2>Observed event timeline ${infoButton('trace_timeline')}</h2><p class="hint">Newest first. ${events.length} matching events shown · ${stats.events} real events in this project scope.</p></div><div class="row-actions"><label class="inline-check"><input type="checkbox" id="traceLive" ${traceLive ? 'checked' : ''} /> Live updates</label><span class="hint" id="traceUpdated" role="status">${traceLive ? 'Checked ' + new Date().toLocaleTimeString() : 'Paused'}</span><button class="button ghost small" data-action="trace-refresh">Refresh</button><button class="button soft small" data-action="trace-export">Export JSON</button></div></div>
+      <div class="trace-controls trace-filters">${projectSelect}${select('traceAgent', 'Agent', `<option value="all">All agents</option>${['claude', 'codex', 'opencode', 'chatgpt', 'unknown'].map((a) => `<option value="${a}" ${traceAgent === a ? 'selected' : ''}>${esc(agentName(a))}</option>`).join('')}`)}${select('traceChannel', 'Channel', `<option value="all">All channels</option>${['hook', 'mcp'].map((a) => `<option value="${a}" ${traceChannel === a ? 'selected' : ''}>${a === 'mcp' ? 'MCP' : 'Hook'}</option>`).join('')}`)}${select('traceRecord', 'Style or skill', `<option value="all">All styles and skills</option>${recordOptions}`)}<label class="filter-session">Session ID<input id="traceRun" value="${esc(traceRun)}" placeholder="All sessions" /></label></div>
       ${reverse ? `<div class="notice"><b>Reverse trace active:</b> ${esc(reverse.title)} — current v${reverse.version}. Event badges show the version recorded at emission, which can differ from the current version.</div>` : ''}
-      <div class="trace-actions"><button class="button ghost small" data-action="trace-refresh">Refresh</button><span class="hint">${events.length} matching events shown · ${stats.events} real events in this project scope</span></div>
-    </div>
-    ${styleUsagePanel(stats.styles || [])}
-    <section class="trace-results space-top-18"><div class="card panel">
-       <div class="panel-head"><div><h2>Observed event timeline ${infoButton('trace_timeline')}</h2><p>Newest first. Each record was produced by a hook or MCP call.</p></div><div class="live-status"><label class="check-inline"><input type="checkbox" id="traceLive" ${traceLive ? 'checked' : ''} /> Live updates</label><span class="hint" id="traceUpdated" role="status">${traceLive ? 'Checked ' + new Date().toLocaleTimeString() : 'Paused'}</span></div></div>
-       <div class="trace-timeline">${rows || empty('No matching trace events', 'Run Claude, Codex, OpenCode or ChatGPT with Personal Brain connected; their calls appear here')}</div>${pagination(events.length)}
-     </div></section>`);
-    $('traceLive').addEventListener('change', () => {
+      <div class="trace-timeline">${rows || empty('No matching trace events', 'Run Claude, Codex, OpenCode or ChatGPT with Personal Brain connected; their calls appear here')}</div>${pagination(events.length)}
+    </section>`;
+    const styleTab = `<div class="card panel trace-controls trace-filters">${projectSelect}</div>${styleUsagePanel(stats.styles || [])}`;
+    layout('Trace Explorer', 'Inspect observed style retrieval and review activity by project.', '', `<section class="trace-metrics">${kpi.map(([value, title, key, description]) => `<div class="card trace-metric"><div class="trace-metric-top"><span>${esc(title)}</span>${infoButton(String(key))}</div><b>${Number(value).toLocaleString()}</b><small>${esc(description)}</small></div>`).join('')}</section>${nav}${traceTab === 'styles' ? styleTab : timeline}`);
+    $('traceLive')?.addEventListener('change', () => {
         traceLive = $('traceLive').checked;
         $('traceUpdated').textContent = traceLive ? 'Live' : 'Paused';
     });
@@ -3276,19 +3460,27 @@ async function traceExplorer() {
     document.querySelectorAll('[data-trace-record]').forEach((button) => button.addEventListener('click', async () => {
         page = 1;
         traceRecord = button.dataset.traceRecord;
+        traceTab = 'timeline';
         updateUrl();
         await traceExplorer();
         document.querySelector('.trace-results')?.scrollIntoView({ block: 'start' });
     }));
+    main.querySelectorAll('[data-trace-run]').forEach((button) => button.addEventListener('click', async () => {
+        page = 1;
+        traceRun = button.dataset.traceRun;
+        updateUrl();
+        await traceExplorer();
+    }));
     for (const id of ['traceProject', 'traceAgent', 'traceChannel', 'traceRecord', 'traceRun']) {
-        $(id).addEventListener('change', async () => {
+        $(id)?.addEventListener('change', async () => {
             page = 1;
-            const changedProject = traceProject !== $('traceProject').value;
-            traceProject = $('traceProject').value;
-            traceAgent = $('traceAgent').value;
-            traceChannel = $('traceChannel').value;
-            traceRun = changedProject ? '' : $('traceRun').value.trim();
-            traceRecord = changedProject ? 'all' : $('traceRecord').value;
+            const value = (key, current) => $(key)?.value.trim() ?? current;
+            const changedProject = traceProject !== value('traceProject', traceProject);
+            traceProject = value('traceProject', traceProject);
+            traceAgent = value('traceAgent', traceAgent);
+            traceChannel = value('traceChannel', traceChannel);
+            traceRun = changedProject ? '' : value('traceRun', traceRun);
+            traceRecord = changedProject ? 'all' : value('traceRecord', traceRecord);
             updateUrl();
             await traceExplorer();
         });
@@ -4026,7 +4218,7 @@ async function delegated(ev) {
         if (button.dataset.feedbackId) {
             button.disabled = true;
             try {
-                await decideInboxItem(button.dataset.feedbackId, button.dataset.feedbackDecision, button.dataset.feedbackScope);
+                await decideInboxItem(button.dataset.feedbackId, button.dataset.feedbackDecision, button.dataset.feedbackScope, undefined, button.dataset.feedbackProject);
                 toast('Saved');
             }
             finally {
@@ -4513,6 +4705,10 @@ function currentRoute() {
             params.set('mode', libraryMode);
         }
     }
+    const pageTab = { effectiveness: effectTab, feedback: learnTab, trace: traceTab }[active];
+    if (pageTab && !['agents', 'proposals', 'timeline'].includes(pageTab)) {
+        params.set('tab', pageTab);
+    }
     if (active === 'trace') {
         params.set('projectId', traceProject);
         params.set('agent', traceAgent);
@@ -4588,6 +4784,17 @@ async function readRoute() {
     projectTab = ['map', 'personal', 'gaps', 'activity', 'setup'].includes(tab)
         ? tab
         : 'styles';
+    if (active === 'effectiveness') {
+        effectTab = ['daily', 'compare'].includes(tab) ? tab : 'agents';
+    }
+    if (active === 'feedback') {
+        learnTab = ['checks', 'auto', 'settings'].includes(tab)
+            ? tab
+            : 'proposals';
+    }
+    if (active === 'trace') {
+        traceTab = tab === 'styles' ? 'styles' : 'timeline';
+    }
     if (active === 'trace') {
         traceRun = params.get('runId') || '';
         traceProject = params.get('projectId') || 'all';

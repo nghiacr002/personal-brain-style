@@ -631,6 +631,25 @@ const runRef = (f: Feedback) => {
   const [, jobId, targetId] = (f.sourceEventId || '').split(':');
   return {jobId, targetId};
 };
+/**
+ * Source projects that select the shared target directly, so a proposal learned from them can be
+ * saved as their private copy instead of changing the shared style. A project that already has
+ * its own copy is left out: the proposal was written against the shared text and would overwrite it.
+ */
+function projectOnlyTargets(db: BrainDB, targetId: string, projectIds: (string | undefined)[]) {
+  return [...new Set(projectIds)]
+    .filter((id): id is string => !!id && id !== LESSON)
+    .flatMap((id) => {
+      try {
+        const project = db.project(id);
+        return db.scopedRecords(id).some((r) => r.id === targetId)
+          ? [{projectId: id, name: project.name}]
+          : [];
+      } catch {
+        return [];
+      }
+    });
+}
 /** Project-analysis context for inbox items: conflicts, cited sources and the non-content fields it rewrites. */
 export function learningRunDetails(db: BrainDB, f: Feedback) {
   const {jobId, targetId} = runRef(f);
@@ -668,6 +687,11 @@ export function learningRunDetails(db: BrainDB, f: Feedback) {
         projectId: s?.contextProjectId === LESSON ? null : s?.contextProjectId || null,
       };
     }),
+    projectOnly: projectOnlyTargets(
+      db,
+      targetId,
+      p.sourceIds.map((id) => job.sources.find((x) => x.id === id)?.contextProjectId),
+    ),
     fields: {
       summary: p.summary,
       useWhen: p.useWhen,
@@ -683,7 +707,7 @@ export function decideLearningItem(
   db: BrainDB,
   id: string,
   decision: unknown,
-  options: DecisionOptions & {conflictResolution?: unknown} = {},
+  options: DecisionOptions & {conflictResolution?: unknown; projectId?: unknown} = {},
 ) {
   const f = db.feedbackItem(id);
   if (f?.source !== 'projects') {
@@ -692,10 +716,22 @@ export function decideLearningItem(
   if (decision !== 'accept' && decision !== 'dismiss') {
     throw new BrainError('Project-analysis proposals can be applied or dismissed');
   }
+  const projectId = options.scope === undefined ? null : options.projectId;
   if (options.scope !== undefined) {
-    throw new BrainError(
-      'Project-analysis proposals apply to the shared style, not a project-only scope',
+    const eligible = projectOnlyTargets(
+      db,
+      runRef(f).targetId,
+      (learningRunDetails(db, f)?.sources || []).map((x) => x.projectId || undefined),
     );
+    if (
+      options.scope !== 'project' ||
+      decision !== 'accept' ||
+      !eligible.some((p) => p.projectId === projectId)
+    ) {
+      throw new BrainError(
+        'Project only applies to a project this proposal was learned from that uses the shared style',
+      );
+    }
   }
   // A resolution alone approves the proposal as written despite listed conflicts.
   let edit: {content: string; resolution: string; acknowledgeRemovals?: unknown} | undefined;
@@ -727,6 +763,22 @@ export function decideLearningItem(
     }
     if (!edit) {
       db.checkRevision(targetId, f.proposedContent || '', options.acknowledgeRemovals);
+    }
+    if (typeof projectId === 'string') {
+      // The shared style stays as it is; the project gets a private copy with the proposed text.
+      const copy = db.personalizeRecord(
+        projectId,
+        targetId,
+        {content: edit?.content ?? f.proposedContent},
+        f.baseVersion ?? -1,
+        db.project(projectId).version,
+      ) as {version: number};
+      rejectLearningProposal(db, jobId, targetId);
+      if (edit) {
+        db.db.prepare('UPDATE feedback SET proposed_content=? WHERE id=?').run(edit.content, f.id);
+        f.proposedContent = edit.content;
+      }
+      return db.closeFeedback(f, 'accepted', copy.version);
     }
     const result = applyLearningProposal(db, jobId, targetId, edit);
     if (edit) {

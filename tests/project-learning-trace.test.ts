@@ -853,3 +853,86 @@ test('Approved global lessons are folded into a main style, archived on apply, a
     rmSync(dir, {recursive: true, force: true});
   }
 });
+
+test('A proposal learned from a project can be saved as that project only, leaving the global style unchanged', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-learning-project-only-')),
+    db = new BrainDB(join(dir, 'db'));
+  try {
+    const style = (title: string, domain: string) =>
+      db.create({
+        kind: 'preference',
+        domain,
+        title,
+        summary: title,
+        content: title + ' original',
+        tags: [],
+        priority: 90,
+        status: 'active',
+        checks: [],
+        backend: null,
+      });
+    const source = style('Source', 'coding'),
+      target = style('Target', 'writing');
+    let p = db.saveProject({
+      name: 'Alpha',
+      description: '',
+      assignments: [
+        {recordId: source.id, override: null},
+        {recordId: target.id, override: null},
+      ],
+    });
+    const local = db.personalizeRecord(p.id, source.id, {content: 'Private'}, 1, p.version);
+    p = db.project(p.id);
+    const input = learningInput(db, [p.id]);
+    const proposals = validateLearning(
+      {
+        proposals: [
+          {
+            targetId: target.id,
+            title: 'Target',
+            summary: 'Better',
+            content: 'Target improved',
+            principles: [],
+            examples: [],
+            externalSkills: [],
+            reviewCriteria: [],
+            rationale: 'Evidence',
+            conflicts: [],
+            sourceIds: [p.id + ':' + local.id],
+          },
+        ],
+      },
+      input.sources,
+      input.targets,
+    );
+    db.db
+      .prepare('INSERT INTO meta(key,value) VALUES(?,?)')
+      .run(
+        'learning-run:job',
+        JSON.stringify({id: 'job', status: 'ready', ...input, proposals, applied: []}),
+      );
+    syncLearningRuns(db);
+    const [item] = db.inbox({source: 'projects'});
+    assert.deepEqual(learningRunDetails(db, item)!.projectOnly, [{projectId: p.id, name: 'Alpha'}]);
+    assert.throws(
+      () => decideLearningItem(db, item.id, 'accept', {scope: 'project', projectId: 'other'}),
+      /learned from/,
+    );
+    const done = decideLearningItem(db, item.id, 'accept', {scope: 'project', projectId: p.id});
+    assert.equal(done.status, 'accepted');
+    assert.equal(db.get(target.id)!.content, 'Target original', 'global style unchanged');
+    assert.equal(db.get(target.id)!.version, 1);
+    const copy = db.scopedRecords(p.id).find((r) => r.sourceStyleId === target.id)!;
+    assert.equal(copy.content, 'Target improved');
+    assert.equal(copy.projectId, p.id);
+    assert.deepEqual(learningRun(db, 'job').rejected, [target.id]);
+    assert.deepEqual(
+      learningRunDetails(db, item)!.projectOnly,
+      [],
+      'a project with its own copy is no longer offered',
+    );
+  } finally {
+    db.close();
+    rmSync(dir, {recursive: true, force: true});
+  }
+});

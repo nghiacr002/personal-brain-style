@@ -989,6 +989,15 @@ test('URL navigation restores views, library filters and project configuration',
   await vm.runInContext('loadRoute()', context);
   assert.equal(vm.runInContext('search', context), 'portal');
   assert.equal(vm.runInContext('currentRoute()', context), '#/projects?q=portal');
+  // Page tabs survive the URL rewrite after loading, so a reload reopens the same tab.
+  for (const [view, state, route] of [
+    ['feedback', 'learnTab="settings"', '#/feedback?tab=settings'],
+    ['feedback', 'learnTab="proposals"', '#/feedback'],
+    ['effectiveness', 'effectTab="compare"', '#/effectiveness?tab=compare'],
+  ]) {
+    vm.runInContext(`active="${view}"; page=1; ${state}`, context);
+    assert.equal(vm.runInContext('currentRoute()', context), route);
+  }
   window.location.hash = '#/unknown';
   await vm.runInContext('loadRoute()', context);
   assert.equal(window.location.hash, '#/overview');
@@ -1546,7 +1555,7 @@ test('graph viewport zoom, fit and pan change only the viewBox', () => {
   assert.equal(svg.view, '0 0 800 800');
 });
 
-test('learning inbox word diff marks insertions, deletions and dropped obligation words', () => {
+test('learning inbox line diff shows git-style rows, word marks, dropped obligations and folded context', () => {
   const context = vm.createContext({
     document: {
       getElementById: () => ({addEventListener() {}}),
@@ -1558,21 +1567,42 @@ test('learning inbox word diff marks insertions, deletions and dropped obligatio
     console,
   });
   vm.runInContext(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), context);
-  const html = vm.runInContext(
-    'wordDiff("Use tabs. Never compress <code>.", "Use spaces. Compress <code>.")',
+  const before = Array.from({length: 12}, (_, n) => `Line ${n + 1}.`);
+  const after = [...before];
+  after[5] = 'Line 6 changed.';
+  after.splice(9, 1);
+  before[1] = 'You must cite <code>.';
+  after[1] = 'Cite <code>.';
+  const diff = vm.runInContext(
+    `lineDiff(${JSON.stringify(before.join('\n'))}, ${JSON.stringify(after.join('\n'))})`,
     context,
   );
-  assert.match(html, /<del>tabs\.<\/del>/);
-  assert.match(html, /<ins>spaces\.<\/ins>/);
-  assert.match(html, /<del class="lost">Never<\/del>/);
-  assert.ok(!html.includes('<code>'), 'content is escaped'); // A rewritten sentence is shown whole (old, then new), never as interleaved word fragments.
-  const rewritten = vm.runInContext(
-    'wordDiff("Keep it short. You must cite sources.", "Keep it short. Provide a design per module with a map.")',
-    context,
+  assert.equal(diff.added, 2);
+  assert.equal(diff.removed, 3);
+  // git-style rows: old and new line numbers, a +/- sign, and changed words marked inside.
+  assert.match(
+    diff.html,
+    /<tr class="diff-del lost"><td class="diff-no">2<\/td><td class="diff-no"><\/td>/,
+  );
+  assert.match(diff.html, /<del class="lost">must<\/del>/);
+  assert.match(
+    diff.html,
+    /<tr class="diff-ins"><td class="diff-no"><\/td><td class="diff-no">6<\/td><td class="diff-sign"[^>]*>\+<\/td><td class="diff-line">Line <ins>6<\/ins> <ins>changed\.<\/ins>/,
   );
   assert.match(
-    rewritten,
-    /Keep it short\. <del class="lost">You must cite sources\.<\/del><ins>Provide a design per module with a map\.<\/ins>/,
+    diff.html,
+    /<tr class="diff-same"><td class="diff-no">12<\/td><td class="diff-no">11<\/td>/,
+  );
+  assert.ok(!diff.html.includes('<code>'), 'content is escaped');
+  // Unchanged lines away from any change fold, with three lines of context kept.
+  const far = vm.runInContext(
+    `lineDiff(${JSON.stringify(before.join('\n') + '\nEnd.')}, ${JSON.stringify(before.join('\n') + '\nEnd changed.')})`,
+    context,
+  );
+  assert.match(far.html, /⋯ 9 unchanged lines/);
+  assert.equal(
+    vm.runInContext('lineDiff("Same", "Same").html', context),
+    '<p class="hint">No text changes.</p>',
   );
 });
 
@@ -2154,6 +2184,7 @@ test('Learning shows automatic learning state, polls a running comparison and st
     }
     return [run()];
   }, timers);
+  vm.runInContext('learnTab = "auto"', context);
   await vm.runInContext('feedback()', context);
   let html = element('main').innerHTML;
   assert.match(html, /Automatic learning <span class="learn-badge running">Comparing now/);
@@ -2173,6 +2204,11 @@ test('Learning shows automatic learning state, polls a running comparison and st
   assert.match(html, /<dt>Next check<\/dt><dd>in about 1 min/);
   assert.match(html, /<dt>Last comparison<\/dt><dd>[^<]*Codex · 0 project\(s\) — 2 proposal\(s\)/);
   assert.match(html, /data-action="learning-check"/);
+  vm.runInContext('learnTab = "proposals"', context);
+  await vm.runInContext('feedback()', context);
+  html = element('main').innerHTML;
+  assert.match(html, /aria-current="page">Proposed changes</);
+  assert.doesNotMatch(html, /learnStatus/, 'status card lives on its own tab');
   assert.match(html, /Waiting \(0\)/);
   assert.match(html, /Nothing needs your OK/);
   status = 'running';
@@ -2226,6 +2262,17 @@ test('Project-analysis items show their source and evidence, and conflicts block
     !clean.includes('data-feedback-scope="project"'),
     'no project-only for shared updates from project analysis',
   );
+  const learned = JSON.parse(item([]));
+  learned.analysis.projectOnly = [{projectId: 'p1', name: 'Alpha'}];
+  const offered = vm.runInContext(`inboxItem(${JSON.stringify(learned)}, () => 'P')`, context);
+  assert.match(
+    offered,
+    /data-feedback-scope="project" data-feedback-project="p1" data-feedback-id="f1"[^>]*>Apply to Alpha only</,
+  );
+  assert.match(
+    offered,
+    /Apply to Alpha only saves a private copy there and leaves the global style unchanged/,
+  );
   const blocked = vm.runInContext(`inboxItem(${item(['Tabs vs spaces'])}, () => 'P')`, context);
   assert.match(blocked, /Conflicting guidance/);
   // Conflicts don't block: Apply confirms, Edit lets the user adjust first.
@@ -2278,8 +2325,13 @@ test('Learning asks once whether to compare projects automatically, and stays of
   await vm.runInContext('feedback()', context);
   html = element('main').innerHTML;
   assert.doesNotMatch(html, /data-learn-auto-answer/, 'not asked again once answered');
-  assert.match(html, /Compare my projects automatically/);
   assert.match(html, /learn-badge off">Off/);
+  vm.runInContext('learnTab = "settings"', context);
+  await vm.runInContext('feedback()', context);
+  assert.match(element('main').innerHTML, /Compare my projects automatically/);
+  vm.runInContext('learnTab = "auto"', context);
+  await vm.runInContext('feedback()', context);
+  html = element('main').innerHTML;
   assert.match(html, /data-action="learning-toggle" data-on="1">Turn on/);
   assert.match(html, /<dt>Last comparison<\/dt><dd>none yet/);
 });
@@ -2365,7 +2417,7 @@ test('Learning shows how styles hold up in agent reviews, failing styles flagged
   assert.match(html, /How your styles hold up/);
   assert.match(
     html,
-    /data-edit="r1">UI &lt;b&gt;<\/button> · v4 · 2 passed · <span class="bad">1 failed/,
+    /data-edit="r1">UI &lt;b&gt;<\/button> <small class="hint">v4<\/small><\/td><td class="num" data-label="Passed">2<\/td><td class="num" data-label="Failed"><span class="bad">1<\/span>/,
   );
   assert.match(html, /Codex 0✓ <span class="bad">1✗<\/span> · Claude 2✓ · earlier reviews 0✓/);
   assert.equal(vm.runInContext('styleChecksCard([])', context), '');
@@ -2436,31 +2488,151 @@ test('Effectiveness shows pass rate with vs without styles and flags weeks witho
   );
   assert.match(
     html,
-    /<td>Codex<\/td><td class="num">75%<\/td><td class="num">25%<\/td><td><b class="good">\+50 pts<\/b>/,
+    /Note<\/td><td class="num" data-label="With styles">75%<\/td><td class="num" data-label="Without">25%<\/td><td class="num" data-label="Difference"><b class="good">\+50 pts<\/b>/,
   );
   assert.match(html, /<code>absent: TODO<\/code>/);
   const weeks = vm.runInContext(
     `weeksTable([{week:'2026-45', prompts:10, sessions:2, corrections:null, recordedPrompts:0, lessons:0, repeats:0}, {week:'2026-46', prompts:10, sessions:2, corrections:2, recordedPrompts:8, lessons:3, repeats:1}])`,
     context,
   );
-  assert.match(weeks, /not recorded/);
-  assert.match(weeks, /2 · 25% of prompts/);
+  assert.match(weeks, /Not recorded/);
+  assert.match(weeks, /25% <span class="hint">2 of 8<\/span>/);
   assert.match(weeks, /<span class="bad">1<\/span>/);
+  // Newest week first.
+  assert.ok(weeks.indexOf('Week 46, 2026') < weeks.indexOf('Week 45, 2026'));
   const adoption = vm.runInContext(
     `adoptionTable([{agent:'claude', workSessions:4, coveredSessions:1, sessions:5, prompts:100, loads:3, reviews:0, lessons:1, errors:0}, {agent:'codex', sessions:6, prompts:6, loads:10, reviews:6, lessons:0, errors:2}, {agent:'chatgpt', sessions:0, prompts:0, loads:2, reviews:0, lessons:0, errors:0}])`,
     context,
   );
   assert.match(
     adoption,
-    /<td>Claude<\/td><td><span class="bad">1 of 4 · 25%<\/span><\/td>(<td class="num">[^<]*<\/td>){3}<td class="num"><span class="bad">0.3<\/span>/,
+    /value="25"[^>]*><\/meter><span class="bad">25%<\/span> <span class="hint">1 of 4/,
   );
-  assert.match(adoption, /<td>Codex<\/td><td><span class="hint">not recorded yet/);
-  assert.match(adoption, /<td class="num">16.7<\/td>/);
-  assert.match(adoption, /no hooks/);
+  assert.match(
+    adoption,
+    /<strong>Codex<\/strong><\/td><td [^>]*><span class="hint">No edits recorded yet/,
+  );
+  assert.match(adoption, /<span class="bad">2<\/span>/);
   const stale = vm.runInContext(
     `staleExportsCard([{projectId:'p1', project:'Shop', path:'AGENTS.md'}])`,
     context,
   );
   assert.match(stale, /<code>AGENTS.md<\/code> in <a href="#\/projects\/p1">Shop<\/a>/);
   assert.equal(vm.runInContext('staleExportsCard([])', context), '');
+});
+
+test('Overview lists what needs a decision, problems first, and survives failed checks', async () => {
+  const data = {
+    '/api/learning': {
+      ...inboxHealth,
+      pending: 2,
+      oldestPendingDays: 9,
+      styleChecks: [{id: 's', title: 'UI', version: 2, passed: 1, failed: 1, agents: {}}],
+      staleExports: [{path: 'AGENTS.md', project: 'A', projectId: 'p'}],
+      projects: {state: 'watching'},
+    },
+    '/api/effectiveness': {
+      weeks: [{week: '2026-W47', prompts: 9, corrections: 1, lessons: 0, repeats: 0}],
+      adoption: [{agent: 'codex', workSessions: 6, coveredSessions: 1}],
+    },
+    '/api/activation': {
+      claude: {installed: true, changed: true},
+      codex: {installed: true, changed: false},
+    },
+    '/api/projects': [{id: 'p', name: 'A', assignments: []}],
+  };
+  const {context, element} = inboxContext((url) => data[url]);
+  vm.runInContext('active="overview"', context);
+  await vm.runInContext('overview()', context);
+  const html = element('main').innerHTML;
+  const order = [
+    'waiting for your OK, oldest 9 days',
+    'Claude hooks are out of date',
+    'Codex loaded your styles in only 1 of 6',
+    '1 style failed requirements',
+    '1 exported rule file is older',
+  ].map((text) => html.indexOf(text));
+  assert.ok(
+    order.every((i) => i > 0),
+    'every check is listed',
+  );
+  assert.ok(order[3] > order[2], 'problems come before to-dos');
+  assert.match(html, /href="#\/feedback\?tab=checks"/);
+  assert.doesNotMatch(html, /All clear/);
+
+  const failed = inboxContext(() => {
+    throw new Error('down');
+  });
+  vm.runInContext('active="overview"', failed.context);
+  await vm.runInContext('overview()', failed.context);
+  assert.match(
+    failed.element('main').innerHTML,
+    /Could not check learning, agent usage, agent setup/,
+  );
+});
+
+test('Proposed changes filter by the styles a change edits or the project it was learned from', async () => {
+  const item = (id, projectId, sourceProject) => ({
+    id,
+    recordId: null,
+    rating: 'correction',
+    note: 'Note ' + id,
+    createdAt: '2026-11-04',
+    projectId,
+    source: 'projects',
+    proposedContent: null,
+    baseVersion: 1,
+    diagnosis: 'missing',
+    status: 'pending',
+    decidedAt: null,
+    appliedVersion: null,
+    action: 'remember',
+    proposal: null,
+    evidenceIds: [],
+    target: null,
+    stale: false,
+    lostObligations: [],
+    fixtureFailures: [],
+    evidence: {independent: 0, counter: 0, competing: 0, reviews: {passed: 0, failed: 0}},
+    analysis: sourceProject
+      ? {
+          agent: 'codex',
+          conflicts: [],
+          sources: [{title: 'S', project: 'B', projectId: sourceProject}],
+          fields: {},
+        }
+      : undefined,
+  });
+  const {context, element} = inboxContext((url) => {
+    if (url.startsWith('/api/feedback')) {
+      return [item('own', 'a', null), item('shared', null, 'b'), item('plain', null, null)];
+    }
+    if (url === '/api/learning') {
+      return {...inboxHealth, autoProjectsAsked: true, projects: {state: 'off'}};
+    }
+    return [
+      {id: 'a', name: 'Alpha', assignments: []},
+      {id: 'b', name: 'Beta', assignments: []},
+    ];
+  });
+  const shown = async (scope) => {
+    vm.runInContext(`inboxScope = ${JSON.stringify(scope)}; learnTab = "proposals"`, context);
+    await vm.runInContext('feedback()', context);
+    const html = element('main').innerHTML;
+    return ['own', 'shared', 'plain'].filter((id) => html.includes('Note ' + id));
+  };
+  assert.deepEqual(await shown(''), ['own', 'shared', 'plain']);
+  // "Changes to" groups never overlap; "Learned from" is a separate question.
+  assert.deepEqual(await shown('global'), ['shared', 'plain']);
+  assert.deepEqual(await shown('a'), ['own']);
+  assert.deepEqual(await shown('from:b'), ['shared']);
+  const html = element('main').innerHTML;
+  assert.match(
+    html,
+    /<optgroup label="Changes to"><option value="global">Global styles \(2\)<\/option><option value="a">Alpha styles \(1\)<\/option><\/optgroup>/,
+  );
+  assert.match(
+    html,
+    /<optgroup label="Learned from"><option value="from:b" selected>Beta \(1\)<\/option><\/optgroup>/,
+  );
 });

@@ -11,7 +11,8 @@ export type HookPhase = 'session' | 'prompt' | 'tool' | 'gate';
 /**
  * Tool-use signal for "did this working session use the styles": an edit marks real work, a
  * brain_get/brain_prepare marks a style load. Names differ by host: Claude Edit/Write, Codex
- * apply_patch, OpenCode edit/write/patch; MCP tools end in their own name on every host.
+ * apply_patch, OpenCode edit/write/patch. Codex fires no tool hook for MCP calls, so adoption()
+ * also counts its traced brain_get/brain_prepare events.
  */
 export function toolSignal(name: unknown): 'work' | 'load' | null {
   if (typeof name !== 'string') {

@@ -263,6 +263,16 @@ test('tool hook records edits and style loads per session, ignoring other tools'
       const by = Object.fromEntries(db.adoption().map((a) => [a.agent, a]));
       assert.deepEqual([by.claude.workSessions, by.claude.coveredSessions], [2, 1]);
       assert.deepEqual([by.codex.workSessions, by.codex.coveredSessions], [1, 0]);
+      // Codex fires no tool hook for MCP calls; its traced brain_prepare in the session counts.
+      db.trace({
+        agent: 'codex',
+        channel: 'mcp',
+        eventType: 'mcp.brain_prepare',
+        outcome: 'success',
+        runId: 'codex:c1',
+      });
+      const codex = db.adoption().find((a) => a.agent === 'codex')!;
+      assert.deepEqual([codex.workSessions, codex.coveredSessions], [1, 1]);
     } finally {
       db.close();
     }

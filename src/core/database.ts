@@ -2204,7 +2204,8 @@ export class BrainDB {
   private workSessions(agent: string, since: string) {
     const row = this.db
       .prepare(
-        `SELECT count(*) AS work, sum(EXISTS(SELECT 1 FROM trace_events l WHERE l.run_id=w.run_id AND l.event_type='hook.tool.load')) AS covered
+        // Codex fires no tool hook for MCP calls, so its own brain_get/brain_prepare events count too.
+        `SELECT count(*) AS work, sum(EXISTS(SELECT 1 FROM trace_events l WHERE l.run_id=w.run_id AND (l.event_type='hook.tool.load' OR (l.event_type IN ('mcp.brain_get','mcp.brain_prepare') AND l.outcome='success')))) AS covered
         FROM (SELECT DISTINCT run_id FROM trace_events WHERE demo=0 AND agent=? AND occurred_at >= ? AND event_type='hook.tool.work') w`,
       )
       .get(agent, since) as {work: number; covered: number | null};

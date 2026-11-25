@@ -62,19 +62,33 @@ code { font-family: var(--mono); font-size: .9em; }
 .modifier { border-left: 4px solid var(--user); }
 footer { font-size: 13px; color: var(--muted); }
 svg text { font-family: var(--sans); }
+/* Route highlight: selecting a route card fades the diagram steps that route skips. */
+.hint, .showing { font-size: 13.5px; color: var(--muted); margin: -4px 0 10px; }
+.showing { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.showing b { color: var(--fg); }
+.showing button { font: inherit; font-weight: 600; color: var(--claude); background: none; border: 0; padding: 4px 0; cursor: pointer; text-decoration: underline; }
+.route[role="button"] { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.route[role="button"]:hover { border-color: var(--claude); }
+.route[role="button"]:focus-visible, .showing button:focus-visible { outline: 2px solid var(--claude); outline-offset: 2px; }
+.route[aria-pressed="true"] { border-color: var(--claude); box-shadow: 0 0 0 1px var(--claude); }
+.frame svg g g, .frame svg .arrows, .frame svg .labels { transition: opacity .2s; }
+.frame.filtered svg .arrows, .frame.filtered svg .labels { opacity: .25; }
+.frame.filtered svg g g.off { opacity: .18; }
+@media (prefers-reduced-motion: reduce) { .route[role="button"], .frame svg * { transition: none; } }
 </style>
 </head>
 <body>
 
 <main>
   <header>
-    <div class="eyebrow">Personal Brain style · Agent roles v16</div>
+    <div class="eyebrow">Personal Brain style · Agent roles v19</div>
     <h1>Agent roles flow</h1>
     <p class="lead">Claude owns analysis, design, the UI build and integration; Codex starts building the server, data and logic first. Each job takes the smallest route that fits, large work ships in slices, and high risk adds its controls on any route. You confirm requirements, make significant decisions and decide serious review findings. The diagram below shows who does each step and where the work comes back to you.</p>
   </header>
 
   <section aria-labelledby="routes-title">
     <h2 id="routes-title">Pick a route first</h2>
+    <p class="hint">Select a route to see its steps on the diagram below.</p>
     <div class="routes">
       <div class="route"><b>Quick</b><p class="when">A few files, no new behaviour beyond the ask.</p><div class="steps"><span class="st c">one agent builds + tests</span><i>→</i><span class="st c">brief report</span></div></div>
       <div class="route"><b>Bug</b><p class="when">A defect that can be reproduced.</p><div class="steps"><span class="st x">discovery</span><i>→</i><span class="st c">failing test</span><i>→</i><span class="st x">fix (Claude if UI)</span><i>→</i><span class="st e">review by risk</span><i>→</i><span class="st c">report with cause</span></div></div>
@@ -82,16 +96,18 @@ svg text { font-family: var(--sans); }
       <div class="route"><b>Refactor</b><p class="when">No change in behaviour; a behaviour change found on the way becomes a Bug or Feature.</p><div class="steps"><span class="st x">discovery</span><i>→</i><span class="st c">characterization tests</span><i>→</i><span class="st x">build</span><i>→</i><span class="st e">review by risk</span><i>→</i><span class="st c">integrate</span></div></div>
       <div class="route"><b>Large or new project</b><p class="when">New architecture or several features.</p><div class="steps"><span class="st c">analysis + design once</span><i>→</i><span class="st x">design review</span><i>→</i><span class="st u">approve</span></div><div class="steps"><span class="st c">slice: plan</span><i>→</i><span class="st x">build</span><i>→</i><span class="st e">review</span><i>→</i><span class="st c">merge</span><i>→</i><span class="when" style="color: var(--muted)">↺ next slice, planned during review</span></div></div>
       <div class="route"><b>Review only</b><p class="when">You ask for a review.</p><div class="steps"><span class="st x">read-only review</span><i>→</i><span class="st c">findings by severity + verdict</span></div></div>
+      <div class="route"><b>Critical</b><p class="when">Only when you ask (“critical” or “ultra”), for one task where a mistake is very costly.</p><div class="steps"><span class="st x">discovery</span><i>→</i><span class="st u">confirm requirements</span><i>→</i><span class="st x">design review</span><i>→</i><span class="st u">decisions + plan</span><i>→</i><span class="st x">build, high effort</span><i>→</i><span class="st x">Codex review of every branch + merged diff</span><i>→</i><span class="st c">per-requirement report</span></div></div>
       <div class="route modifier"><b>High risk, on any route</b><p class="when">Stored data, migrations, backups, deletion, auth, permissions, privacy, money or external integrations.</p><div class="steps"><span class="st c">risk tests first</span><i>→</i><span class="st u">you approve the plan</span><i>→</i><span class="st x">high effort</span><i>→</i><span class="st x">fresh Codex review + security</span></div><p class="when">A route never removes these. Start on the smallest route and move up when discovery shows more.</p></div>
     </div>
   </section>
 
   <section aria-labelledby="flow-title">
     <h2 id="flow-title">The flow, by who does it</h2>
-    <div class="frame">
+    <p class="showing" id="showing" aria-live="polite"><span id="showingText">Showing every step.</span> <button type="button" id="showAll" hidden>Show all steps</button></p>
+    <div class="frame" id="flowFrame">
       <svg viewBox="0 0 1130 490" role="img" aria-labelledby="svg-title svg-desc">
         <title id="svg-title">Agent roles swimlane flow</title>
-        <desc id="svg-desc">Three lanes: You, Claude and Codex. Claude runs business analysis, solution architecture and planning with a risk per task, builds the UI in TypeScript, reviews low-risk Codex branches, decides open findings after two review rounds, then integrates and verifies. Codex does read-only discovery, design review, builds server, data and logic tasks, and reviews high-risk branches and Claude's UI branch. You confirm requirements, make significant decisions, decide serious findings and receive the per-requirement report.</desc>
+        <desc id="svg-desc">Three lanes: You, Claude and Codex. Claude runs business analysis, solution architecture and planning with a risk per task, builds the UI in TypeScript, reviews low-risk Codex branches, decides open findings after two review rounds, then integrates and verifies. Codex does read-only discovery, design review, builds server, data and logic tasks, and reviews high-risk branches and Claude's UI branch (every branch on Critical), and reviews the whole merged diff for large or Critical work. You confirm requirements, make significant decisions, approve the plan for Feature, high-risk or Critical work, decide serious findings and receive the per-requirement report.</desc>
         <defs>
           <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0 0 L10 5 L0 10 z" style="fill: var(--muted)"/>
@@ -121,7 +137,7 @@ svg text { font-family: var(--sans); }
         </g>
 
         <!-- connectors (drawn first, under boxes) -->
-        <g fill="none" stroke-width="1.6" style="stroke: var(--muted)">
+        <g class="arrows" fill="none" stroke-width="1.6" style="stroke: var(--muted)">
           <path d="M265 225 H285" marker-end="url(#ah)"/>
           <path d="M435 225 H455" marker-end="url(#ah)"/>
           <path d="M605 225 H625" marker-end="url(#ah)"/>
@@ -138,8 +154,10 @@ svg text { font-family: var(--sans); }
           <path d="M1040 197 V118" marker-end="url(#ah)"/>
           <path d="M190 367 V253" stroke-dasharray="2 4" marker-end="url(#ah)"/>
           <path d="M360 367 V253" marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <path d="M530 197 V118" stroke-dasharray="5 4" marker-start="url(#ah)" marker-end="url(#ah)"/>
+          <path d="M1040 367 V253" marker-start="url(#ah)" marker-end="url(#ah)"/>
         </g>
-        <g font-size="11" style="fill: var(--muted)">
+        <g class="labels" font-size="11" style="fill: var(--muted)">
           <text x="586" y="330">Codex tasks</text>
           <text x="496" y="300">blocked</text>
           <text x="752" y="275" text-anchor="end">UI branch</text>
@@ -150,6 +168,8 @@ svg text { font-family: var(--sans); }
           <text x="876" y="160">ask</text>
           <text x="196" y="330">findings</text>
           <text x="366" y="330">review</text>
+          <text x="536" y="160">gate</text>
+          <text x="1046" y="330">merged diff</text>
         </g>
 
         <!-- user boxes -->
@@ -157,12 +177,17 @@ svg text { font-family: var(--sans); }
           <g>
             <rect x="115" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
             <text x="190" y="86" font-weight="600" style="fill: var(--fg)">Confirm requirements</text>
-            <text x="190" y="104" font-size="11" style="fill: var(--muted)">Feature: plan, once</text>
+            <text x="190" y="104" font-size="11" style="fill: var(--muted)">Large and Critical</text>
           </g>
           <g>
             <rect x="285" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
             <text x="360" y="86" font-weight="600" style="fill: var(--fg)">Significant decisions</text>
             <text x="360" y="104" font-size="11" style="fill: var(--muted)">irreversible design choices</text>
+          </g>
+          <g>
+            <rect x="455" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
+            <text x="530" y="86" font-weight="600" style="fill: var(--fg)">Approve the plan</text>
+            <text x="530" y="104" font-size="11" style="fill: var(--muted)">Feature, high risk, Critical</text>
           </g>
           <g>
             <rect x="795" y="62" width="150" height="56" rx="8" style="fill: var(--user-tint); stroke: var(--user)" stroke-width="1.5"/>
@@ -230,10 +255,15 @@ svg text { font-family: var(--sans); }
           <g>
             <rect x="795" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="1.5"/>
             <text x="870" y="391" font-weight="600" style="fill: var(--fg)">Review high risk</text>
-            <text x="870" y="409" font-size="11" style="fill: var(--muted)">+ Claude's UI branch</text>
+            <text x="870" y="409" font-size="11" style="fill: var(--muted)">+ UI branch; all on Critical</text>
+          </g>
+          <g>
+            <rect x="965" y="367" width="150" height="56" rx="8" style="fill: var(--codex-tint); stroke: var(--codex)" stroke-width="1.5"/>
+            <text x="1040" y="391" font-weight="600" style="fill: var(--fg)">Review merged diff</text>
+            <text x="1040" y="409" font-size="11" style="fill: var(--muted)">Large and Critical</text>
           </g>
         </g>
-        <text x="120" y="472" font-size="11" style="fill: var(--muted)">This is the full Feature flow; each route above runs only the steps it names</text>
+        <text x="120" y="472" font-size="11" style="fill: var(--muted)">Every step runs only on Critical, and in Large or new project; each other route runs only the steps it names</text>
         <text x="700" y="452" text-anchor="middle" font-size="11" style="fill: var(--muted)">each worker: own branch + worktree, loads only its hand-off's styles; Claude runs what the sandbox can't</text>
       </svg>
       <div class="legend">
@@ -253,7 +283,7 @@ svg text { font-family: var(--sans); }
       <div class="rule"><b>Slices, not a waterfall</b><p>Large work ships as thin vertical slices, each about a day: plan, build, review, merge. Requirements and design are refined per slice, so a wrong assumption costs one slice.</p></div>
       <div class="rule"><b>Risk sets the effort</b><p>High risk means the task touches stored data, migrations, backups, deletion, auth, permissions, privacy, money or external integrations. Those workers and their reviews run at high reasoning effort; routine work runs at medium.</p></div>
       <div class="rule"><b>Risk cases tested first</b><p>Tasks that change stored data get acceptance tests before building for legacy data migration, retry after a partial failure, interrupted or concurrent writes, and inherited permissions, so a review doesn't find them in round 2.</p></div>
-      <div class="rule"><b>Review by risk</b><p>One review covers code and security. A fresh Codex run reviews high-risk branches and every branch Claude wrote; Claude reviews low-risk Codex branches from the diff. The author never gives the final review.</p></div>
+      <div class="rule"><b>Review by risk</b><p>One review covers code and security. A fresh Codex run reviews high-risk branches and every branch Claude wrote; Claude reviews low-risk Codex branches from the diff, except on Critical, where Codex reviews every branch. The author never gives the final review.</p></div>
       <div class="rule"><b>Two review rounds, then Claude decides</b><p>Round 2 checks only the fixes; Claude does it when they're small, a fresh reviewer when they're serious. No third round: Claude fixes, accepts, defers or drops each open finding, and you decide security or data-loss ones.</p></div>
       <div class="rule"><b>Codex starts first, on a stub</b><p>After planning, Claude starts the Codex tasks, then builds the UI against the contract stub (shared types plus a mock API) and reads reports as they arrive.</p></div>
       <div class="rule"><b>Self-contained hand-off</b><p>Each hand-off carries the worker card as text, the projectId and the recordIds of the task's styles. The worker calls <code>brain_prepare</code> with them directly and never loads this playbook.</p></div>
@@ -266,7 +296,51 @@ svg text { font-family: var(--sans); }
     </div>
   </section>
 
-  <footer>Source: Personal Brain style "Agent roles — Claude leads analysis, design, UI build and integration; Codex builds and reviews", version 16, read 2026-11-24.</footer>
+  <footer>Source: Personal Brain style "Agent roles — Claude leads analysis, design, UI build and integration; Codex builds and reviews", version 19, read 2026-11-25.</footer>
 </main>
+<script>
+// Which diagram boxes (by title) each route uses; the caption under the diagram says the same in words.
+const ALL = ["Confirm requirements","Significant decisions","Approve the plan","Serious findings","Final report","Business analysis","Solution design","Plan, risk + tests","Build the UI/UX","Review low risk","Integrate + verify","Read-only discovery","Design review","Build server + logic","Review high risk","Review merged diff"];
+const BUILD = ["Build the UI/UX","Build server + logic","Review low risk","Review high risk","Serious findings","Integrate + verify","Final report"];
+const ROUTES = {
+  "Quick": ["Build the UI/UX","Build server + logic","Final report"],
+  "Bug": ["Read-only discovery","Plan, risk + tests", ...BUILD],
+  "Feature": ["Plan, risk + tests","Approve the plan", ...BUILD],
+  "Refactor": ["Read-only discovery","Plan, risk + tests", ...BUILD],
+  "Large or new project": ALL,
+  "Review only": ["Review high risk","Final report"],
+  "Critical": ALL.filter((t) => t !== "Review low risk"),
+  "High risk, on any route": ["Plan, risk + tests","Approve the plan","Build server + logic","Review high risk","Serious findings"],
+};
+const frame = document.getElementById("flowFrame");
+const showing = document.getElementById("showing");
+const showAll = document.getElementById("showAll");
+const showingText = document.getElementById("showingText");
+const boxes = [...frame.querySelectorAll("svg g g")].filter((g) => g.querySelector("rect"));
+const cards = [...document.querySelectorAll(".route")];
+function select(card) {
+  const name = card?.querySelector("b").textContent;
+  const steps = ROUTES[name];
+  cards.forEach((c) => c.setAttribute("aria-pressed", String(c === card && !!steps)));
+  frame.classList.toggle("filtered", !!steps);
+  boxes.forEach((g) => g.classList.toggle("off", !!steps && !steps.includes(g.querySelector("text").textContent)));
+  showAll.hidden = !steps;
+  showingText.innerHTML = steps ? "<b>" + name + "</b>: " + steps.length + " of " + ALL.length + " steps; faded steps don't run." : "Showing every step.";
+}
+cards.forEach((card) => {
+  if (!ROUTES[card.querySelector("b").textContent]) return;
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-pressed", "false");
+  card.setAttribute("aria-controls", "flowFrame");
+  const toggle = () => {
+    select(card.getAttribute("aria-pressed") === "true" ? null : card);
+    frame.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
+  card.addEventListener("click", toggle);
+  card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+});
+showAll.addEventListener("click", () => select(null));
+</script>
 </body>
 </html>

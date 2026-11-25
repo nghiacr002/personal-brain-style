@@ -9,6 +9,7 @@ export const catalogBaseline: Record<string, string[]> = {
     'f6d99537c7c0efae0388fe636a57e8764d529a67ec3a44fc9ef3e8575555331e',
     'dd70c574d554fdf227f6d4931c4909b5700d76a3f7287be357dab79b30aff9a6',
     '0383d9b64be7179062f4c1ec15d1c6cf486779e4525fc8c42c63fc59f9cf327b',
+    'c068dcd1d486aff4f8f530d15adf7ac8c37e549ff106c9d18f442a1a0c3ef0f2',
   ],
   'ai-delivery': [
     '77ff1ebfcd9c0e2742d61fa7850ccb527c25429d306dc7e2c68ef87002ed16fa',
